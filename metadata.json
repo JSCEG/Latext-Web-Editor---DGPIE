@@ -1,0 +1,5 @@
+{
+  "name": "Editor LatexT",
+  "description": "Un frontend moderno impulsado por IA para gestionar Google Sheets. Crea, edita y mejora tus hojas de cálculo con Gemini.",
+  "requestFramePermissions": []
+}
