@@ -104,6 +104,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   const [nestedGridData, setNestedGridData] = useState<string[][]>([]);
   const [nestedGridRange, setNestedGridRange] = useState<string>('');
   const [originalNestedGridRange, setOriginalNestedGridRange] = useState<string>(''); 
+  const [focusedCell, setFocusedCell] = useState<{r: number, c: number} | null>(null);
   
   // New Table Wizard State
   const [showTableWizard, setShowTableWizard] = useState(false);
@@ -162,6 +163,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
     setViewMode('LIST');
     setSearchTerm('');
     setCurrentPage(1);
+    setFocusedCell(null);
     
     if (activeTab === 'metadatos') {
         // Load Form Data directly for Metadata
@@ -236,6 +238,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
       setLoadingGrid(true);
       setNestedGridRange(correctedRange);
       setOriginalNestedGridRange(correctedRange);
+      setFocusedCell(null);
 
       try {
           const values = await fetchValues(spreadsheet.spreadsheetId, correctedRange, token);
@@ -912,15 +915,23 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                                     <tbody className="bg-white divide-y divide-gray-200">
                                                         {nestedGridData.map((row, rIndex) => (
                                                             <tr key={rIndex}>
-                                                                <td className="px-2 py-2 bg-gray-50 text-[10px] text-gray-400 font-mono select-none w-8 text-center border-r border-gray-200">
+                                                                <td className={clsx(
+                                                                    "px-2 py-2 text-[10px] font-mono select-none w-8 text-center border-r border-gray-200 transition-colors duration-200",
+                                                                    focusedCell?.r === rIndex ? "bg-[#691C32] text-white font-bold" : "bg-gray-50 text-gray-400"
+                                                                )}>
                                                                     {rIndex + 1}
                                                                 </td>
                                                                 {row.map((cell, cIndex) => (
                                                                     <td key={cIndex} className="p-0 border-r border-gray-200 last:border-0 min-w-[120px]">
                                                                         <input 
+                                                                                onFocus={() => setFocusedCell({r: rIndex, c: cIndex})}
                                                                                 className={clsx(
-                                                                                    "w-full h-full px-3 py-2 text-sm focus:outline-none border-none bg-transparent",
-                                                                                    rIndex === 0 ? "font-bold text-gray-800 bg-gray-50" : "text-gray-600 focus:bg-blue-50"
+                                                                                    "w-full h-full px-3 py-2 text-sm focus:outline-none border-none bg-transparent transition-colors duration-200",
+                                                                                    rIndex === 0 
+                                                                                        ? (focusedCell?.c === cIndex ? "font-bold text-[#691C32] bg-red-50" : "font-bold text-gray-800 bg-gray-50") 
+                                                                                        : "text-gray-600 focus:bg-blue-50",
+                                                                                    // First column bold logic (excluding header which is already bold)
+                                                                                    cIndex === 0 && rIndex !== 0 && "font-bold text-gray-900"
                                                                                 )}
                                                                                 value={cell}
                                                                                 placeholder={rIndex === 0 ? "Encabezado" : ""}
