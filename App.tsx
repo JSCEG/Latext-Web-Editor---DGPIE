@@ -28,6 +28,12 @@ const App: React.FC = () => {
     e.preventDefault();
     let finalToken = token.trim();
 
+    // Feature: Remove wrapping quotes if user copied them accidentally (e.g. "ya29...")
+    if ((finalToken.startsWith('"') && finalToken.endsWith('"')) || 
+        (finalToken.startsWith("'") && finalToken.endsWith("'"))) {
+        finalToken = finalToken.slice(1, -1);
+    }
+
     // Feature: Auto-extract token if user pastes the full JSON response
     if (finalToken.startsWith('{')) {
         try {
@@ -76,7 +82,7 @@ const App: React.FC = () => {
       localStorage.removeItem('sheet_token'); 
       setToken('');
       setIsAuthenticated(false);
-      setError("Tu sesión ha expirado. Por favor ingresa un nuevo token para continuar.");
+      setError("Token inválido o expirado. Por favor genera uno nuevo en Google OAuth Playground y asegúrate de copiar solo el 'access_token'.");
     } else {
       // Show other errors (403, 404, etc) in the UI
       setError(msg || "Ocurrió un error inesperado al cargar el documento.");
@@ -136,9 +142,10 @@ const App: React.FC = () => {
                 <p className="mb-2 font-semibold">Pasos rápidos:</p>
                 <ol className="list-decimal pl-4 space-y-2">
                   <li>Ir a <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noreferrer" className="text-[#691C32] underline">Google OAuth Playground</a>.</li>
-                  <li>Seleccionar API: <code>spreadsheets</code>.</li>
-                  <li>Autorizar e intercambiar código.</li>
-                  <li>Copiar <strong>Access Token</strong> (o todo el JSON).</li>
+                  <li>Seleccionar API: <code>Google Sheets API v4</code> &gt; <code>.../auth/spreadsheets</code>.</li>
+                  <li>Clic en "Authorize APIs".</li>
+                  <li>Clic en "Exchange authorization code for tokens".</li>
+                  <li>Copiar <strong>Access Token</strong> (comienza con <code>ya29...</code>).</li>
                 </ol>
                 <p className="mt-2 text-xs text-gray-400 italic">Nota: La sesión se guardará en este navegador.</p>
               </div>

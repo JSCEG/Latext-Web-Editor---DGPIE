@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Spreadsheet } from '../types';
-import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValues, updateValues, insertDimension } from '../services/sheetsService';
+import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValues, updateValues, insertDimension, createNewTab } from '../services/sheetsService';
 import { Button } from './Button';
 import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, Grid, RefreshCw, Check, Minus, AlertCircle } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -68,12 +68,71 @@ const indexToColumnLetter = (index: number) => {
     return letter;
 };
 
+// Helper: Ensure sheet name is quoted if it has spaces
+const quoteSheetName = (name: string) => {
+    const cleanName = name.replace(/^'|'$/g, '');
+    if (cleanName.includes(' ') || cleanName.includes('(') || cleanName.includes(')')) {
+        return `'${cleanName}'`;
+    }
+    return cleanName;
+};
+
+// Robust Helper to sanitize and format range string
+const sanitizeRangeString = (range: string): string => {
+    if (!range) return '';
+    let clean = range.trim();
+    
+    // Remove quotes wrapping the ENTIRE string if they exist (e.g. "'Sheet!A1'")
+    // We assume a valid range usually ends with a digit or letter, not a quote, unless the sheet name is at the end (unlikely for A1 notation)
+    if ((clean.startsWith("'") && clean.endsWith("'")) || (clean.startsWith('"') && clean.endsWith('"'))) {
+        // Special case: 'Sheet Name'!A1 starts with ' but doesn't end with '.
+        // 'Sheet Name!A1' starts with ' and ends with '. This is the bad case we want to fix.
+        // Check if there is a ! inside.
+        if (clean.includes('!')) {
+             // Heuristic: If the last character is a quote, and the part after ! is NOT quoted in standard notation,
+             // then the outer quotes are likely superfluous wrapping.
+             // Standard: 'Sheet Name'!A1:B2
+             // Bad: 'Sheet Name!A1:B2'
+             const lastBang = clean.lastIndexOf('!');
+             if (lastBang !== -1 && lastBang < clean.length - 2) {
+                 // Check if the part after ! ends with quote
+                 // A1:B2' -> likely bad wrapping
+                 clean = clean.slice(1, -1);
+             }
+        }
+    }
+
+    const lastBangIndex = clean.lastIndexOf('!');
+    if (lastBangIndex === -1) return clean; 
+
+    let sheet = clean.substring(0, lastBangIndex);
+    let cells = clean.substring(lastBangIndex + 1);
+
+    // Normalize Sheet Name
+    let rawSheet = sheet.replace(/^'|'$/g, '');
+    
+    // Normalize Cells (remove any stray quotes)
+    let rawCells = cells.replace(/['"]/g, '');
+
+    const finalSheet = quoteSheetName(rawSheet);
+
+    return `${finalSheet}!${rawCells}`;
+};
+
 // Helper to parse range string
 const parseRange = (rangeStr: string) => {
     if (!rangeStr || !rangeStr.includes('!')) return null;
-    const parts = rangeStr.split('!');
-    const sheetName = parts[0].replace(/'/g, '');
-    const rangeRef = parts[1];
+    
+    // Use the sanitize logic to split correctly first
+    const cleanRange = sanitizeRangeString(rangeStr);
+    const lastBangIndex = cleanRange.lastIndexOf('!');
+    
+    const sheetPart = cleanRange.substring(0, lastBangIndex);
+    const rangeRef = cleanRange.substring(lastBangIndex + 1);
+    
+    // Remove quotes for the object representation
+    const sheetName = sheetPart.replace(/^'|'$/g, '');
+
     const [start, end] = rangeRef.split(':');
     
     if (!start || !end) return null;
@@ -148,6 +207,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
           sheet = spreadsheet.sheets[0];
       }
       return sheet;
+  };
+
+  const getStorageSheet = () => {
+      return spreadsheet.sheets.find(s => 
+          s.properties.title === 'Datos_Tablas' || 
+          s.properties.title === 'Datos Tablas'
+      );
   };
 
   const activeSheet = getActiveSheet();
@@ -305,13 +371,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
 
   // --- Internal Logic to fetch nested grid ---
   const loadNestedGrid = async (range: string) => {
-      // 1. Aggressive Sanitization
-      let correctedRange = range.trim();
-      correctedRange = correctedRange.replace(/'!/g, '!');
-      if (correctedRange.includes('Datos_Tablas') && !correctedRange.includes('\'')) {
-          correctedRange = correctedRange.replace('Datos_Tablas', '\'Datos Tablas\'');
-      }
-
+      // 1. Aggressive Sanitization with new Helper
+      const correctedRange = sanitizeRangeString(range);
       console.log("Cargando rango saneado:", correctedRange);
 
       // 2. Validate format
@@ -320,6 +381,24 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
           setNestedGridData([['', '', '', '', ''], ['', '', '', '', ''], ['', '', '', '', '']]); 
           setNestedGridRange(correctedRange);
           return;
+      }
+      
+      const parsed = parseRange(correctedRange);
+      if (!parsed) return;
+
+      // 3. Check if sheet exists locally before fetching to avoid API error
+      // Note: we use parsed.sheetName which is clean (no quotes) for comparison
+      const sheetExists = spreadsheet.sheets.some(s => s.properties.title === parsed.sheetName);
+      if (!sheetExists) {
+           console.log("Hoja no existe, inicializando vacío:", parsed.sheetName);
+           const rows = parsed.endRow - parsed.startRow + 1;
+           const cols = parsed.endCol - parsed.startCol + 1;
+           // Create clean empty grid
+           const emptyGrid = Array.from({length: rows}, () => Array(cols).fill(''));
+           setNestedGridData(emptyGrid);
+           setNestedGridRange(correctedRange);
+           setOriginalNestedGridRange(correctedRange);
+           return;
       }
 
       setLoadingGrid(true);
@@ -348,17 +427,15 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
     let currentRange = csvIndex !== -1 ? formData[csvIndex] : nestedGridRange;
 
     // Sanitize common issues before parsing
-    currentRange = currentRange.replace(/'!/g, '!'); // Fix stray quotes
-    if (currentRange.includes('Datos_Tablas')) {
-        currentRange = currentRange.replace('Datos_Tablas', '\'Datos Tablas\'');
-    }
-
     if (!currentRange || !currentRange.includes('!')) return;
+    
+    // Ensure we are working with a clean range string
+    currentRange = sanitizeRangeString(currentRange);
 
     try {
-        const parts = currentRange.split('!');
-        const sheetPart = parts[0];
-        const rangeRef = parts[1];
+        const lastBang = currentRange.lastIndexOf('!');
+        const sheetPart = currentRange.substring(0, lastBang);
+        const rangeRef = currentRange.substring(lastBang + 1);
         
         const [startRef] = rangeRef.split(':');
         
@@ -378,6 +455,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
         const endColIdx = startColIdx + numCols - 1;
         const endColStr = indexToColumnLetter(endColIdx);
 
+        // Reconstruct with sanitized sheet part (which already has quotes if needed from sanitizeRangeString)
         const newRange = `${sheetPart}!${startColStr}${startRow}:${endColStr}${endRow}`;
 
         // Update State
@@ -397,10 +475,21 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   const calculateNextAvailableRange = async (rows: number, cols: number): Promise<string> => {
       setCalculatingRange(true);
       try {
-          // Fetch Column A of 'Datos Tablas' to find where the data ends
-          // Assuming 'Datos Tablas' is the standard storage sheet
-          const sheetName = "'Datos Tablas'";
-          const colData = await fetchValues(spreadsheet.spreadsheetId, `${sheetName}!A:A`, token);
+          const storageSheet = getStorageSheet();
+          // Use existing name or default to Datos_Tablas
+          const sheetName = storageSheet ? storageSheet.properties.title : 'Datos_Tablas';
+          
+          // Ensure correct quoting for the sheet name
+          const finalSheetName = quoteSheetName(sheetName);
+
+          // If sheet doesn't exist, we can't fetch A:A. Start at A1.
+          if (!storageSheet) {
+              const endColLetter = indexToColumnLetter(cols - 1);
+              return `${finalSheetName}!A1:${endColLetter}${rows}`;
+          }
+          
+          // Fetch Column A... 
+          const colData = await fetchValues(spreadsheet.spreadsheetId, `${finalSheetName}!A:A`, token);
           
           let lastRowIndex = 0;
           if (colData && colData.length > 0) {
@@ -412,12 +501,12 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
           const endRow = startRow + rows - 1;
           const endColLetter = indexToColumnLetter(cols - 1); // 0-based index
 
-          return `${sheetName}!A${startRow}:${endColLetter}${endRow}`;
+          return `${finalSheetName}!A${startRow}:${endColLetter}${endRow}`;
       } catch (e) {
           console.error(e);
           // Fallback random
           const randomStart = 100 + Math.floor(Math.random() * 50);
-          return `'Datos Tablas'!A${randomStart}:E${randomStart + rows}`;
+          return `Datos_Tablas!A${randomStart}:E${randomStart + rows}`;
       } finally {
           setCalculatingRange(false);
       }
@@ -430,7 +519,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
           // Check if sections exist before allowing creation
           if (availableSections.length === 0) {
               alert("No se encontraron Secciones para este documento. Asegúrate de tener al menos una sección creada en la pestaña 'Secciones'.");
-              // Fallback to allow creation for debugging if needed, or enforce strict. Enforcing strict for consistency.
               return;
           }
           // Open Wizard for Tables
@@ -534,6 +622,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
           if (secColIdx !== -1 && ordColIdx !== -1) {
               const section = formData[secColIdx];
               const order = formData[ordColIdx];
+              const orderNum = parseInt(order);
+
+              if (isNaN(orderNum) || orderNum < 1) {
+                  alert("El Orden de la tabla debe ser un número mayor a 0.");
+                  return;
+              }
+
               if (isOrderDuplicate(section, order, editingRowIndex)) {
                   alert(`El Orden ${order} ya está siendo utilizado en la sección ${section}. Por favor elige otro.`);
                   return;
@@ -584,110 +679,117 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                   const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
                   let targetRange = finalFormData[csvIndex] || nestedGridRange;
                   
-                  // Sanitize before saving
-                  targetRange = targetRange.replace(/'!/g, '!');
-                  if (targetRange && targetRange.includes('Datos_Tablas')) {
-                      targetRange = targetRange.replace('Datos_Tablas', '\'Datos Tablas\'');
-                  }
-                  
                   if (targetRange && targetRange.includes('!')) {
-                      
-                      const oldRange = parseRange(originalNestedGridRange);
-                      const newRange = parseRange(targetRange);
+                      // Ensure target range is valid/sanitized before using
+                      targetRange = sanitizeRangeString(targetRange);
 
-                      if (oldRange && newRange && oldRange.sheetName === newRange.sheetName) {
-                          // Find Sheet ID of the nested table (e.g., 'Datos Tablas')
-                          const nestedSheet = spreadsheet.sheets.find(s => 
-                              s.properties.title === newRange.sheetName || 
-                              s.properties.title === newRange.sheetName.replace(/'/g, '')
-                          );
-                          
-                          if (nestedSheet) {
-                              const rowsDiff = (newRange.endRow - newRange.startRow) - (oldRange.endRow - oldRange.startRow);
-                              const colsDiff = (newRange.endCol - newRange.startCol) - (oldRange.endCol - oldRange.startCol);
-                              
-                              // --- HANDLE ROWS (Vertical Shift) ---
-                              // We use insertDimension/deleteDimension for rows because tables are stacked VERTICALLY.
-                              if (rowsDiff !== 0) {
-                                  if (rowsDiff > 0) {
-                                      await insertDimension(
-                                          spreadsheet.spreadsheetId, 
-                                          nestedSheet.properties.sheetId, 
-                                          oldRange.endRow, 
-                                          rowsDiff, 
-                                          'ROWS', 
-                                          token
-                                      );
-                                  } else {
-                                      const rowsToDelete = Math.abs(rowsDiff);
-                                      await deleteDimensionRange(
-                                          spreadsheet.spreadsheetId,
-                                          nestedSheet.properties.sheetId,
-                                          newRange.endRow, 
-                                          rowsToDelete,
-                                          'ROWS',
-                                          token
-                                      );
-                                  }
+                      const parsedTarget = parseRange(targetRange);
 
-                                  // Correct downstream table references for rows
-                                  const updatesToShift: Promise<any>[] = [];
-                                  gridData.forEach((row, idx) => {
-                                      if (idx === editingRowIndex) return;
-                                      const otherRangeStr = row[csvIndex];
-                                      if (!otherRangeStr) return; 
-                                      const otherRange = parseRange(otherRangeStr);
-
-                                      if (otherRange && 
-                                          otherRange.sheetName === oldRange.sheetName && 
-                                          otherRange.startRow >= oldRange.endRow) {
-                                          
-                                          const newStart = otherRange.startRow + rowsDiff;
-                                          const newEnd = otherRange.endRow + rowsDiff;
-                                          const sCol = indexToColumnLetter(otherRange.startCol);
-                                          const eCol = indexToColumnLetter(otherRange.endCol);
-                                          const originalSheetPart = otherRangeStr.split('!')[0];
-                                          const newRangeStr = `${originalSheetPart}!${sCol}${newStart}:${eCol}${newEnd}`;
-                                          
-                                          updatesToShift.push(updateCellValue(
-                                              spreadsheet.spreadsheetId,
-                                              activeSheet.properties.title,
-                                              { row: idx + 1, col: csvIndex, value: newRangeStr },
-                                              token
-                                          ));
-                                      }
-                                  });
-                                  if (updatesToShift.length > 0) await Promise.all(updatesToShift);
-                              }
-
-                              // --- HANDLE COLUMNS (Horizontal Shift) ---
-                              // FIX: Do NOT use insertDimension/deleteDimension for columns as it affects other tables stacked vertically.
-                              // If expanding: We just overwrite cells (handled by final updateValues).
-                              // If shrinking: We must manually clear the cells that are no longer in use to prevent "ghost" data.
-                              if (colsDiff < 0) {
-                                  const colsToDelete = Math.abs(colsDiff);
-                                  // We want to clear from the first column OUTSIDE the new range, up to the end of the old range.
-                                  const startClearColIdx = newRange.endCol + 1;
-                                  const endClearColIdx = oldRange.endCol; 
-                                  
-                                  const sColChar = indexToColumnLetter(startClearColIdx);
-                                  const eColChar = indexToColumnLetter(endClearColIdx);
-                                  
-                                  // Ensure sheet name is quoted if it has spaces
-                                  let sheetRef = nestedSheet.properties.title;
-                                  if (sheetRef.includes(' ') && !sheetRef.startsWith("'")) {
-                                      sheetRef = `'${sheetRef}'`;
-                                  }
-
-                                  const clearRangeStr = `${sheetRef}!${sColChar}${newRange.startRow}:${eColChar}${newRange.endRow}`;
-                                  
-                                  // Create grid of empty strings
-                                  const numRows = newRange.endRow - newRange.startRow + 1;
-                                  const emptyValues = Array(numRows).fill(Array(colsToDelete).fill(''));
-                                  
-                                  await updateValues(spreadsheet.spreadsheetId, clearRangeStr, emptyValues, token);
+                      // Check if sheet exists, if not create it
+                      if (parsedTarget) {
+                          const targetSheetExists = spreadsheet.sheets.some(s => s.properties.title === parsedTarget.sheetName);
+                          if (!targetSheetExists) {
+                              try {
+                                   await createNewTab(spreadsheet.spreadsheetId, parsedTarget.sheetName, token);
+                              } catch(e) {
+                                  console.error("Error creando nueva hoja", e);
                               }
                           }
+                      }
+
+                      // Only attempt shift if we have an original range (update scenario)
+                      if (originalNestedGridRange) {
+                            const cleanOldRangeStr = sanitizeRangeString(originalNestedGridRange);
+                            const oldRange = parseRange(cleanOldRangeStr);
+                            const newRange = parseRange(targetRange);
+
+                            if (oldRange && newRange && oldRange.sheetName === newRange.sheetName) {
+                                // Find Sheet ID of the nested table (e.g., 'Datos Tablas')
+                                const nestedSheet = spreadsheet.sheets.find(s => 
+                                    s.properties.title === newRange.sheetName
+                                );
+                                
+                                // Only shift rows if the sheet existed previously (and thus we have an ID)
+                                if (nestedSheet) {
+                                    const rowsDiff = (newRange.endRow - newRange.startRow) - (oldRange.endRow - oldRange.startRow);
+                                    const colsDiff = (newRange.endCol - newRange.startCol) - (oldRange.endCol - oldRange.startCol);
+                                    
+                                    // --- HANDLE ROWS (Vertical Shift) ---
+                                    if (rowsDiff !== 0) {
+                                        if (rowsDiff > 0) {
+                                            await insertDimension(
+                                                spreadsheet.spreadsheetId, 
+                                                nestedSheet.properties.sheetId, 
+                                                oldRange.endRow, 
+                                                rowsDiff, 
+                                                'ROWS', 
+                                                token
+                                            );
+                                        } else {
+                                            const rowsToDelete = Math.abs(rowsDiff);
+                                            await deleteDimensionRange(
+                                                spreadsheet.spreadsheetId,
+                                                nestedSheet.properties.sheetId,
+                                                newRange.endRow, 
+                                                rowsToDelete,
+                                                'ROWS', 
+                                                token
+                                            );
+                                        }
+
+                                        // Correct downstream table references for rows
+                                        const updatesToShift: Promise<any>[] = [];
+                                        gridData.forEach((row, idx) => {
+                                            if (idx === editingRowIndex) return;
+                                            const otherRangeStr = row[csvIndex];
+                                            if (!otherRangeStr) return; 
+                                            // Sanitize before parsing
+                                            const cleanOtherRangeStr = sanitizeRangeString(otherRangeStr);
+                                            const otherRange = parseRange(cleanOtherRangeStr);
+
+                                            if (otherRange && 
+                                                otherRange.sheetName === oldRange.sheetName && 
+                                                otherRange.startRow >= oldRange.endRow) {
+                                                
+                                                const newStart = otherRange.startRow + rowsDiff;
+                                                const newEnd = otherRange.endRow + rowsDiff;
+                                                const sCol = indexToColumnLetter(otherRange.startCol);
+                                                const eCol = indexToColumnLetter(otherRange.endCol);
+                                                // Sheet part should already be quoted if needed by sanitizeRangeString usage
+                                                const finalSheetPart = quoteSheetName(otherRange.sheetName);
+                                                const newRangeStr = `${finalSheetPart}!${sCol}${newStart}:${eCol}${newEnd}`;
+                                                
+                                                updatesToShift.push(updateCellValue(
+                                                    spreadsheet.spreadsheetId,
+                                                    activeSheet.properties.title,
+                                                    { row: idx + 1, col: csvIndex, value: newRangeStr },
+                                                    token
+                                                ));
+                                            }
+                                        });
+                                        if (updatesToShift.length > 0) await Promise.all(updatesToShift);
+                                    }
+
+                                    // --- HANDLE COLUMNS (Horizontal Shift) ---
+                                    if (colsDiff < 0) {
+                                        const colsToDelete = Math.abs(colsDiff);
+                                        const startClearColIdx = newRange.endCol + 1;
+                                        const endClearColIdx = oldRange.endCol; 
+                                        
+                                        const sColChar = indexToColumnLetter(startClearColIdx);
+                                        const eColChar = indexToColumnLetter(endClearColIdx);
+                                        
+                                        const sheetRef = quoteSheetName(nestedSheet.properties.title);
+                                        const clearRangeStr = `${sheetRef}!${sColChar}${newRange.startRow}:${eColChar}${newRange.endRow}`;
+                                        
+                                        // Create grid of empty strings
+                                        const numRows = newRange.endRow - newRange.startRow + 1;
+                                        const emptyValues = Array(numRows).fill(Array(colsToDelete).fill(''));
+                                        
+                                        await updateValues(spreadsheet.spreadsheetId, clearRangeStr, emptyValues, token);
+                                    }
+                                }
+                            }
                       }
 
                       // 4. Finally write the data
@@ -995,23 +1097,59 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                             );
                                         }
 
-                                        // Special Rendering for Orden Input
+                                        // Special Rendering for Orden Input/Dropdown
                                         if (activeTab === 'tablas' && isOrden) {
-                                            const hasError = isOrderDuplicate(
-                                                formData[findColumnIndex(formHeaders, SECCION_COL_VARIANTS)], 
-                                                formData[i], 
-                                                editingRowIndex
-                                            );
+                                            const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
+                                            const ordColIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+                                            const currentSectionId = secColIdx !== -1 ? formData[secColIdx] : '';
+
+                                            // Calculate available options dynamically
+                                            const usedOrders = new Set<string>();
+                                            let maxOrder = 0;
+                                            
+                                            // Scan existing data
+                                            gridData.forEach((row, idx) => {
+                                                // Only consider rows that belong to the current section AND are not the row being edited
+                                                if (secColIdx !== -1 && ordColIdx !== -1 && row[secColIdx] === currentSectionId && idx !== editingRowIndex) {
+                                                    const val = row[ordColIdx];
+                                                    if (val) {
+                                                        usedOrders.add(val);
+                                                        const numVal = parseInt(val);
+                                                        if (!isNaN(numVal)) maxOrder = Math.max(maxOrder, numVal);
+                                                    }
+                                                }
+                                            });
+
+                                            // Determine current value to ensure it's in the list
+                                            const currentValue = formData[i] || '';
+
+                                            // Generate Options: Gaps + Next 5
+                                            const availableOptions = [];
+                                            const limit = Math.max(maxOrder + 5, 5); // At least show 1-5 if empty
+                                            
+                                            for (let k = 1; k <= limit; k++) {
+                                                const kStr = String(k);
+                                                // If it's not used, OR if it's the current value (we are editing it), show it
+                                                if (!usedOrders.has(kStr) || kStr === currentValue) {
+                                                    availableOptions.push(kStr);
+                                                }
+                                            }
+
+                                            // If the current value is somehow way outside range (e.g. user manually set 99 before), add it
+                                            if (currentValue && !availableOptions.includes(currentValue) && parseInt(currentValue) > 0) {
+                                                availableOptions.push(currentValue);
+                                                availableOptions.sort((a,b) => parseInt(a) - parseInt(b));
+                                            }
 
                                             return (
                                                 <div key={i} className={colSpan + " space-y-1"}>
                                                     <label className="block text-sm font-medium text-gray-700">{header}</label>
                                                     <div className="relative">
-                                                        <input 
-                                                            type="number"
+                                                        <select
+                                                            disabled={!currentSectionId}
                                                             className={clsx(
-                                                                "w-full px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 bg-white text-gray-900",
-                                                                hasError ? "border-red-500 focus:ring-red-500 bg-red-50" : "border-gray-300 focus:ring-[#691C32]"
+                                                                "w-full px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900",
+                                                                !currentSectionId && "bg-gray-100 text-gray-500 cursor-not-allowed"
                                                             )}
                                                             value={formData[i] || ''}
                                                             onChange={(e) => {
@@ -1019,14 +1157,16 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                                                 newData[i] = e.target.value;
                                                                 setFormData(newData);
                                                             }}
-                                                        />
-                                                        {hasError && (
-                                                            <div className="absolute right-3 top-2.5 text-red-500" title="Este orden ya está ocupado">
-                                                                <AlertCircle size={16} />
-                                                            </div>
+                                                        >
+                                                            <option value="">Selecciona Orden...</option>
+                                                            {availableOptions.map(opt => (
+                                                                <option key={opt} value={opt}>{opt}</option>
+                                                            ))}
+                                                        </select>
+                                                        {!currentSectionId && (
+                                                            <p className="text-xs text-gray-500 mt-1">Selecciona una sección primero.</p>
                                                         )}
                                                     </div>
-                                                    {hasError && <p className="text-xs text-red-600">Orden duplicado</p>}
                                                 </div>
                                             );
                                         }

@@ -64,7 +64,7 @@ const getMockSpreadsheet = (): Spreadsheet => ({
       }]
     },
     {
-      properties: { sheetId: 8, title: 'Datos Tablas', index: 7, gridProperties: { rowCount: 100, columnCount: 26 } },
+      properties: { sheetId: 8, title: 'Datos_Tablas', index: 7, gridProperties: { rowCount: 100, columnCount: 26 } },
       data: [{
         rowData: [
           // Range A1:E4 (Tabla 2.1)
