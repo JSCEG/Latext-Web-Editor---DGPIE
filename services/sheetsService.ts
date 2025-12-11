@@ -53,12 +53,13 @@ const getMockSpreadsheet = (): Spreadsheet => ({
       }]
     },
     {
-      properties: { sheetId: 3, title: 'Tablas', index: 2, gridProperties: { rowCount: 5, columnCount: 5 } },
+      properties: { sheetId: 3, title: 'Tablas', index: 2, gridProperties: { rowCount: 5, columnCount: 6 } },
       data: [{
         rowData: [
-           { values: [{ userEnteredValue: { stringValue: 'DocumentoID' } }, { userEnteredValue: { stringValue: 'Tabla' } }, { userEnteredValue: { stringValue: 'Título' } }, { userEnteredValue: { stringValue: 'Datos CSV' } }, { userEnteredValue: { stringValue: 'Fuente' } }] },
-           { values: [{ userEnteredValue: { stringValue: 'D01' } }, { userEnteredValue: { stringValue: '2.1' } }, { userEnteredValue: { stringValue: 'Capacidad instalada de generación eléctrica' } }, { userEnteredValue: { stringValue: "'Datos Tablas'!A1:E4" } }, { userEnteredValue: { stringValue: 'Elaboración propia con base en el Balance Nacional de Energía' } }] },
-           { values: [{ userEnteredValue: { stringValue: 'D01' } }, { userEnteredValue: { stringValue: '3.2' } }, { userEnteredValue: { stringValue: 'Ejemplo de Notas al Pie de tablas' } }, { userEnteredValue: { stringValue: "'Datos Tablas'!A6:D10" } }, { userEnteredValue: { stringValue: 'Elaboración propia.\\n\\n1/ Incluye generación distribuida.' } }] }
+           // Updated Headers: Replaced 'Tabla' with 'ID_Seccion' and 'Orden'
+           { values: [{ userEnteredValue: { stringValue: 'DocumentoID' } }, { userEnteredValue: { stringValue: 'ID_Seccion' } }, { userEnteredValue: { stringValue: 'Orden' } }, { userEnteredValue: { stringValue: 'Título' } }, { userEnteredValue: { stringValue: 'Datos CSV' } }, { userEnteredValue: { stringValue: 'Fuente' } }] },
+           { values: [{ userEnteredValue: { stringValue: 'D01' } }, { userEnteredValue: { stringValue: 'S02' } }, { userEnteredValue: { numberValue: 1 } }, { userEnteredValue: { stringValue: 'Capacidad instalada de generación eléctrica' } }, { userEnteredValue: { stringValue: "'Datos Tablas'!A1:E4" } }, { userEnteredValue: { stringValue: 'Elaboración propia con base en el Balance Nacional de Energía' } }] },
+           { values: [{ userEnteredValue: { stringValue: 'D01' } }, { userEnteredValue: { stringValue: 'S02' } }, { userEnteredValue: { numberValue: 2 } }, { userEnteredValue: { stringValue: 'Ejemplo de Notas al Pie de tablas' } }, { userEnteredValue: { stringValue: "'Datos Tablas'!A6:D10" } }, { userEnteredValue: { stringValue: 'Elaboración propia.\\n\\n1/ Incluye generación distribuida.' } }] }
         ]
       }]
     },

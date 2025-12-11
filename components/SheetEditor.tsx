@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Spreadsheet } from '../types';
 import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValues, updateValues, insertDimension } from '../services/sheetsService';
 import { Button } from './Button';
-import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, Grid, RefreshCw, Check, Minus } from 'lucide-react';
+import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, Grid, RefreshCw, Check, Minus, AlertCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface SheetEditorProps {
@@ -36,10 +36,17 @@ type ViewMode = 'LIST' | 'FORM';
 
 // Helper to find column index with loose matching
 const findColumnIndex = (headers: string[], candidates: string[]) => {
-    return headers.findIndex(h => candidates.includes(h) || candidates.includes(h.trim()));
+    return headers.findIndex(h => {
+        const normHeader = h.trim().toLowerCase().replace(/_/g, '');
+        return candidates.some(c => c.trim().toLowerCase().replace(/_/g, '') === normHeader);
+    });
 };
 
 const CSV_COL_VARIANTS = ['Datos CSV', 'DatosCSV', 'Datos_CSV', 'Rango', 'Datos'];
+const SECCION_COL_VARIANTS = ['ID_Seccion', 'Seccion', 'SeccionOrden', 'ID Seccion'];
+const ORDEN_COL_VARIANTS = ['Orden', 'OrdenTabla', 'Numero'];
+const DOC_ID_VARIANTS = ['DocumentoID', 'ID Documento', 'ID', 'DocID'];
+const TITLE_VARIANTS = ['Titulo', 'Título', 'Nombre'];
 
 // --- Helper Functions for Range Math ---
 const columnLetterToIndex = (letter: string) => {
@@ -100,6 +107,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   const [formHeaders, setFormHeaders] = useState<string[]>([]);
   const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
   
+  // Relationship Data State (For dropdowns/validation)
+  const [availableSections, setAvailableSections] = useState<{id: string, title: string}[]>([]);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+
   // Nested Grid Editor State (for Table Content inside Form)
   const [nestedGridData, setNestedGridData] = useState<string[][]>([]);
   const [nestedGridRange, setNestedGridRange] = useState<string>('');
@@ -157,14 +168,56 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
     }
   }, [spreadsheet]);
 
-  // 2. Load List Data
+  // 2. Load List Data & Relationship Data (Secciones)
   useEffect(() => {
     // Reset view when tab changes
     setViewMode('LIST');
     setSearchTerm('');
     setCurrentPage(1);
     setFocusedCell(null);
+    setSectionError(null);
     
+    // Load Secciones data if we are in 'Tablas' tab
+    if (activeTab === 'tablas' && currentDocId) {
+        const loadSections = () => {
+             // More robust finding of the Secciones sheet
+             const seccionesSheet = spreadsheet.sheets.find(s => 
+                 s.properties.title === 'Secciones' || 
+                 s.properties.title.toLowerCase().trim() === 'secciones'
+             );
+
+             if (seccionesSheet && seccionesSheet.data && seccionesSheet.data[0]?.rowData) {
+                 const headers = seccionesSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+                 
+                 const docIdIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
+                 // Expanding ID Variants to include 'Orden' as per user feedback that Secciones uses 'Orden' as key
+                 const idSecVariants = [...SECCION_COL_VARIANTS, 'Orden', 'Nivel', 'Clave'];
+                 const idSecIdx = findColumnIndex(headers, idSecVariants);
+                 
+                 const titleIdx = findColumnIndex(headers, TITLE_VARIANTS);
+
+                 if (docIdIdx !== -1 && idSecIdx !== -1) {
+                     const validSections: {id: string, title: string}[] = [];
+                     seccionesSheet.data[0].rowData.slice(1).forEach(row => {
+                         const dId = row.values?.[docIdIdx]?.userEnteredValue?.stringValue || row.values?.[docIdIdx]?.formattedValue;
+                         if (dId === currentDocId) {
+                             const secId = row.values?.[idSecIdx]?.userEnteredValue?.stringValue || row.values?.[idSecIdx]?.formattedValue || '';
+                             const secTitle = row.values?.[titleIdx]?.userEnteredValue?.stringValue || row.values?.[titleIdx]?.formattedValue || '';
+                             validSections.push({ id: secId, title: secTitle });
+                         }
+                     });
+                     console.log("Secciones cargadas:", validSections);
+                     setAvailableSections(validSections);
+                 } else {
+                     console.warn("No se encontraron las columnas esperadas en Secciones", { headers, docIdIdx, idSecIdx });
+                 }
+             } else {
+                 console.warn("Hoja Secciones no encontrada o sin datos.");
+             }
+        };
+        loadSections();
+    }
+
     if (activeTab === 'metadatos') {
         // Load Form Data directly for Metadata
         if (!activeSheet) return;
@@ -204,7 +257,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
         });
 
         if (currentDocId) {
-            const docIdIndex = headers.findIndex(h => h === 'DocumentoID' || h === 'ID Documento');
+            const docIdIndex = findColumnIndex(headers, DOC_ID_VARIANTS);
             if (docIdIndex !== -1) {
                 setGridData(body.filter(row => row[docIdIndex] === currentDocId));
             } else {
@@ -215,6 +268,40 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
         }
     }
   }, [activeTab, spreadsheet, currentDocId]);
+
+  // --- Logic to Calculate Next Order ---
+  const calculateNextOrder = (sectionId: string) => {
+      if (!sectionId || activeTab !== 'tablas') return '1';
+      
+      const secColIdx = findColumnIndex(gridHeaders, SECCION_COL_VARIANTS);
+      const ordColIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+
+      if (secColIdx === -1 || ordColIdx === -1) return '1';
+
+      // Find max order for this section
+      let maxOrder = 0;
+      gridData.forEach(row => {
+          if (row[secColIdx] === sectionId) {
+              const ordVal = parseInt(row[ordColIdx]);
+              if (!isNaN(ordVal) && ordVal > maxOrder) {
+                  maxOrder = ordVal;
+              }
+          }
+      });
+      return String(maxOrder + 1);
+  };
+
+  const isOrderDuplicate = (sectionId: string, orderVal: string, ignoreRowIndex: number | null) => {
+       const secColIdx = findColumnIndex(gridHeaders, SECCION_COL_VARIANTS);
+       const ordColIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+       if (secColIdx === -1 || ordColIdx === -1) return false;
+
+       return gridData.some((row, idx) => {
+           // Skip current row if editing
+           if (ignoreRowIndex !== null && gridData[ignoreRowIndex] === row) return false;
+           return row[secColIdx] === sectionId && row[ordColIdx] === orderVal;
+       });
+  };
 
   // --- Internal Logic to fetch nested grid ---
   const loadNestedGrid = async (range: string) => {
@@ -340,6 +427,12 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
 
   const handlePreCreate = () => {
       if (activeTab === 'tablas') {
+          // Check if sections exist before allowing creation
+          if (availableSections.length === 0) {
+              alert("No se encontraron Secciones para este documento. Asegúrate de tener al menos una sección creada en la pestaña 'Secciones'.");
+              // Fallback to allow creation for debugging if needed, or enforce strict. Enforcing strict for consistency.
+              return;
+          }
           // Open Wizard for Tables
           setWizardConfig({ rows: 5, cols: 4 });
           setShowTableWizard(true);
@@ -369,7 +462,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
       const newRow = new Array(gridHeaders.length).fill('');
       
       // Auto-fill Document ID
-      const docIdIndex = gridHeaders.findIndex(h => h === 'DocumentoID' || h === 'ID Documento');
+      const docIdIndex = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
       if (docIdIndex !== -1) newRow[docIdIndex] = currentDocId;
       
       // Fill Range if provided
@@ -433,6 +526,25 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
 
   const handleSaveForm = async () => {
       if (!activeSheet) return;
+
+      // Validation for Duplicate Order in Tablas
+      if (activeTab === 'tablas') {
+          const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
+          const ordColIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+          if (secColIdx !== -1 && ordColIdx !== -1) {
+              const section = formData[secColIdx];
+              const order = formData[ordColIdx];
+              if (isOrderDuplicate(section, order, editingRowIndex)) {
+                  alert(`El Orden ${order} ya está siendo utilizado en la sección ${section}. Por favor elige otro.`);
+                  return;
+              }
+              if (!section) {
+                  alert("Debes seleccionar una Sección.");
+                  return;
+              }
+          }
+      }
+
       setSaving(true);
       try {
           const sheetTitle = activeSheet.properties.title;
@@ -682,7 +794,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                 min="2" max="100"
                                 value={wizardConfig.rows} 
                                 onChange={(e) => setWizardConfig({...wizardConfig, rows: parseInt(e.target.value)})}
-                                className="w-full border rounded px-3 py-2 mt-1"
+                                className="w-full border border-gray-300 rounded px-3 py-2 mt-1 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
                            />
                        </div>
                        <div>
@@ -692,7 +804,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                 min="2" max="26"
                                 value={wizardConfig.cols} 
                                 onChange={(e) => setWizardConfig({...wizardConfig, cols: parseInt(e.target.value)})}
-                                className="w-full border rounded px-3 py-2 mt-1"
+                                className="w-full border border-gray-300 rounded px-3 py-2 mt-1 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
                            />
                        </div>
                    </div>
@@ -787,7 +899,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                             placeholder="Buscar..." 
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#691C32]"
+                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#691C32] bg-white text-gray-900"
                                         />
                                     </div>
                                 </div>
@@ -795,20 +907,20 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                     <table className="w-full text-sm text-left">
                                         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                                             <tr>
+                                                <th className="px-6 py-3 text-left w-24">Acciones</th>
                                                 {gridHeaders.map((h, i) => <th key={i} className="px-6 py-3 font-semibold">{h}</th>)}
-                                                <th className="px-6 py-3 text-right">Acciones</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
                                             {displayedRows.length > 0 ? displayedRows.map(({row, index}) => (
                                                 <tr key={index} className="hover:bg-gray-50">
-                                                    {row.map((cell, i) => <td key={i} className="px-6 py-4 truncate max-w-xs">{cell}</td>)}
-                                                    <td className="px-6 py-4 text-right">
-                                                        <div className="flex justify-end gap-2">
+                                                    <td className="px-6 py-4 text-left">
+                                                        <div className="flex justify-start gap-2">
                                                             <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-800"><Edit size={16}/></button>
                                                             <button onClick={() => handleDelete(index)} className="text-red-600 hover:text-red-800"><Trash2 size={16}/></button>
                                                         </div>
                                                     </td>
+                                                    {row.map((cell, i) => <td key={i} className="px-6 py-4 truncate max-w-xs text-gray-700">{cell}</td>)}
                                                 </tr>
                                             )) : (
                                                 <tr><td colSpan={gridHeaders.length + 1} className="px-6 py-12 text-center text-gray-500">No hay registros.</td></tr>
@@ -836,20 +948,102 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                     </Button>
                                 </div>
 
-                                <div className="grid grid-cols-1 gap-6 max-w-4xl">
+                                <div className={clsx(
+                                    "grid gap-6 max-w-4xl",
+                                    activeTab === 'tablas' ? "grid-cols-2" : "grid-cols-1"
+                                )}>
                                     {formHeaders.map((header, i) => {
-                                        const isReadOnly = header === 'DocumentoID' || header === 'ID Documento' || header === 'ID';
+                                        const isReadOnly = header === 'DocumentoID' || header === 'ID Documento' || header === 'ID' || DOC_ID_VARIANTS.includes(header);
                                         const isCsvRange = CSV_COL_VARIANTS.includes(header);
+                                        const isSeccion = SECCION_COL_VARIANTS.includes(header);
+                                        const isOrden = ORDEN_COL_VARIANTS.includes(header);
                                         
+                                        // Logic for Grid Span
+                                        // If Tablas: Seccion and Orden are col-span-1, others are col-span-2.
+                                        // If not Tablas: everything is col-span-1 (in a 1-col grid).
+                                        const colSpan = (activeTab === 'tablas' && !isSeccion && !isOrden) ? "col-span-2" : "col-span-1";
+
+                                        // Special Rendering for Seccion Dropdown
+                                        if (activeTab === 'tablas' && isSeccion) {
+                                            return (
+                                                <div key={i} className={colSpan + " space-y-1"}>
+                                                    <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                    <select
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                        value={formData[i]?.toString().trim() || ''}
+                                                        onChange={(e) => {
+                                                            const newSec = e.target.value;
+                                                            const newData = [...formData];
+                                                            newData[i] = newSec;
+                                                            
+                                                            // Auto-calculate Order when Seccion changes
+                                                            if (newSec) {
+                                                                const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+                                                                if (ordIdx !== -1) {
+                                                                    newData[ordIdx] = calculateNextOrder(newSec);
+                                                                }
+                                                            }
+                                                            setFormData(newData);
+                                                        }}
+                                                    >
+                                                        <option value="">Selecciona Sección...</option>
+                                                        {availableSections.map(sec => (
+                                                            <option key={sec.id} value={sec.id}>{sec.id} - {sec.title.substring(0, 30)}...</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            );
+                                        }
+
+                                        // Special Rendering for Orden Input
+                                        if (activeTab === 'tablas' && isOrden) {
+                                            const hasError = isOrderDuplicate(
+                                                formData[findColumnIndex(formHeaders, SECCION_COL_VARIANTS)], 
+                                                formData[i], 
+                                                editingRowIndex
+                                            );
+
+                                            return (
+                                                <div key={i} className={colSpan + " space-y-1"}>
+                                                    <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                    <div className="relative">
+                                                        <input 
+                                                            type="number"
+                                                            className={clsx(
+                                                                "w-full px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 bg-white text-gray-900",
+                                                                hasError ? "border-red-500 focus:ring-red-500 bg-red-50" : "border-gray-300 focus:ring-[#691C32]"
+                                                            )}
+                                                            value={formData[i] || ''}
+                                                            onChange={(e) => {
+                                                                const newData = [...formData];
+                                                                newData[i] = e.target.value;
+                                                                setFormData(newData);
+                                                            }}
+                                                        />
+                                                        {hasError && (
+                                                            <div className="absolute right-3 top-2.5 text-red-500" title="Este orden ya está ocupado">
+                                                                <AlertCircle size={16} />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {hasError && <p className="text-xs text-red-600">Orden duplicado</p>}
+                                                </div>
+                                            );
+                                        }
+
+                                        // Default Rendering
+                                        // Disable if ReadOnly OR if it is a CSV Range (handled by wizard/calc)
+                                        const isDisabled = isReadOnly || isCsvRange;
+
                                         return (
-                                            <div key={i} className="space-y-1">
+                                            <div key={i} className={colSpan + " space-y-1"}>
                                                 <label className="block text-sm font-medium text-gray-700">{header}</label>
                                                 <div className="flex gap-2">
                                                         <input 
-                                                            disabled={isReadOnly}
+                                                            disabled={isDisabled}
                                                             className={clsx(
                                                                 "flex-1 px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32]",
-                                                                isReadOnly ? "bg-gray-100 text-gray-500" : "bg-white border-gray-300"
+                                                                isDisabled ? "bg-gray-100 text-gray-500" : "bg-white text-gray-900 border-gray-300"
                                                             )}
                                                             value={formData[i] || ''}
                                                             onChange={(e) => {
@@ -926,10 +1120,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                                                         <input 
                                                                                 onFocus={() => setFocusedCell({r: rIndex, c: cIndex})}
                                                                                 className={clsx(
-                                                                                    "w-full h-full px-3 py-2 text-sm focus:outline-none border-none bg-transparent transition-colors duration-200",
+                                                                                    "w-full h-full px-3 py-2 text-sm focus:outline-none border-none bg-transparent transition-colors duration-200 text-gray-900",
                                                                                     rIndex === 0 
                                                                                         ? (focusedCell?.c === cIndex ? "font-bold text-[#691C32] bg-red-50" : "font-bold text-gray-800 bg-gray-50") 
-                                                                                        : "text-gray-600 focus:bg-blue-50",
+                                                                                        : "text-gray-900 focus:bg-blue-50",
                                                                                     // First column bold logic (excluding header which is already bold)
                                                                                     cIndex === 0 && rIndex !== 0 && "font-bold text-gray-900"
                                                                                 )}
