@@ -601,12 +601,104 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   };
 
   const handleDelete = async (rowIndex: number) => {
-       if (!window.confirm("¿Estás seguro de que quieres eliminar este registro?")) return;
+       if (!window.confirm("¿Estás seguro de que quieres eliminar este registro? Esta acción no se puede deshacer.")) return;
        if (!activeSheet) return;
        setSaving(true);
+       
        try {
-            alert("Función de eliminar pendiente de reconexión con lógica de índice real.");
-            onRefresh();
+           // 1. Logic for Nested Tables (if applicable)
+           if (activeTab === 'tablas') {
+               try {
+                   const csvIndex = findColumnIndex(gridHeaders, CSV_COL_VARIANTS);
+                   const rowData = gridData[rowIndex];
+                   const rangeStr = rowData[csvIndex];
+
+                   if (rangeStr) {
+                       const cleanRangeStr = sanitizeRangeString(rangeStr);
+                       const parsedRange = parseRange(cleanRangeStr);
+
+                       if (parsedRange) {
+                           // Find storage sheet
+                           const storageSheet = spreadsheet.sheets.find(s => 
+                                s.properties.title === parsedRange.sheetName || 
+                                s.properties.title === parsedRange.sheetName.replace(/'/g, '')
+                           );
+
+                           if (storageSheet) {
+                                const rowsToDelete = parsedRange.endRow - parsedRange.startRow + 1;
+                                
+                                // A. Delete the actual data rows in storage sheet
+                                // FIX: Convert 1-based startRow (from A1 notation) to 0-based API index by subtracting 1
+                                const deleteStartIndex = Math.max(0, parsedRange.startRow - 1);
+
+                                await deleteDimensionRange(
+                                    spreadsheet.spreadsheetId, 
+                                    storageSheet.properties.sheetId, 
+                                    deleteStartIndex, 
+                                    rowsToDelete, 
+                                    'ROWS', 
+                                    token
+                                );
+
+                                // B. Update references for tables BELOW this one
+                                const updates: Promise<any>[] = [];
+                                gridData.forEach((row, idx) => {
+                                    if (idx === rowIndex) return; // Skip the one we are deleting
+                                    const otherRangeStr = row[csvIndex];
+                                    if (!otherRangeStr) return; 
+
+                                    const cleanOther = sanitizeRangeString(otherRangeStr);
+                                    const otherRange = parseRange(cleanOther);
+
+                                    // Check if it's in same sheet and BELOW the deleted one
+                                    if (otherRange && 
+                                        otherRange.sheetName === parsedRange.sheetName && 
+                                        otherRange.startRow > parsedRange.endRow) {
+                                        
+                                        const newStart = otherRange.startRow - rowsToDelete;
+                                        const newEnd = otherRange.endRow - rowsToDelete;
+                                        const sCol = indexToColumnLetter(otherRange.startCol);
+                                        const eCol = indexToColumnLetter(otherRange.endCol);
+                                        const finalSheetName = quoteSheetName(otherRange.sheetName);
+                                        
+                                        const newRangeStr = `${finalSheetName}!${sCol}${newStart}:${eCol}${newEnd}`;
+                                        
+                                        // Update the cell in the main list
+                                        updates.push(updateCellValue(
+                                            spreadsheet.spreadsheetId,
+                                            activeSheet.properties.title,
+                                            { row: idx + 1, col: csvIndex, value: newRangeStr },
+                                            token
+                                        ));
+                                    }
+                                });
+
+                                if (updates.length > 0) await Promise.all(updates);
+                           }
+                       }
+                   }
+               } catch (nestedError) {
+                   console.error("Error eliminando datos anidados, procediendo a borrar fila principal:", nestedError);
+               }
+           }
+
+           // 2. Delete the row in the Main List (Metadata)
+           // rowIndex is index in gridData (0-based)
+           // In Sheet, Header is row 0. Data starts row 1.
+           // So API index is rowIndex + 1.
+           await deleteRow(
+               spreadsheet.spreadsheetId,
+               activeSheet.properties.sheetId,
+               rowIndex + 1,
+               token
+           );
+
+           alert("Registro eliminado correctamente.");
+           onRefresh();
+
+       } catch (e) {
+           console.error(e);
+           alert("Error al eliminar.");
        } finally {
            setSaving(false);
        }
