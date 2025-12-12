@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Spreadsheet } from '../types';
 import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValues, updateValues, insertDimension, createNewTab } from '../services/sheetsService';
 import { Button } from './Button';
-import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, Grid, RefreshCw, Check, Minus, AlertCircle } from 'lucide-react';
+import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface SheetEditorProps {
@@ -77,26 +77,19 @@ const quoteSheetName = (name: string) => {
     return cleanName;
 };
 
+// Helper to normalize sheet names for comparison (ignores case, spaces, underscores, quotes)
+const normalizeSheetName = (name: string) => name.trim().toLowerCase().replace(/['"_\s]/g, '');
+
 // Robust Helper to sanitize and format range string
 const sanitizeRangeString = (range: string): string => {
     if (!range) return '';
     let clean = range.trim();
     
     // Remove quotes wrapping the ENTIRE string if they exist (e.g. "'Sheet!A1'")
-    // We assume a valid range usually ends with a digit or letter, not a quote, unless the sheet name is at the end (unlikely for A1 notation)
     if ((clean.startsWith("'") && clean.endsWith("'")) || (clean.startsWith('"') && clean.endsWith('"'))) {
-        // Special case: 'Sheet Name'!A1 starts with ' but doesn't end with '.
-        // 'Sheet Name!A1' starts with ' and ends with '. This is the bad case we want to fix.
-        // Check if there is a ! inside.
         if (clean.includes('!')) {
-             // Heuristic: If the last character is a quote, and the part after ! is NOT quoted in standard notation,
-             // then the outer quotes are likely superfluous wrapping.
-             // Standard: 'Sheet Name'!A1:B2
-             // Bad: 'Sheet Name!A1:B2'
              const lastBang = clean.lastIndexOf('!');
              if (lastBang !== -1 && lastBang < clean.length - 2) {
-                 // Check if the part after ! ends with quote
-                 // A1:B2' -> likely bad wrapping
                  clean = clean.slice(1, -1);
              }
         }
@@ -168,7 +161,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   
   // Relationship Data State (For dropdowns/validation)
   const [availableSections, setAvailableSections] = useState<{id: string, title: string}[]>([]);
-  const [sectionError, setSectionError] = useState<string | null>(null);
 
   // Nested Grid Editor State (for Table Content inside Form)
   const [nestedGridData, setNestedGridData] = useState<string[][]>([]);
@@ -176,10 +168,19 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   const [originalNestedGridRange, setOriginalNestedGridRange] = useState<string>(''); 
   const [focusedCell, setFocusedCell] = useState<{r: number, c: number} | null>(null);
   
-  // New Table Wizard State
+  // UI Overlays State
   const [showTableWizard, setShowTableWizard] = useState(false);
   const [wizardConfig, setWizardConfig] = useState({ rows: 5, cols: 4 });
   const [calculatingRange, setCalculatingRange] = useState(false);
+  
+  // Confirm Delete Modal State
+  const [deleteModal, setDeleteModal] = useState<{isOpen: boolean, rowIndex: number | null}>({
+      isOpen: false,
+      rowIndex: null
+  });
+
+  // Notification State (Replaces native alerts)
+  const [notification, setNotification] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
 
   // UI State
   const [saving, setSaving] = useState(false);
@@ -187,6 +188,18 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 5;
+
+  // Auto-dismiss notification
+  useEffect(() => {
+    if (notification) {
+        const timer = setTimeout(() => setNotification(null), 5000);
+        return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
+  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+      setNotification({ message, type });
+  };
 
   // --- Helpers ---
   const getMetadataSheet = () => {
@@ -219,8 +232,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   const activeSheet = getActiveSheet();
 
   // --- Initialization Effects ---
-
-  // 1. Extract Doc ID
   useEffect(() => {
     const metaSheet = getMetadataSheet();
     if (metaSheet && metaSheet.data && metaSheet.data[0]?.rowData) {
@@ -234,19 +245,14 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
     }
   }, [spreadsheet]);
 
-  // 2. Load List Data & Relationship Data (Secciones)
   useEffect(() => {
-    // Reset view when tab changes
     setViewMode('LIST');
     setSearchTerm('');
     setCurrentPage(1);
     setFocusedCell(null);
-    setSectionError(null);
     
-    // Load Secciones data if we are in 'Tablas' tab
     if (activeTab === 'tablas' && currentDocId) {
         const loadSections = () => {
-             // More robust finding of the Secciones sheet
              const seccionesSheet = spreadsheet.sheets.find(s => 
                  s.properties.title === 'Secciones' || 
                  s.properties.title.toLowerCase().trim() === 'secciones'
@@ -254,12 +260,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
 
              if (seccionesSheet && seccionesSheet.data && seccionesSheet.data[0]?.rowData) {
                  const headers = seccionesSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
-                 
                  const docIdIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
-                 // Expanding ID Variants to include 'Orden' as per user feedback that Secciones uses 'Orden' as key
                  const idSecVariants = [...SECCION_COL_VARIANTS, 'Orden', 'Nivel', 'Clave'];
                  const idSecIdx = findColumnIndex(headers, idSecVariants);
-                 
                  const titleIdx = findColumnIndex(headers, TITLE_VARIANTS);
 
                  if (docIdIdx !== -1 && idSecIdx !== -1) {
@@ -272,28 +275,21 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                              validSections.push({ id: secId, title: secTitle });
                          }
                      });
-                     console.log("Secciones cargadas:", validSections);
                      setAvailableSections(validSections);
-                 } else {
-                     console.warn("No se encontraron las columnas esperadas en Secciones", { headers, docIdIdx, idSecIdx });
                  }
-             } else {
-                 console.warn("Hoja Secciones no encontrada o sin datos.");
              }
         };
         loadSections();
     }
 
     if (activeTab === 'metadatos') {
-        // Load Form Data directly for Metadata
         if (!activeSheet) return;
         const headers = activeSheet.data?.[0]?.rowData?.[0]?.values?.map(c => c.formattedValue || c.userEnteredValue?.stringValue || '') || [];
         const values = activeSheet.data?.[0]?.rowData?.[1]?.values?.map(c => c.formattedValue || c.userEnteredValue?.stringValue || '') || [];
         setFormHeaders(headers);
         setFormData(values.length ? values : new Array(headers.length).fill(''));
-        setViewMode('FORM'); // Metadata is always a form
+        setViewMode('FORM');
     } else {
-        // Load Table Data for List
         if (!activeSheet) {
             setGridData([]);
             setGridHeaders([]);
@@ -338,13 +334,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   // --- Logic to Calculate Next Order ---
   const calculateNextOrder = (sectionId: string) => {
       if (!sectionId || activeTab !== 'tablas') return '1';
-      
       const secColIdx = findColumnIndex(gridHeaders, SECCION_COL_VARIANTS);
       const ordColIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
-
       if (secColIdx === -1 || ordColIdx === -1) return '1';
 
-      // Find max order for this section
       let maxOrder = 0;
       gridData.forEach(row => {
           if (row[secColIdx] === sectionId) {
@@ -363,7 +356,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
        if (secColIdx === -1 || ordColIdx === -1) return false;
 
        return gridData.some((row, idx) => {
-           // Skip current row if editing
            if (ignoreRowIndex !== null && gridData[ignoreRowIndex] === row) return false;
            return row[secColIdx] === sectionId && row[ordColIdx] === orderVal;
        });
@@ -371,13 +363,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
 
   // --- Internal Logic to fetch nested grid ---
   const loadNestedGrid = async (range: string) => {
-      // 1. Aggressive Sanitization with new Helper
       const correctedRange = sanitizeRangeString(range);
-      console.log("Cargando rango saneado:", correctedRange);
-
-      // 2. Validate format
+      
       if (!correctedRange || !correctedRange.includes('!')) {
-          console.warn("Rango inválido, cargando grid vacío por defecto.");
           setNestedGridData([['', '', '', '', ''], ['', '', '', '', ''], ['', '', '', '', '']]); 
           setNestedGridRange(correctedRange);
           return;
@@ -386,14 +374,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
       const parsed = parseRange(correctedRange);
       if (!parsed) return;
 
-      // 3. Check if sheet exists locally before fetching to avoid API error
-      // Note: we use parsed.sheetName which is clean (no quotes) for comparison
       const sheetExists = spreadsheet.sheets.some(s => s.properties.title === parsed.sheetName);
       if (!sheetExists) {
-           console.log("Hoja no existe, inicializando vacío:", parsed.sheetName);
            const rows = parsed.endRow - parsed.startRow + 1;
            const cols = parsed.endCol - parsed.startCol + 1;
-           // Create clean empty grid
            const emptyGrid = Array.from({length: rows}, () => Array(cols).fill(''));
            setNestedGridData(emptyGrid);
            setNestedGridRange(correctedRange);
@@ -422,14 +406,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   };
 
   const updateRangeString = (newData: string[][]) => {
-    // Logic to recalculate the end range based on data size
     const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
     let currentRange = csvIndex !== -1 ? formData[csvIndex] : nestedGridRange;
 
-    // Sanitize common issues before parsing
     if (!currentRange || !currentRange.includes('!')) return;
-    
-    // Ensure we are working with a clean range string
     currentRange = sanitizeRangeString(currentRange);
 
     try {
@@ -438,8 +418,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
         const rangeRef = currentRange.substring(lastBang + 1);
         
         const [startRef] = rangeRef.split(':');
-        
-        // Extract start column letter and start row number
         const match = startRef.match(/([A-Z]+)([0-9]+)/);
         if (!match) return;
 
@@ -455,13 +433,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
         const endColIdx = startColIdx + numCols - 1;
         const endColStr = indexToColumnLetter(endColIdx);
 
-        // Reconstruct with sanitized sheet part (which already has quotes if needed from sanitizeRangeString)
         const newRange = `${sheetPart}!${startColStr}${startRow}:${endColStr}${endRow}`;
-
-        // Update State
         setNestedGridRange(newRange);
         
-        // Update Form Input
         if (csvIndex !== -1) {
             const newFormData = [...formData];
             newFormData[csvIndex] = newRange;
@@ -476,27 +450,20 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
       setCalculatingRange(true);
       try {
           const storageSheet = getStorageSheet();
-          // Use existing name or default to Datos_Tablas
           const sheetName = storageSheet ? storageSheet.properties.title : 'Datos_Tablas';
-          
-          // Ensure correct quoting for the sheet name
           const finalSheetName = quoteSheetName(sheetName);
 
-          // If sheet doesn't exist, we can't fetch A:A. Start at A1.
           if (!storageSheet) {
               const endColLetter = indexToColumnLetter(cols - 1);
               return `${finalSheetName}!A1:${endColLetter}${rows}`;
           }
           
-          // Fetch Column A... 
           const colData = await fetchValues(spreadsheet.spreadsheetId, `${finalSheetName}!A:A`, token);
-          
           let lastRowIndex = 0;
           if (colData && colData.length > 0) {
               lastRowIndex = colData.length;
           }
           
-          // Add a buffer of 3 rows
           const startRow = lastRowIndex + 3;
           const endRow = startRow + rows - 1;
           const endColLetter = indexToColumnLetter(cols - 1); // 0-based index
@@ -504,7 +471,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
           return `${finalSheetName}!A${startRow}:${endColLetter}${endRow}`;
       } catch (e) {
           console.error(e);
-          // Fallback random
           const randomStart = 100 + Math.floor(Math.random() * 50);
           return `Datos_Tablas!A${randomStart}:E${randomStart + rows}`;
       } finally {
@@ -516,31 +482,25 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
 
   const handlePreCreate = () => {
       if (activeTab === 'tablas') {
-          // Check if sections exist before allowing creation
           if (availableSections.length === 0) {
-              alert("No se encontraron Secciones para este documento. Asegúrate de tener al menos una sección creada en la pestaña 'Secciones'.");
+              showNotification("No se encontraron Secciones. Crea una sección primero.", 'error');
               return;
           }
-          // Open Wizard for Tables
           setWizardConfig({ rows: 5, cols: 4 });
           setShowTableWizard(true);
       } else {
-          // Direct Create for others
           handleCreate([]);
       }
   };
 
   const handleWizardConfirm = async () => {
       const newRange = await calculateNextAvailableRange(wizardConfig.rows, wizardConfig.cols);
-      
-      // Initialize grid with requested size
       const initData: string[][] = Array(wizardConfig.rows).fill('').map((_, r) => 
           Array(wizardConfig.cols).fill('').map((__, c) => 
             r === 0 ? 'Encabezado' : ''
           )
       );
-      initData[0][0] = 'Concepto'; // Default header
-
+      initData[0][0] = 'Concepto';
       handleCreate(initData, newRange);
       setShowTableWizard(false);
   };
@@ -549,11 +509,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
       setEditingRowIndex(null);
       const newRow = new Array(gridHeaders.length).fill('');
       
-      // Auto-fill Document ID
       const docIdIndex = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
       if (docIdIndex !== -1) newRow[docIdIndex] = currentDocId;
       
-      // Fill Range if provided
       if (initialRangeStr) {
           const csvIndex = findColumnIndex(gridHeaders, CSV_COL_VARIANTS);
           if (csvIndex !== -1) {
@@ -563,14 +521,12 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
 
       setFormData(newRow);
       setFormHeaders(gridHeaders);
-      
       setNestedGridRange(initialRangeStr);
       setOriginalNestedGridRange(initialRangeStr);
 
       if (initialGridData.length > 0) {
           setNestedGridData(initialGridData);
       } else {
-           // Default fallback
            setNestedGridData([['Concepto', '2023', '2024', '2025', 'Notas'], ['', '', '', '', ''], ['', '', '', '', '']]); 
       }
       
@@ -583,16 +539,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
       setFormData(currentRow);
       setFormHeaders(gridHeaders);
 
-      // If Tablas, fetch the nested data immediately
       if (activeTab === 'tablas') {
           const csvIndex = findColumnIndex(gridHeaders, CSV_COL_VARIANTS);
           if (csvIndex !== -1) {
               const r = currentRow[csvIndex];
-              setOriginalNestedGridRange(r); // Save original
+              setOriginalNestedGridRange(r);
               loadNestedGrid(r);
           } else {
-              console.warn("No se encontró columna para Datos CSV en:", gridHeaders);
-              // Fallback initialization to prevent blank screen
               setNestedGridData([['Concepto', 'Col1', 'Col2'], ['', '', '']]);
           }
       }
@@ -600,13 +553,20 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
       setViewMode('FORM');
   };
 
-  const handleDelete = async (rowIndex: number) => {
-       if (!window.confirm("¿Estás seguro de que quieres eliminar este registro? Esta acción no se puede deshacer.")) return;
+  // Trigger Modal
+  const requestDelete = (rowIndex: number) => {
+      setDeleteModal({ isOpen: true, rowIndex });
+  };
+
+  // Actual Execute Delete Logic (called by Modal)
+  const executeDelete = async () => {
+       const rowIndex = deleteModal.rowIndex;
+       if (rowIndex === null) return;
        if (!activeSheet) return;
+
        setSaving(true);
        
        try {
-           // 1. Logic for Nested Tables (if applicable)
            if (activeTab === 'tablas') {
                try {
                    const csvIndex = findColumnIndex(gridHeaders, CSV_COL_VARIANTS);
@@ -618,18 +578,14 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                        const parsedRange = parseRange(cleanRangeStr);
 
                        if (parsedRange) {
-                           // Find storage sheet
                            const storageSheet = spreadsheet.sheets.find(s => 
-                                s.properties.title === parsedRange.sheetName || 
-                                s.properties.title === parsedRange.sheetName.replace(/'/g, '')
+                                normalizeSheetName(s.properties.title) === normalizeSheetName(parsedRange.sheetName)
                            );
 
                            if (storageSheet) {
                                 const rowsToDelete = parsedRange.endRow - parsedRange.startRow + 1;
-                                
-                                // A. Delete the actual data rows in storage sheet
-                                // FIX: Convert 1-based startRow (from A1 notation) to 0-based API index by subtracting 1
                                 const deleteStartIndex = Math.max(0, parsedRange.startRow - 1);
+                                console.log(`Borrando filas anidadas: ${deleteStartIndex}, Count: ${rowsToDelete}`);
 
                                 await deleteDimensionRange(
                                     spreadsheet.spreadsheetId, 
@@ -640,19 +596,18 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                     token
                                 );
 
-                                // B. Update references for tables BELOW this one
+                                // Update references below
                                 const updates: Promise<any>[] = [];
                                 gridData.forEach((row, idx) => {
-                                    if (idx === rowIndex) return; // Skip the one we are deleting
+                                    if (idx === rowIndex) return;
                                     const otherRangeStr = row[csvIndex];
                                     if (!otherRangeStr) return; 
 
                                     const cleanOther = sanitizeRangeString(otherRangeStr);
                                     const otherRange = parseRange(cleanOther);
 
-                                    // Check if it's in same sheet and BELOW the deleted one
                                     if (otherRange && 
-                                        otherRange.sheetName === parsedRange.sheetName && 
+                                        normalizeSheetName(otherRange.sheetName) === normalizeSheetName(parsedRange.sheetName) && 
                                         otherRange.startRow > parsedRange.endRow) {
                                         
                                         const newStart = otherRange.startRow - rowsToDelete;
@@ -660,10 +615,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                         const sCol = indexToColumnLetter(otherRange.startCol);
                                         const eCol = indexToColumnLetter(otherRange.endCol);
                                         const finalSheetName = quoteSheetName(otherRange.sheetName);
-                                        
                                         const newRangeStr = `${finalSheetName}!${sCol}${newStart}:${eCol}${newEnd}`;
                                         
-                                        // Update the cell in the main list
                                         updates.push(updateCellValue(
                                             spreadsheet.spreadsheetId,
                                             activeSheet.properties.title,
@@ -678,14 +631,11 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                        }
                    }
                } catch (nestedError) {
-                   console.error("Error eliminando datos anidados, procediendo a borrar fila principal:", nestedError);
+                   console.error("Error NO CRÍTICO eliminando anidados:", nestedError);
                }
            }
 
-           // 2. Delete the row in the Main List (Metadata)
-           // rowIndex is index in gridData (0-based)
-           // In Sheet, Header is row 0. Data starts row 1.
-           // So API index is rowIndex + 1.
+           console.log(`Borrando fila principal: ${rowIndex + 1}`);
            await deleteRow(
                spreadsheet.spreadsheetId,
                activeSheet.properties.sheetId,
@@ -693,12 +643,14 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                token
            );
 
-           alert("Registro eliminado correctamente.");
+           showNotification("Registro eliminado correctamente.", "success");
            onRefresh();
+           // Close modal on success
+           setDeleteModal({ isOpen: false, rowIndex: null });
 
        } catch (e) {
-           console.error(e);
-           alert("Error al eliminar.");
+           console.error("Error CRÍTICO al eliminar:", e);
+           showNotification("Error al eliminar el registro. Intenta de nuevo.", "error");
        } finally {
            setSaving(false);
        }
@@ -707,7 +659,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   const handleSaveForm = async () => {
       if (!activeSheet) return;
 
-      // Validation for Duplicate Order in Tablas
       if (activeTab === 'tablas') {
           const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
           const ordColIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
@@ -717,16 +668,16 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
               const orderNum = parseInt(order);
 
               if (isNaN(orderNum) || orderNum < 1) {
-                  alert("El Orden de la tabla debe ser un número mayor a 0.");
+                  showNotification("El Orden debe ser mayor a 0.", "error");
                   return;
               }
 
               if (isOrderDuplicate(section, order, editingRowIndex)) {
-                  alert(`El Orden ${order} ya está siendo utilizado en la sección ${section}. Por favor elige otro.`);
+                  showNotification(`El Orden ${order} ya existe en la sección ${section}.`, "error");
                   return;
               }
               if (!section) {
-                  alert("Debes seleccionar una Sección.");
+                  showNotification("Selecciona una Sección.", "error");
                   return;
               }
           }
@@ -742,100 +693,66 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                    updates.push(updateCellValue(spreadsheet.spreadsheetId, sheetTitle, { row: 1, col: i, value: formData[i]}, token));
                }
                await Promise.all(updates);
-               alert("Metadatos guardados.");
+               showNotification("Metadatos guardados.", "success");
           } else {
-              // 1. Prepare Data: Sync 'DatosCSV' with 'nestedGridRange' if applicable
               const finalFormData = [...formData];
               if (activeTab === 'tablas') {
                   const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
-                  // Ensure we save the latest calculated range, not the stale form input
                   if (csvIndex !== -1 && nestedGridRange) {
                       finalFormData[csvIndex] = nestedGridRange;
                   }
               }
 
-              // 2. Save the Main Record (Create or Update)
               if (editingRowIndex === null) {
-                  // CREATE
                   await appendRow(spreadsheet.spreadsheetId, sheetTitle, finalFormData, token);
               } else {
-                  // UPDATE
                   const startRow = editingRowIndex + 2; 
                   const endColLetter = indexToColumnLetter(finalFormData.length - 1);
                   const updateRange = `${sheetTitle}!A${startRow}:${endColLetter}${startRow}`;
                   await updateValues(spreadsheet.spreadsheetId, updateRange, [finalFormData], token);
               }
 
-              // 3. Save the Nested Grid Data (if applicable)
               if (activeTab === 'tablas') {
                   const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
                   let targetRange = finalFormData[csvIndex] || nestedGridRange;
                   
                   if (targetRange && targetRange.includes('!')) {
-                      // Ensure target range is valid/sanitized before using
                       targetRange = sanitizeRangeString(targetRange);
-
                       const parsedTarget = parseRange(targetRange);
 
-                      // Check if sheet exists, if not create it
                       if (parsedTarget) {
                           const targetSheetExists = spreadsheet.sheets.some(s => s.properties.title === parsedTarget.sheetName);
                           if (!targetSheetExists) {
                               try {
                                    await createNewTab(spreadsheet.spreadsheetId, parsedTarget.sheetName, token);
-                              } catch(e) {
-                                  console.error("Error creando nueva hoja", e);
-                              }
+                              } catch(e) { console.error(e); }
                           }
                       }
 
-                      // Only attempt shift if we have an original range (update scenario)
                       if (originalNestedGridRange) {
                             const cleanOldRangeStr = sanitizeRangeString(originalNestedGridRange);
                             const oldRange = parseRange(cleanOldRangeStr);
                             const newRange = parseRange(targetRange);
 
                             if (oldRange && newRange && oldRange.sheetName === newRange.sheetName) {
-                                // Find Sheet ID of the nested table (e.g., 'Datos Tablas')
-                                const nestedSheet = spreadsheet.sheets.find(s => 
-                                    s.properties.title === newRange.sheetName
-                                );
-                                
-                                // Only shift rows if the sheet existed previously (and thus we have an ID)
+                                const nestedSheet = spreadsheet.sheets.find(s => s.properties.title === newRange.sheetName);
                                 if (nestedSheet) {
                                     const rowsDiff = (newRange.endRow - newRange.startRow) - (oldRange.endRow - oldRange.startRow);
                                     const colsDiff = (newRange.endCol - newRange.startCol) - (oldRange.endCol - oldRange.startCol);
                                     
-                                    // --- HANDLE ROWS (Vertical Shift) ---
                                     if (rowsDiff !== 0) {
                                         if (rowsDiff > 0) {
-                                            await insertDimension(
-                                                spreadsheet.spreadsheetId, 
-                                                nestedSheet.properties.sheetId, 
-                                                oldRange.endRow, 
-                                                rowsDiff, 
-                                                'ROWS', 
-                                                token
-                                            );
+                                            await insertDimension(spreadsheet.spreadsheetId, nestedSheet.properties.sheetId, oldRange.endRow, rowsDiff, 'ROWS', token);
                                         } else {
                                             const rowsToDelete = Math.abs(rowsDiff);
-                                            await deleteDimensionRange(
-                                                spreadsheet.spreadsheetId,
-                                                nestedSheet.properties.sheetId,
-                                                newRange.endRow, 
-                                                rowsToDelete,
-                                                'ROWS', 
-                                                token
-                                            );
+                                            await deleteDimensionRange(spreadsheet.spreadsheetId, nestedSheet.properties.sheetId, newRange.endRow, rowsToDelete, 'ROWS', token);
                                         }
 
-                                        // Correct downstream table references for rows
                                         const updatesToShift: Promise<any>[] = [];
                                         gridData.forEach((row, idx) => {
                                             if (idx === editingRowIndex) return;
                                             const otherRangeStr = row[csvIndex];
                                             if (!otherRangeStr) return; 
-                                            // Sanitize before parsing
                                             const cleanOtherRangeStr = sanitizeRangeString(otherRangeStr);
                                             const otherRange = parseRange(cleanOtherRangeStr);
 
@@ -847,61 +764,46 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                                 const newEnd = otherRange.endRow + rowsDiff;
                                                 const sCol = indexToColumnLetter(otherRange.startCol);
                                                 const eCol = indexToColumnLetter(otherRange.endCol);
-                                                // Sheet part should already be quoted if needed by sanitizeRangeString usage
                                                 const finalSheetPart = quoteSheetName(otherRange.sheetName);
                                                 const newRangeStr = `${finalSheetPart}!${sCol}${newStart}:${eCol}${newEnd}`;
                                                 
-                                                updatesToShift.push(updateCellValue(
-                                                    spreadsheet.spreadsheetId,
-                                                    activeSheet.properties.title,
-                                                    { row: idx + 1, col: csvIndex, value: newRangeStr },
-                                                    token
-                                                ));
+                                                updatesToShift.push(updateCellValue(spreadsheet.spreadsheetId, activeSheet.properties.title, { row: idx + 1, col: csvIndex, value: newRangeStr }, token));
                                             }
                                         });
                                         if (updatesToShift.length > 0) await Promise.all(updatesToShift);
                                     }
 
-                                    // --- HANDLE COLUMNS (Horizontal Shift) ---
                                     if (colsDiff < 0) {
                                         const colsToDelete = Math.abs(colsDiff);
                                         const startClearColIdx = newRange.endCol + 1;
                                         const endClearColIdx = oldRange.endCol; 
-                                        
                                         const sColChar = indexToColumnLetter(startClearColIdx);
                                         const eColChar = indexToColumnLetter(endClearColIdx);
-                                        
                                         const sheetRef = quoteSheetName(nestedSheet.properties.title);
                                         const clearRangeStr = `${sheetRef}!${sColChar}${newRange.startRow}:${eColChar}${newRange.endRow}`;
-                                        
-                                        // Create grid of empty strings
                                         const numRows = newRange.endRow - newRange.startRow + 1;
                                         const emptyValues = Array(numRows).fill(Array(colsToDelete).fill(''));
-                                        
                                         await updateValues(spreadsheet.spreadsheetId, clearRangeStr, emptyValues, token);
                                     }
                                 }
                             }
                       }
-
-                      // 4. Finally write the data
                       await updateValues(spreadsheet.spreadsheetId, targetRange, nestedGridData, token);
                   }
               }
 
-              alert("Registro y datos guardados correctamente.");
+              showNotification("Guardado correctamente.", "success");
               onRefresh();
               setViewMode('LIST');
           }
       } catch (e) {
           console.error(e);
-          alert("Error al guardar.");
+          showNotification("Error al guardar los cambios.", "error");
       } finally {
           setSaving(false);
       }
   };
 
-  // Helper to expand grid rows/cols
   const addGridRow = () => {
       const cols = nestedGridData[0]?.length || 5;
       const newData = [...nestedGridData, new Array(cols).fill('')];
@@ -913,33 +815,28 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
       setNestedGridData(newData);
       updateRangeString(newData);
   };
-
   const deleteGridRow = () => {
       if (nestedGridData.length <= 1) return;
       const newData = [...nestedGridData];
-      newData.pop(); // Remove last row
+      newData.pop();
       setNestedGridData(newData);
       updateRangeString(newData);
   };
-
   const deleteGridCol = () => {
       if (!nestedGridData[0] || nestedGridData[0].length <= 1) return;
       const newData = nestedGridData.map(row => {
           const newRow = [...row];
-          newRow.pop(); // Remove last col
+          newRow.pop();
           return newRow;
       });
       setNestedGridData(newData);
       updateRangeString(newData);
   };
 
-  // --- Filtering ---
   const filteredData = gridData.map((row, index) => ({ row, index })).filter(({ row }) => 
       row.some(cell => cell.toLowerCase().includes(searchTerm.toLowerCase()))
   );
   const displayedRows = filteredData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-
-  // --- Components ---
 
   const Breadcrumbs = () => (
       <nav className="flex items-center text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
@@ -948,14 +845,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
           <span className="font-medium text-gray-900 truncate max-w-[150px]">{spreadsheet.properties.title}</span>
           <ChevronRight size={14} className="mx-2 flex-shrink-0" />
           <button 
-            onClick={() => {
-                if (activeTab === 'metadatos') return;
-                setViewMode('LIST');
-            }}
-            className={clsx(
-                "hover:text-[#691C32] transition-colors capitalize",
-                viewMode === 'LIST' && activeTab !== 'metadatos' ? "font-bold text-[#691C32]" : ""
-            )}
+            onClick={() => { if (activeTab !== 'metadatos') setViewMode('LIST'); }}
+            className={clsx("hover:text-[#691C32] transition-colors capitalize", viewMode === 'LIST' && activeTab !== 'metadatos' ? "font-bold text-[#691C32]" : "")}
           >
               {activeTab}
           </button>
@@ -971,9 +862,50 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   );
 
   return (
-    <div className="flex flex-col h-screen bg-[#F5F5F5]">
+    <div className="flex flex-col h-screen bg-[#F5F5F5] relative">
        
-       {/* New Table Wizard Modal */}
+       {/* Notification Banner */}
+       {notification && (
+           <div className={clsx(
+               "fixed top-4 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-3 animate-in fade-in slide-in-from-top-2",
+               notification.type === 'success' ? "bg-[#13322B] text-white" : 
+               notification.type === 'error' ? "bg-red-600 text-white" : "bg-blue-600 text-white"
+           )}>
+               {notification.type === 'success' ? <Check size={18} /> : 
+                notification.type === 'error' ? <AlertCircle size={18} /> : <Info size={18} />}
+               {notification.message}
+               <button onClick={() => setNotification(null)} className="ml-2 opacity-80 hover:opacity-100">
+                   <X size={14} />
+               </button>
+           </div>
+       )}
+
+       {/* Delete Confirmation Modal */}
+       {deleteModal.isOpen && (
+           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+               <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 animate-in zoom-in duration-200">
+                   <div className="flex flex-col items-center text-center">
+                       <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                           <AlertTriangle className="text-red-600" size={24} />
+                       </div>
+                       <h3 className="text-lg font-bold text-gray-900 mb-2">¿Eliminar registro?</h3>
+                       <p className="text-sm text-gray-500 mb-6">
+                           Esta acción eliminará el registro de la lista principal y, si es una tabla, también borrará sus datos asociados. Esta acción no se puede deshacer.
+                       </p>
+                       <div className="flex w-full gap-3">
+                           <Button variant="ghost" className="flex-1" onClick={() => setDeleteModal({isOpen: false, rowIndex: null})}>
+                               Cancelar
+                           </Button>
+                           <Button variant="danger" className="flex-1" onClick={executeDelete} isLoading={saving}>
+                               Eliminar
+                           </Button>
+                       </div>
+                   </div>
+               </div>
+           </div>
+       )}
+
+       {/* Table Wizard Modal */}
        {showTableWizard && (
            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 animate-in zoom-in duration-200">
@@ -1013,7 +945,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
            </div>
        )}
 
-       {/* Top Bar (Simplified) */}
+       {/* Top Bar */}
        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm z-20">
             <div className="flex items-center gap-3">
                  <button className="md:hidden text-gray-600" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
@@ -1027,7 +959,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                  </div>
             </div>
             <div className="flex items-center gap-2">
-                 {/* Global Actions depending on View */}
                  <Button variant="outline" size="sm" onClick={onBack} className="hidden md:flex">
                      Salir
                  </Button>
@@ -1107,11 +1038,11 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
                                             {displayedRows.length > 0 ? displayedRows.map(({row, index}) => (
-                                                <tr key={index} className="hover:bg-gray-50">
+                                                <tr key={index} className={clsx("hover:bg-gray-50", saving && "opacity-50 pointer-events-none")}>
                                                     <td className="px-6 py-4 text-left">
                                                         <div className="flex justify-start gap-2">
                                                             <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-800"><Edit size={16}/></button>
-                                                            <button onClick={() => handleDelete(index)} className="text-red-600 hover:text-red-800"><Trash2 size={16}/></button>
+                                                            <button onClick={() => requestDelete(index)} className="text-red-600 hover:text-red-800"><Trash2 size={16}/></button>
                                                         </div>
                                                     </td>
                                                     {row.map((cell, i) => <td key={i} className="px-6 py-4 truncate max-w-xs text-gray-700">{cell}</td>)}
@@ -1123,7 +1054,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                     </table>
                                 </div>
                            </div>
-                           {/* Pagination Controls here (omitted for brevity) */}
                        </div>
                    )}
 
@@ -1151,13 +1081,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                         const isCsvRange = CSV_COL_VARIANTS.includes(header);
                                         const isSeccion = SECCION_COL_VARIANTS.includes(header);
                                         const isOrden = ORDEN_COL_VARIANTS.includes(header);
-                                        
-                                        // Logic for Grid Span
-                                        // If Tablas: Seccion and Orden are col-span-1, others are col-span-2.
-                                        // If not Tablas: everything is col-span-1 (in a 1-col grid).
                                         const colSpan = (activeTab === 'tablas' && !isSeccion && !isOrden) ? "col-span-2" : "col-span-1";
 
-                                        // Special Rendering for Seccion Dropdown
                                         if (activeTab === 'tablas' && isSeccion) {
                                             return (
                                                 <div key={i} className={colSpan + " space-y-1"}>
@@ -1169,8 +1094,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                                             const newSec = e.target.value;
                                                             const newData = [...formData];
                                                             newData[i] = newSec;
-                                                            
-                                                            // Auto-calculate Order when Seccion changes
                                                             if (newSec) {
                                                                 const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
                                                                 if (ordIdx !== -1) {
@@ -1189,19 +1112,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                             );
                                         }
 
-                                        // Special Rendering for Orden Input/Dropdown
                                         if (activeTab === 'tablas' && isOrden) {
                                             const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
                                             const ordColIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
                                             const currentSectionId = secColIdx !== -1 ? formData[secColIdx] : '';
-
-                                            // Calculate available options dynamically
                                             const usedOrders = new Set<string>();
                                             let maxOrder = 0;
-                                            
-                                            // Scan existing data
                                             gridData.forEach((row, idx) => {
-                                                // Only consider rows that belong to the current section AND are not the row being edited
                                                 if (secColIdx !== -1 && ordColIdx !== -1 && row[secColIdx] === currentSectionId && idx !== editingRowIndex) {
                                                     const val = row[ordColIdx];
                                                     if (val) {
@@ -1211,23 +1128,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                                     }
                                                 }
                                             });
-
-                                            // Determine current value to ensure it's in the list
                                             const currentValue = formData[i] || '';
-
-                                            // Generate Options: Gaps + Next 5
                                             const availableOptions = [];
-                                            const limit = Math.max(maxOrder + 5, 5); // At least show 1-5 if empty
-                                            
+                                            const limit = Math.max(maxOrder + 5, 5); 
                                             for (let k = 1; k <= limit; k++) {
                                                 const kStr = String(k);
-                                                // If it's not used, OR if it's the current value (we are editing it), show it
-                                                if (!usedOrders.has(kStr) || kStr === currentValue) {
-                                                    availableOptions.push(kStr);
-                                                }
+                                                if (!usedOrders.has(kStr) || kStr === currentValue) availableOptions.push(kStr);
                                             }
-
-                                            // If the current value is somehow way outside range (e.g. user manually set 99 before), add it
                                             if (currentValue && !availableOptions.includes(currentValue) && parseInt(currentValue) > 0) {
                                                 availableOptions.push(currentValue);
                                                 availableOptions.sort((a,b) => parseInt(a) - parseInt(b));
@@ -1239,10 +1146,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                                     <div className="relative">
                                                         <select
                                                             disabled={!currentSectionId}
-                                                            className={clsx(
-                                                                "w-full px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900",
-                                                                !currentSectionId && "bg-gray-100 text-gray-500 cursor-not-allowed"
-                                                            )}
+                                                            className={clsx("w-full px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900", !currentSectionId && "bg-gray-100 text-gray-500 cursor-not-allowed")}
                                                             value={formData[i] || ''}
                                                             onChange={(e) => {
                                                                 const newData = [...formData];
@@ -1263,8 +1167,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                             );
                                         }
 
-                                        // Default Rendering
-                                        // Disable if ReadOnly OR if it is a CSV Range (handled by wizard/calc)
                                         const isDisabled = isReadOnly || isCsvRange;
 
                                         return (
@@ -1273,10 +1175,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                                 <div className="flex gap-2">
                                                         <input 
                                                             disabled={isDisabled}
-                                                            className={clsx(
-                                                                "flex-1 px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32]",
-                                                                isDisabled ? "bg-gray-100 text-gray-500" : "bg-white text-gray-900 border-gray-300"
-                                                            )}
+                                                            className={clsx("flex-1 px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32]", isDisabled ? "bg-gray-100 text-gray-500" : "bg-white text-gray-900 border-gray-300")}
                                                             value={formData[i] || ''}
                                                             onChange={(e) => {
                                                                 const newData = [...formData];
@@ -1285,13 +1184,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                                             }}
                                                         />
                                                         {isCsvRange && activeTab === 'tablas' && (
-                                                            <Button 
-                                                                variant="secondary" 
-                                                                size="sm"
-                                                                onClick={() => loadNestedGrid(formData[i])} 
-                                                                isLoading={loadingGrid}
-                                                                title="Recargar Grid"
-                                                            >
+                                                            <Button variant="secondary" size="sm" onClick={() => loadNestedGrid(formData[i])} isLoading={loadingGrid} title="Recargar Grid">
                                                                 <RefreshCw size={16} />
                                                             </Button>
                                                         )}
@@ -1341,24 +1234,14 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                                     <tbody className="bg-white divide-y divide-gray-200">
                                                         {nestedGridData.map((row, rIndex) => (
                                                             <tr key={rIndex}>
-                                                                <td className={clsx(
-                                                                    "px-2 py-2 text-[10px] font-mono select-none w-8 text-center border-r border-gray-200 transition-colors duration-200",
-                                                                    focusedCell?.r === rIndex ? "bg-[#691C32] text-white font-bold" : "bg-gray-50 text-gray-400"
-                                                                )}>
+                                                                <td className={clsx("px-2 py-2 text-[10px] font-mono select-none w-8 text-center border-r border-gray-200 transition-colors duration-200", focusedCell?.r === rIndex ? "bg-[#691C32] text-white font-bold" : "bg-gray-50 text-gray-400")}>
                                                                     {rIndex + 1}
                                                                 </td>
                                                                 {row.map((cell, cIndex) => (
                                                                     <td key={cIndex} className="p-0 border-r border-gray-200 last:border-0 min-w-[120px]">
                                                                         <input 
                                                                                 onFocus={() => setFocusedCell({r: rIndex, c: cIndex})}
-                                                                                className={clsx(
-                                                                                    "w-full h-full px-3 py-2 text-sm focus:outline-none border-none bg-transparent transition-colors duration-200 text-gray-900",
-                                                                                    rIndex === 0 
-                                                                                        ? (focusedCell?.c === cIndex ? "font-bold text-[#691C32] bg-red-50" : "font-bold text-gray-800 bg-gray-50") 
-                                                                                        : "text-gray-900 focus:bg-blue-50",
-                                                                                    // First column bold logic (excluding header which is already bold)
-                                                                                    cIndex === 0 && rIndex !== 0 && "font-bold text-gray-900"
-                                                                                )}
+                                                                                className={clsx("w-full h-full px-3 py-2 text-sm focus:outline-none border-none bg-transparent transition-colors duration-200 text-gray-900", rIndex === 0 ? (focusedCell?.c === cIndex ? "font-bold text-[#691C32] bg-red-50" : "font-bold text-gray-800 bg-gray-50") : "text-gray-900 focus:bg-blue-50", cIndex === 0 && rIndex !== 0 && "font-bold text-gray-900")}
                                                                                 value={cell}
                                                                                 placeholder={rIndex === 0 ? "Encabezado" : ""}
                                                                                 onChange={(e) => {

@@ -5,6 +5,13 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'burgundy' | 'green';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
+  // Explicitly add common props that are seemingly missing from the inherited type in this environment
+  children?: React.ReactNode;
+  className?: string;
+  disabled?: boolean;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  type?: "button" | "submit" | "reset";
+  title?: string;
 }
 
 export function Button({
