@@ -43,8 +43,9 @@ const findColumnIndex = (headers: string[], candidates: string[]) => {
 };
 
 const CSV_COL_VARIANTS = ['Datos CSV', 'DatosCSV', 'Datos_CSV', 'Rango', 'Datos'];
-const SECCION_COL_VARIANTS = ['ID_Seccion', 'Seccion', 'SeccionOrden', 'ID Seccion'];
-const ORDEN_COL_VARIANTS = ['Orden', 'OrdenTabla', 'Numero'];
+// Updated to include specific variants from screenshot
+const SECCION_COL_VARIANTS = ['ID_Seccion', 'Seccion', 'SeccionOrden', 'ID Seccion', 'Sección', 'Seccion Orden', 'IDSeccion'];
+const ORDEN_COL_VARIANTS = ['Orden', 'OrdenTabla', 'Numero', 'Fig.', 'Figura', 'Fig', 'Número', 'OrdenFigura', 'Orden Figura', 'Orden_Figura'];
 const DOC_ID_VARIANTS = ['DocumentoID', 'ID Documento', 'ID', 'DocID'];
 const TITLE_VARIANTS = ['Titulo', 'Título', 'Nombre'];
 
@@ -251,7 +252,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
     setCurrentPage(1);
     setFocusedCell(null);
     
-    if (activeTab === 'tablas' && currentDocId) {
+    // Load Relationship Data for Tablas AND Figuras
+    if ((activeTab === 'tablas' || activeTab === 'figuras') && currentDocId) {
         const loadSections = () => {
              const seccionesSheet = spreadsheet.sheets.find(s => 
                  s.properties.title === 'Secciones' || 
@@ -333,15 +335,21 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
 
   // --- Logic to Calculate Next Order ---
   const calculateNextOrder = (sectionId: string) => {
-      if (!sectionId || activeTab !== 'tablas') return '1';
+      // Allow for both Tablas and Figuras
+      if (!sectionId || (activeTab !== 'tablas' && activeTab !== 'figuras')) return '1';
+      
       const secColIdx = findColumnIndex(gridHeaders, SECCION_COL_VARIANTS);
       const ordColIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+      
       if (secColIdx === -1 || ordColIdx === -1) return '1';
 
       let maxOrder = 0;
       gridData.forEach(row => {
           if (row[secColIdx] === sectionId) {
-              const ordVal = parseInt(row[ordColIdx]);
+              const valStr = row[ordColIdx];
+              // Handle potentially mixed types (e.g., "1", "1.0", or even "2.1" if user broke convention)
+              // We try to extract the integer part if possible
+              const ordVal = parseInt(valStr);
               if (!isNaN(ordVal) && ordVal > maxOrder) {
                   maxOrder = ordVal;
               }
@@ -488,6 +496,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
           }
           setWizardConfig({ rows: 5, cols: 4 });
           setShowTableWizard(true);
+      } else if (activeTab === 'figuras') {
+          // Check sections for figures too
+          if (availableSections.length === 0) {
+              showNotification("No se encontraron Secciones. Crea una sección primero.", 'error');
+              return;
+          }
+          handleCreate([]);
       } else {
           handleCreate([]);
       }
@@ -635,7 +650,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                }
            }
 
-           console.log(`Borrando fila principal: ${rowIndex + 1}`);
+           console.log(`Borrando fila principal en ${activeTab}: ${rowIndex + 1}`);
            await deleteRow(
                spreadsheet.spreadsheetId,
                activeSheet.properties.sheetId,
@@ -659,7 +674,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
   const handleSaveForm = async () => {
       if (!activeSheet) return;
 
-      if (activeTab === 'tablas') {
+      // Validate Section and Order logic for both Tablas AND Figuras
+      if (activeTab === 'tablas' || activeTab === 'figuras') {
           const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
           const ordColIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
           if (secColIdx !== -1 && ordColIdx !== -1) {
@@ -668,12 +684,12 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
               const orderNum = parseInt(order);
 
               if (isNaN(orderNum) || orderNum < 1) {
-                  showNotification("El Orden debe ser mayor a 0.", "error");
+                  showNotification("El Orden/Número debe ser mayor a 0.", "error");
                   return;
               }
 
               if (isOrderDuplicate(section, order, editingRowIndex)) {
-                  showNotification(`El Orden ${order} ya existe en la sección ${section}.`, "error");
+                  showNotification(`El Número ${order} ya existe en la sección ${section}.`, "error");
                   return;
               }
               if (!section) {
@@ -861,6 +877,34 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
       </nav>
   );
 
+  // Helper for Modal Text based on Tab
+  const getDeleteContext = () => {
+      switch(activeTab) {
+          case 'tablas': return { 
+              title: "¿Eliminar tabla?", 
+              text: "Esta acción eliminará la tabla de la lista principal y también borrará sus datos internos de la hoja de cálculo. No se puede deshacer."
+          };
+          case 'bibliografia': return { 
+              title: "¿Eliminar referencia?", 
+              text: "Esta acción eliminará permanentemente la referencia bibliográfica del documento."
+          };
+          case 'siglas': return { 
+              title: "¿Eliminar sigla?", 
+              text: "Esta acción eliminará la sigla y su definición del catálogo del documento."
+          };
+          case 'glosario': return { 
+              title: "¿Eliminar término?", 
+              text: "Esta acción eliminará el término y su definición del glosario."
+          };
+          default: return { 
+              title: "¿Eliminar registro?", 
+              text: "Esta acción eliminará el registro de la lista principal. Esta acción no se puede deshacer."
+          };
+      }
+  };
+  
+  const deleteContext = getDeleteContext();
+
   return (
     <div className="flex flex-col h-screen bg-[#F5F5F5] relative">
        
@@ -888,9 +932,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
                            <AlertTriangle className="text-red-600" size={24} />
                        </div>
-                       <h3 className="text-lg font-bold text-gray-900 mb-2">¿Eliminar registro?</h3>
+                       <h3 className="text-lg font-bold text-gray-900 mb-2">{deleteContext.title}</h3>
                        <p className="text-sm text-gray-500 mb-6">
-                           Esta acción eliminará el registro de la lista principal y, si es una tabla, también borrará sus datos asociados. Esta acción no se puede deshacer.
+                           {deleteContext.text}
                        </p>
                        <div className="flex w-full gap-3">
                            <Button variant="ghost" className="flex-1" onClick={() => setDeleteModal({isOpen: false, rowIndex: null})}>
@@ -1074,16 +1118,16 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
 
                                 <div className={clsx(
                                     "grid gap-6 max-w-4xl",
-                                    activeTab === 'tablas' ? "grid-cols-2" : "grid-cols-1"
+                                    (activeTab === 'tablas' || activeTab === 'figuras') ? "grid-cols-2" : "grid-cols-1"
                                 )}>
                                     {formHeaders.map((header, i) => {
                                         const isReadOnly = header === 'DocumentoID' || header === 'ID Documento' || header === 'ID' || DOC_ID_VARIANTS.includes(header);
                                         const isCsvRange = CSV_COL_VARIANTS.includes(header);
                                         const isSeccion = SECCION_COL_VARIANTS.includes(header);
                                         const isOrden = ORDEN_COL_VARIANTS.includes(header);
-                                        const colSpan = (activeTab === 'tablas' && !isSeccion && !isOrden) ? "col-span-2" : "col-span-1";
+                                        const colSpan = ((activeTab === 'tablas' || activeTab === 'figuras') && !isSeccion && !isOrden) ? "col-span-2" : "col-span-1";
 
-                                        if (activeTab === 'tablas' && isSeccion) {
+                                        if ((activeTab === 'tablas' || activeTab === 'figuras') && isSeccion) {
                                             return (
                                                 <div key={i} className={colSpan + " space-y-1"}>
                                                     <label className="block text-sm font-medium text-gray-700">{header}</label>
@@ -1112,7 +1156,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, on
                                             );
                                         }
 
-                                        if (activeTab === 'tablas' && isOrden) {
+                                        if ((activeTab === 'tablas' || activeTab === 'figuras') && isOrden) {
                                             const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
                                             const ordColIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
                                             const currentSectionId = secColIdx !== -1 ? formData[secColIdx] : '';
