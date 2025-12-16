@@ -6,14 +6,84 @@ import { createSpreadsheet, fetchSpreadsheet } from './services/sheetsService';
 import { Button } from './components/Button';
 import { ShieldAlert, HelpCircle, PlayCircle, HelpCircle as HelpIcon, LogOut, X } from 'lucide-react';
 
+const MASTER_SPREADSHEET_ID = '1zKKvxR_56Gk5ku4ZZ682hSpOgQQo3gC0xXOB_nta3Zg';
+
 const App: React.FC = () => {
   const [token, setToken] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [currentSpreadsheet, setCurrentSpreadsheet] = useState<Spreadsheet | null>(null);
+  const [dashboardDocuments, setDashboardDocuments] = useState<import('./components/Dashboard').DocumentCard[]>([]);
+  const [initialDocId, setInitialDocId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+
+  const normalize = (s: string) => (s || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const extractDocuments = (spreadsheet: Spreadsheet) => {
+    const docsSheet = spreadsheet.sheets.find(s => normalize(s.properties.title) === 'documentos') || spreadsheet.sheets[0];
+    const rowData = docsSheet?.data?.[0]?.rowData;
+    if (!rowData || rowData.length < 2) return [];
+
+    const headers = rowData[0]?.values?.map(c => c.formattedValue || c.userEnteredValue?.stringValue || '') || [];
+    const headerNorm = headers.map(h => normalize(h));
+
+    const idx = (candidates: string[]) => headerNorm.findIndex(h => candidates.includes(h));
+
+    const idIdx = idx(['id', 'documentoid']);
+    const titleIdx = idx(['titulo', 'título', 'nombre'].map(normalize));
+    const subtitleIdx = idx(['subtitulo', 'subtítulo'].map(normalize));
+    const authorIdx = idx(['autor']);
+    const dateIdx = idx(['fecha']);
+    const instIdx = idx(['institucion', 'institución'].map(normalize));
+    const unitIdx = idx(['unidad']);
+
+    return rowData.slice(1)
+      .map((row) => {
+        const get = (i: number) => {
+          if (i < 0) return '';
+          return row.values?.[i]?.formattedValue || row.values?.[i]?.userEnteredValue?.stringValue || '';
+        };
+        const id = get(idIdx);
+        if (!id) return null;
+        return {
+          id,
+          title: get(titleIdx),
+          subtitle: get(subtitleIdx),
+          author: get(authorIdx),
+          date: get(dateIdx),
+          institution: get(instIdx),
+          unit: get(unitIdx),
+        };
+      })
+      .filter((x): x is import('./components/Dashboard').DocumentCard => Boolean(x));
+  };
+
+  useEffect(() => {
+    const loadDashboardDocs = async () => {
+      if (!isAuthenticated) return;
+      if (currentView !== AppView.DASHBOARD) return;
+      if (!token) return;
+
+      setLoading(true);
+      setError(null);
+      try {
+        const spreadsheetIdToLoad = token === 'DEMO' ? 'demo-latex-gov' : MASTER_SPREADSHEET_ID;
+        const data = await fetchSpreadsheet(spreadsheetIdToLoad, token);
+        setDashboardDocuments(extractDocuments(data));
+      } catch (err: any) {
+        handleError(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadDashboardDocs();
+  }, [isAuthenticated, currentView, token]);
 
   // Load token from local storage on mount
   useEffect(() => {
@@ -89,9 +159,10 @@ const App: React.FC = () => {
     }
   };
 
-  const loadSpreadsheet = async (id: string) => {
+  const loadSpreadsheet = async (id: string, docId?: string) => {
     setLoading(true);
     setError(null);
+    setInitialDocId(docId);
     try {
       const data = await fetchSpreadsheet(id, token);
       setCurrentSpreadsheet(data);
@@ -252,14 +323,23 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main>
         {currentView === AppView.DASHBOARD ? (
-            <Dashboard onCreate={handleCreate} onOpen={loadSpreadsheet} onLogout={handleLogout} />
+            <Dashboard
+              onCreate={handleCreate}
+              onOpen={loadSpreadsheet}
+              onLogout={handleLogout}
+              documents={dashboardDocuments}
+            />
         ) : (
             currentSpreadsheet && (
             <SheetEditor 
                 spreadsheet={currentSpreadsheet} 
                 token={token}
+                initialDocId={initialDocId}
                 onRefresh={() => loadSpreadsheet(currentSpreadsheet.spreadsheetId)}
-                onBack={() => setCurrentView(AppView.DASHBOARD)}
+                onBack={() => {
+                  setInitialDocId(undefined);
+                  setCurrentView(AppView.DASHBOARD);
+                }}
             />
             )
         )}

@@ -1,17 +1,28 @@
 import React, { useState } from 'react';
-import { Plus, Eye, FileText, User, Calendar, Building, FileJson } from 'lucide-react';
+import { Plus, FileText, User, Calendar, Building } from 'lucide-react';
 import { Button } from './Button';
+
+export type DocumentCard = {
+    id: string;
+    title?: string;
+    subtitle?: string;
+    author?: string;
+    date?: string;
+    institution?: string;
+    unit?: string;
+};
 
 interface DashboardProps {
   onCreate: (title: string) => void;
-  onOpen: (id: string) => void;
+    onOpen: (spreadsheetId: string, docId?: string) => void;
   onLogout: () => void;
+    documents: DocumentCard[];
 }
 
 // Hardcoded ID provided by user
 const DEFAULT_SHEET_ID = '1zKKvxR_56Gk5ku4ZZ682hSpOgQQo3gC0xXOB_nta3Zg';
 
-export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout, documents }) => {
   const [inputSheetId, setInputSheetId] = useState('');
 
   return (
@@ -31,51 +42,65 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
 
       {/* Document Card List */}
       <div className="space-y-4">
-        
-        {/* Card 1 (Default Sheet) */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow">
-            {/* Icon / ID */}
-            <div className="flex-shrink-0">
-                <div className="w-12 h-16 bg-red-50 border border-red-100 rounded flex flex-col items-center justify-center text-[#691C32]">
-                    <FileText size={24} />
-                    <span className="text-[10px] font-bold mt-1">DOC</span>
-                </div>
-                <div className="text-center mt-2 text-xs font-bold text-gray-500">MASTER</div>
-            </div>
 
-            {/* Content */}
-            <div className="flex-1 space-y-3">
-                <div>
-                    <h2 className="text-xl font-bold text-gray-900 leading-tight">Template Maestro LaTeX (Dumentos LaTeX)</h2>
-                    <p className="text-gray-500 italic text-sm mt-1">Hoja de cálculo principal para la generación de documentos oficiales.</p>
-                </div>
+                {documents.length > 0 ? (
+                    documents.map((doc) => (
+                        <div key={doc.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow">
+                            {/* Icon / ID */}
+                            <div className="flex-shrink-0">
+                                <div className="w-12 h-16 bg-red-50 border border-red-100 rounded flex flex-col items-center justify-center text-[#691C32]">
+                                    <FileText size={24} />
+                                    <span className="text-[10px] font-bold mt-1">{doc.id}</span>
+                                </div>
+                                <div className="text-center mt-2 text-xs font-bold text-gray-500">DOCUMENTO</div>
+                            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                        <User size={14} className="text-[#13322B]" />
-                        <span>Administrador del Sistema</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Calendar size={14} className="text-[#13322B]" />
-                        <span>Actualizado Recientemente</span>
-                    </div>
-                    <div className="flex items-center gap-2 md:col-span-2">
-                        <Building size={14} className="text-[#13322B]" />
-                        <span>Unidad de Planeación y Transición Energética</span>
-                    </div>
-                </div>
+                            {/* Content */}
+                            <div className="flex-1 space-y-3">
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900 leading-tight">
+                                        {doc.title || `Documento ${doc.id}`}
+                                    </h2>
+                                    {doc.subtitle && (
+                                        <p className="text-gray-500 italic text-sm mt-1">{doc.subtitle}</p>
+                                    )}
+                                </div>
 
-                {/* Actions */}
-                <div className="flex flex-wrap gap-3 pt-2">
-                    <Button variant="burgundy" size="sm" onClick={() => onOpen(DEFAULT_SHEET_ID)}>
-                        <FileText size={14} className="mr-2"/> Editar Datos
-                    </Button>
-                    <Button variant="green" size="sm" onClick={() => onOpen('demo-latex-gov')}>
-                        <Eye size={14} className="mr-2"/> Ver Demo
-                    </Button>
-                </div>
-            </div>
-        </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 text-sm text-gray-600">
+                                    {doc.author && (
+                                        <div className="flex items-center gap-2">
+                                            <User size={14} className="text-[#13322B]" />
+                                            <span className="truncate">{doc.author}</span>
+                                        </div>
+                                    )}
+                                    {doc.date && (
+                                        <div className="flex items-center gap-2">
+                                            <Calendar size={14} className="text-[#13322B]" />
+                                            <span>{doc.date}</span>
+                                        </div>
+                                    )}
+                                    {(doc.institution || doc.unit) && (
+                                        <div className="flex items-center gap-2 md:col-span-2">
+                                            <Building size={14} className="text-[#13322B]" />
+                                            <span className="truncate">{[doc.institution, doc.unit].filter(Boolean).join(' · ')}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex flex-wrap gap-3 pt-2">
+                                    <Button variant="burgundy" size="sm" onClick={() => onOpen(DEFAULT_SHEET_ID, doc.id)}>
+                                        <FileText size={14} className="mr-2" /> Abrir
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    ))
+                ) : (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-500">
+                        No se encontraron documentos en la hoja "Documentos".
+                    </div>
+                )}
 
       </div>
 

@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Keep app font consistent with existing HTML font link */
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Custom Scrollbar for the grid (moved from index.html) */
+.sheet-grid::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.sheet-grid::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+.sheet-grid::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 5px;
+}
+
+.sheet-grid::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
