@@ -21,6 +21,7 @@ const DEBUG = true;
 var G_FIG_MAP = {};
 var G_TAB_MAP = {};
 var G_ID_WARNINGS = [];
+var G_REFERENCED_IDS = { figuras: {}, tablas: {} };
 
 /**
  * Crea el menú en la interfaz de Google Sheets
@@ -182,6 +183,14 @@ function generarLatex() {
             G_ID_WARNINGS.forEach(w => log(`⚠️ ${w}`));
         }
 
+        // Reporte de elementos no insertados por falta de referencia
+        const noReferenciadasFig = Object.keys(G_FIG_MAP || {}).filter(id => !G_REFERENCED_IDS.figuras[id]);
+        const noReferenciadasTab = Object.keys(G_TAB_MAP || {}).filter(id => !G_REFERENCED_IDS.tablas[id]);
+        log(`📊 Figuras insertadas: ${Object.keys(G_REFERENCED_IDS.figuras).length}`);
+        log(`📊 Tablas insertadas: ${Object.keys(G_REFERENCED_IDS.tablas).length}`);
+        if (noReferenciadasFig.length) log(`ℹ️ Figuras no insertadas (sin referencia): ${noReferenciadasFig.join(', ')}`);
+        if (noReferenciadasTab.length) log(`ℹ️ Tablas no insertadas (sin referencia): ${noReferenciadasTab.join(', ')}`);
+
         const resumenSalida = salida
             ? `\n\n📁 Carpeta: ${salida.carpetaNombre}\n${salida.carpetaUrl}` +
             `\n\n📄 Archivo: ${salida.texNombre}\n${salida.texUrl}` +
@@ -240,6 +249,19 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
                 seccion: sec
             };
         }
+    });
+
+    // Índices por número de orden (globales, ignorando SeccionOrden)
+    const FIG_ORDER_MAP = {};
+    (figuras || []).forEach(f => {
+        const ord = (f['Fig.'] || f['OrdenFigura'] || '').toString().trim();
+        if (ord) FIG_ORDER_MAP[ord] = f;
+    });
+
+    const TAB_ORDER_MAP = {};
+    (tablas || []).forEach(t => {
+        const ord = (t['Orden'] || t['OrdenTabla'] || '').toString().trim();
+        if (ord) TAB_ORDER_MAP[ord] = t;
     });
 
     // --- Metadatos del documento (requerido para axessibility) ---
@@ -355,7 +377,7 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     }
 
     // --- Secciones ---
-    const resultado = procesarSecciones(secciones, figurasMap, tablasMap, ss);
+    const resultado = procesarSecciones(secciones, FIG_ORDER_MAP, TAB_ORDER_MAP, ss);
     tex += resultado.contenido;
 
     // --- Glosario ---
@@ -396,7 +418,7 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
 /**
  * Procesa todas las secciones del documento
  */
-function procesarSecciones(secciones, figurasMap, tablasMap, ss) {
+function procesarSecciones(secciones, figurasOrderMap, tablasOrderMap, ss) {
     let contenido = '';
     let directorio = '';
     let contraportada = '';
@@ -443,16 +465,54 @@ function procesarSecciones(secciones, figurasMap, tablasMap, ss) {
         contenido += generarComandoSeccion(nivel, titulo, anexosIniciados);
         contenido += procesarContenido(contenidoRaw);
 
-        // Insertar figuras y tablas de esta sección
-        if (figurasMap[ordenSeccion]) {
-            figurasMap[ordenSeccion].forEach(fig => {
-                contenido += generarFigura(fig);
-            });
-        }
-
-        if (tablasMap[ordenSeccion]) {
-            tablasMap[ordenSeccion].forEach(tabla => {
-                contenido += generarTabla(tabla, ss);
+        // Inserción basada exclusivamente en referencias explícitas en el contenido
+        const refs = extraerReferenciasDesdeContenido(contenidoRaw);
+        if (refs.length > 0) {
+            refs.forEach(ref => {
+                if (ref.tipo === 'figura') {
+                    let fig = null;
+                    if (ref.id && G_FIG_MAP[ref.id]) {
+                        // Referencia por ID
+                        const metaId = G_FIG_MAP[ref.id];
+                        fig = figurasOrderMap[ref.orden] || null; // si también se indica orden
+                        if (!fig) {
+                            fig = { RutaArchivo: metaId.ruta, Caption: metaId.caption, Fuente: '', TextoAlternativo: metaId.caption, Ancho: '0.8', 'Fig.': '' };
+                        }
+                    }
+                    if (!fig && ref.orden && figurasOrderMap[ref.orden]) fig = figurasOrderMap[ref.orden];
+                    if (fig) {
+                        contenido += generarFigura(fig);
+                        const ordVal = (fig['Fig.'] || fig['OrdenFigura'] || '').toString().trim();
+                        const secVal = (fig['SeccionOrden'] || '').toString().trim();
+                        const derivedId = secVal ? `FIG-${secVal}-${ordVal}` : (ordVal ? `FIG-${ordVal}` : ref.id || `ORD:${ref.orden}`);
+                        const key = ref.id || derivedId || `ORD:${ref.orden}`;
+                        G_REFERENCED_IDS.figuras[key] = true;
+                        log(`   ↳ Figura insertada: ${key}`);
+                    } else {
+                        log(`   ⚠️ Referencia a figura no resuelta: ${ref.id || ref.orden}`);
+                    }
+                } else if (ref.tipo === 'tabla') {
+                    let tbl = null;
+                    if (ref.id && G_TAB_MAP[ref.id]) {
+                        const metaId = G_TAB_MAP[ref.id];
+                        tbl = tablasOrderMap[ref.orden] || null;
+                        if (!tbl) {
+                            tbl = { Titulo: metaId.title, Fuente: '', DatosCSV: metaId.rango, Orden: '' };
+                        }
+                    }
+                    if (!tbl && ref.orden && tablasOrderMap[ref.orden]) tbl = tablasOrderMap[ref.orden];
+                    if (tbl) {
+                        contenido += generarTabla(tbl, ss);
+                        const ordVal = (tbl['Orden'] || tbl['OrdenTabla'] || '').toString().trim();
+                        const secVal = (tbl['SeccionOrden'] || tbl['ID_Seccion'] || '').toString().trim();
+                        const derivedId = secVal ? `TBL-${secVal}-${ordVal}` : (ordVal ? `TBL-${ordVal}` : ref.id || `ORD:${ref.orden}`);
+                        const key = ref.id || derivedId || `ORD:${ref.orden}`;
+                        G_REFERENCED_IDS.tablas[key] = true;
+                        log(`   ↳ Tabla insertada: ${key}`);
+                    } else {
+                        log(`   ⚠️ Referencia a tabla no resuelta: ${ref.id || ref.orden}`);
+                    }
+                }
             });
         }
 
@@ -614,13 +674,13 @@ function procesarContenido(contenidoRaw) {
             // Procesar línea normal solo si no estamos en lista
             if (!enLista) {
                 if (lineaTrim.startsWith('[[tabla:')) {
-                    // Referencia a tabla inline (opcional, las tablas se insertan automáticamente)
+                    // Referencia a tabla inline
                     const match = lineaTrim.match(/\[\[tabla:(.+?)\]\]/);
                     if (match) {
                         resultado += `% Referencia a tabla: ${match[1]}\n`;
                     }
                 } else if (lineaTrim.startsWith('[[figura:')) {
-                    // Referencia a figura inline (opcional, las figuras se insertan automáticamente)
+                    // Referencia a figura inline
                     const match = lineaTrim.match(/\[\[figura:(.+?)\]\]/);
                     if (match) {
                         resultado += `% Referencia a figura: ${match[1]}\n`;
@@ -1098,6 +1158,42 @@ function normalizarSaltosLatex(str) {
 }
 
 /**
+ * Extrae referencias explícitas a tablas y figuras desde el texto crudo
+ * Reconoce: [[tabla:ID]], [[figura:ID]], "Tabla 12", "Figura 3", "Tabla No. 4"
+ * Devuelve en el orden de aparición
+ */
+function extraerReferenciasDesdeContenido(texto) {
+    const refs = [];
+    if (!texto) return refs;
+    const str = texto.toString();
+
+    // 1) [[tabla:ID]] y [[figura:ID]]
+    const regexTagTabla = /\[\[tabla:([^\]]+)\]\]/gi;
+    const regexTagFigura = /\[\[figura:([^\]]+)\]\]/gi;
+    let m;
+    while ((m = regexTagTabla.exec(str)) !== null) {
+        refs.push({ tipo: 'tabla', id: m[1].trim(), orden: '' });
+    }
+    while ((m = regexTagFigura.exec(str)) !== null) {
+        refs.push({ tipo: 'figura', id: m[1].trim(), orden: '' });
+    }
+
+    // 2) "Tabla 12", "Tabla No. 12", "Figura 3", con variaciones y diacríticos
+    const regexTablaNum = /(tabla)\s*(?:n\.?\s*o\.?\s*)?(?:numero\s*|n[uú]mero\s*)?(\d+)/gi;
+    const regexFiguraNum = /(figura)\s*(?:n\.?\s*o\.?\s*)?(?:numero\s*|n[uú]mero\s*)?(\d+)/gi;
+    let mt;
+    while ((mt = regexTablaNum.exec(str)) !== null) {
+        refs.push({ tipo: 'tabla', id: '', orden: mt[2].trim() });
+    }
+    let mf;
+    while ((mf = regexFiguraNum.exec(str)) !== null) {
+        refs.push({ tipo: 'figura', id: '', orden: mf[2].trim() });
+    }
+
+    return refs;
+}
+
+/**
  * FIX: Procesa texto con etiquetas completas - ORDEN LÓGICO CORREGIDO
  * Orden OBLIGATORIO: texto crudo → normalizar saltos → proteger → escapar → restaurar → validar
  * NUNCA escapa comandos LaTeX generados por el propio script
@@ -1368,8 +1464,8 @@ function crearMapaPorSeccion(elementos) {
  * Genera el código LaTeX para una figura
  */
 function generarFigura(figura) {
-    const rutaArchivo = figura['RutaArchivo'] || '';
-    const caption = figura['Caption'] || '';
+    const rutaArchivo = figura['RutaArchivo'] || figura['Ruta de Imagen'] || figura['RutaImagen'] || '';
+    const caption = figura['Caption'] || figura['Título/Descripción'] || figura['Titulo'] || figura['Descripción'] || figura['Descripcion'] || '';
     const fuente = figura['Fuente'] || '';
     const textoAlt = figura['TextoAlternativo'] || caption;
     const ancho = figura['Ancho'] || '0.8';
