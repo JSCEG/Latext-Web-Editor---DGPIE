@@ -1381,120 +1381,185 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 };
 
                                                 return (
-                                                    <div key={i} className={colSpan + " space-y-3"}>
+                                                    <div key={i} className={colSpan + " space-y-4"}>
                                                         <div className="flex items-start justify-between gap-4">
                                                             <div className="space-y-1">
                                                                 <label className="block text-sm font-medium text-gray-700">{header}</label>
                                                                 <p className="text-xs text-gray-500">
-                                                                    Inserta etiquetas con los botones (no las escribas a mano). Se valida en vivo y no se permite guardar si hay errores.
+                                                                    Editor estilo “Word”: usa la barra para insertar etiquetas con formato. Validación en vivo (errores bloquean guardar).
                                                                 </p>
                                                             </div>
-                                                            <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 whitespace-nowrap">
-                                                                {errorCount > 0 ? (
-                                                                    <span className="text-red-700 font-semibold">{errorCount} error(es)</span>
-                                                                ) : (
-                                                                    <span className="text-emerald-700 font-semibold">Sin errores</span>
-                                                                )}
-                                                                {warningCount > 0 ? <span className="ml-2 text-amber-700">{warningCount} warning(s)</span> : null}
+                                                            <div className="flex items-center gap-2 text-[11px]">
+                                                                <span className={clsx(
+                                                                    'inline-flex items-center gap-1 rounded-full px-2 py-1 border',
+                                                                    errorCount ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                                                )}>
+                                                                    <AlertCircle size={12} /> {errorCount ? `${errorCount} error(es)` : 'Sin errores'}
+                                                                </span>
+                                                                <span className={clsx(
+                                                                    'inline-flex items-center gap-1 rounded-full px-2 py-1 border',
+                                                                    warningCount ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-gray-100 text-gray-600 border-gray-200'
+                                                                )}>
+                                                                    <AlertTriangle size={12} /> {warningCount}
+                                                                </span>
                                                             </div>
                                                         </div>
 
-                                                        {/* Toolbar */}
-                                                        <div className="flex flex-col gap-3">
-                                                            <div className="flex flex-wrap gap-2 items-center">
-                                                                <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('nota', { placeholder: 'Nota...' })}>Nota</Button>
-                                                                <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('dorado', { placeholder: 'Texto...' })}>Dorado</Button>
-                                                                <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('guinda', { placeholder: 'Texto...' })}>Guinda</Button>
-                                                                <Button type="button" variant="outline" size="sm" onClick={() => {
-                                                                    const el = sectionContentTextareaRef.current;
-                                                                    const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
-                                                                    setEquationModal({ open: true, mode: 'math', title: 'Insertar math inline ([[math:...]])', value: sel || '' });
-                                                                }}>Math</Button>
+                                                        {/* Ribbon */}
+                                                        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                                                            <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex flex-wrap items-center gap-2">
+                                                                <span className="text-xs font-semibold text-gray-700">Insertar</span>
+                                                                <span className="text-[11px] text-gray-500">(envuelve selección o inserta plantilla)</span>
+                                                            </div>
+                                                            <div className="p-3 flex flex-col gap-3">
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('nota', { placeholder: 'Nota...' })}>
+                                                                        <FileText size={14} className="mr-2" /> Nota
+                                                                    </Button>
+                                                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('dorado', { placeholder: 'Texto...' })}>
+                                                                        <Type size={14} className="mr-2" /> Dorado
+                                                                    </Button>
+                                                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('guinda', { placeholder: 'Texto...' })}>
+                                                                        <Type size={14} className="mr-2" /> Guinda
+                                                                    </Button>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        onClick={() => {
+                                                                            const el = sectionContentTextareaRef.current;
+                                                                            const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
+                                                                            setEquationModal({ open: true, mode: 'math', title: 'Insertar math inline ([[math:...]])', value: sel || '' });
+                                                                        }}
+                                                                    >
+                                                                        <Grid size={14} className="mr-2" /> Math
+                                                                    </Button>
 
-                                                                <div className="w-px h-6 bg-gray-300 mx-1" />
+                                                                    <div className="w-px h-6 bg-gray-300 mx-1" />
 
-                                                                <select
-                                                                    className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
-                                                                    value=""
-                                                                    onChange={(e) => {
-                                                                        const v = e.target.value;
-                                                                        if (!v) return;
-                                                                        wrapInline('cita', { value: v });
-                                                                        e.currentTarget.value = '';
-                                                                    }}
-                                                                    title="Insertar cita"
-                                                                >
-                                                                    <option value="">Cita…</option>
-                                                                    {availableBibliographyKeys.map(k => (
-                                                                        <option key={k} value={k}>{k}</option>
-                                                                    ))}
-                                                                </select>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
+                                                                            <Book size={12} /> Cita
+                                                                        </div>
+                                                                        <select
+                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
+                                                                            value=""
+                                                                            onChange={(e) => {
+                                                                                const v = e.target.value;
+                                                                                if (!v) return;
+                                                                                wrapInline('cita', { value: v });
+                                                                                e.currentTarget.value = '';
+                                                                            }}
+                                                                            title="Insertar cita"
+                                                                        >
+                                                                            <option value="">Selecciona…</option>
+                                                                            {availableBibliographyKeys.map(k => (
+                                                                                <option key={k} value={k}>{k}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
 
-                                                                <select
-                                                                    className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
-                                                                    value=""
-                                                                    onChange={(e) => {
-                                                                        const v = e.target.value;
-                                                                        if (!v) return;
-                                                                        wrapInline('figura', { value: v });
-                                                                        e.currentTarget.value = '';
-                                                                    }}
-                                                                    title="Insertar referencia a figura"
-                                                                >
-                                                                    <option value="">Figura…</option>
-                                                                    {availableFigureIds.map(k => (
-                                                                        <option key={k} value={k}>{k}</option>
-                                                                    ))}
-                                                                </select>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
+                                                                            <Image size={12} /> Figura
+                                                                        </div>
+                                                                        <select
+                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
+                                                                            value=""
+                                                                            onChange={(e) => {
+                                                                                const v = e.target.value;
+                                                                                if (!v) return;
+                                                                                wrapInline('figura', { value: v });
+                                                                                e.currentTarget.value = '';
+                                                                            }}
+                                                                            title="Insertar referencia a figura"
+                                                                        >
+                                                                            <option value="">Selecciona…</option>
+                                                                            {availableFigureIds.map(k => (
+                                                                                <option key={k} value={k}>{k}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
 
-                                                                <select
-                                                                    className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
-                                                                    value=""
-                                                                    onChange={(e) => {
-                                                                        const v = e.target.value;
-                                                                        if (!v) return;
-                                                                        wrapInline('tabla', { value: v });
-                                                                        e.currentTarget.value = '';
-                                                                    }}
-                                                                    title="Insertar referencia a tabla"
-                                                                >
-                                                                    <option value="">Tabla…</option>
-                                                                    {availableTableIds.map(k => (
-                                                                        <option key={k} value={k}>{k}</option>
-                                                                    ))}
-                                                                </select>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
+                                                                            <Table size={12} /> Tabla
+                                                                        </div>
+                                                                        <select
+                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
+                                                                            value=""
+                                                                            onChange={(e) => {
+                                                                                const v = e.target.value;
+                                                                                if (!v) return;
+                                                                                wrapInline('tabla', { value: v });
+                                                                                e.currentTarget.value = '';
+                                                                            }}
+                                                                            title="Insertar referencia a tabla"
+                                                                        >
+                                                                            <option value="">Selecciona…</option>
+                                                                            {availableTableIds.map(k => (
+                                                                                <option key={k} value={k}>{k}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
 
-                                                                <div className="w-px h-6 bg-gray-300 mx-1" />
+                                                                    <div className="w-px h-6 bg-gray-300 mx-1" />
 
-                                                                <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('caja', 'Título opcional')}>Caja</Button>
-                                                                <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('alerta', 'Título')}>Alerta</Button>
-                                                                <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('info', 'Título')}>Info</Button>
-                                                                <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('destacado')}>Destacado</Button>
-
-                                                                <Button type="button" variant="ghost" size="sm" onClick={() => {
-                                                                    const el = sectionContentTextareaRef.current;
-                                                                    const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
-                                                                    setEquationModal({ open: true, mode: 'ecuacion', title: 'Insertar ecuación display ([[ecuacion:...]] multi-línea)', value: sel || '' });
-                                                                }}>Ecuación</Button>
+                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
+                                                                            <Grid size={12} /> Bloques
+                                                                        </div>
+                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('caja', 'Título opcional')}>
+                                                                            <Grid size={14} className="mr-2" /> Caja
+                                                                        </Button>
+                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('alerta', 'Título')}>
+                                                                            <AlertTriangle size={14} className="mr-2" /> Alerta
+                                                                        </Button>
+                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('info', 'Título')}>
+                                                                            <Info size={14} className="mr-2" /> Info
+                                                                        </Button>
+                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('destacado')}>
+                                                                            <Lightbulb size={14} className="mr-2" /> Destacado
+                                                                        </Button>
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            onClick={() => {
+                                                                                const el = sectionContentTextareaRef.current;
+                                                                                const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
+                                                                                setEquationModal({ open: true, mode: 'ecuacion', title: 'Insertar ecuación display ([[ecuacion:...]] multi-línea)', value: sel || '' });
+                                                                            }}
+                                                                        >
+                                                                            <Grid size={14} className="mr-2" /> Ecuación
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         </div>
 
-                                                        {/* Editor */}
-                                                        <textarea
-                                                            ref={sectionContentTextareaRef}
-                                                            className={clsx(
-                                                                'w-full min-h-[360px] px-4 py-3 border rounded-md text-sm leading-relaxed focus:outline-none focus:ring-1 bg-white text-gray-900',
-                                                                errorCount > 0 ? 'border-red-300 focus:ring-red-400' : 'border-gray-300 focus:ring-[#691C32]'
-                                                            )}
-                                                            value={currentValue}
-                                                            onChange={(e) => {
-                                                                const newData = [...formData];
-                                                                newData[i] = e.target.value;
-                                                                setFormData(newData);
-                                                                lintNow(e.target.value);
-                                                            }}
-                                                            placeholder="Escribe el contenido aquí…"
-                                                        />
+                                                        {/* Word-like page */}
+                                                        <div className="bg-[#F5F5F5] border border-gray-200 rounded-lg p-4">
+                                                            <div className="mx-auto bg-white border border-gray-200 shadow-sm rounded-sm max-w-[860px]">
+                                                                <div className="px-10 py-10">
+                                                                    <textarea
+                                                                        ref={sectionContentTextareaRef}
+                                                                        className={clsx(
+                                                                            'w-full min-h-[520px] resize-y text-sm leading-relaxed focus:outline-none bg-transparent text-gray-900',
+                                                                            errorCount > 0 ? 'outline outline-1 outline-red-300' : 'outline outline-1 outline-transparent'
+                                                                        )}
+                                                                        value={currentValue}
+                                                                        onChange={(e) => {
+                                                                            const newData = [...formData];
+                                                                            newData[i] = e.target.value;
+                                                                            setFormData(newData);
+                                                                            lintNow(e.target.value);
+                                                                        }}
+                                                                        placeholder="Escribe el contenido aquí…"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
 
                                                         <LintPanel
                                                             issues={issues}
