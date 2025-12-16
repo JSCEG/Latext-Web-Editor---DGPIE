@@ -1143,6 +1143,28 @@
 }
 
 % ============================================================================
+% REDEFINICIÓN DEL ÍNDICE PRINCIPAL (CENTRADO)
+% ============================================================================
+\makeatletter
+% Redefinir \tableofcontents para centrar el título
+\renewcommand\tableofcontents{%
+  \if@twocolumn
+    \@restonecoltrue\onecolumn
+  \else
+    \@restonecolfalse
+  \fi
+  \clearpage
+  \begin{center}
+    {\Large\patriafont\bfseries\color{gobmxGuinda}\contentsname}\\[1cm]
+  \end{center}
+  \@mkboth{\MakeUppercase\contentsname}%
+           {\MakeUppercase\contentsname}%
+  \@starttoc{toc}%
+  \if@restonecol\twocolumn\fi
+}
+\makeatother
+
+% ============================================================================
 % ÍNDICES PERSONALIZADOS (Tablas y Figuras)
 % ============================================================================
 \makeatletter

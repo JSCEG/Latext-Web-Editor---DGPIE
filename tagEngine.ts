@@ -62,16 +62,18 @@ export function applyInlineTag(
     selectionEnd: number,
     tagName: string,
     options?: {
-        value?: string; // for cita/figura/tabla
+        value?: string; // for cita/figura/tabla; also used as explicit payload for other inline tags (e.g. math modal)
         placeholder?: string;
     }
 ): ApplyResult {
     const safeText = text ?? '';
     const start = clamp(selectionStart ?? 0, 0, safeText.length);
     const end = clamp(selectionEnd ?? start, 0, safeText.length);
+    const from = Math.min(start, end);
+    const to = Math.max(start, end);
     const name = normalizeTagName(tagName);
 
-    const selected = safeText.slice(Math.min(start, end), Math.max(start, end));
+    const selected = safeText.slice(from, to);
     const hasSelection = selected.length > 0;
 
     const placeholder = options?.placeholder ?? '...';
@@ -83,11 +85,11 @@ export function applyInlineTag(
     if (isArgOnly) {
         const arg = (explicitValue || (hasSelection ? selected : '') || placeholder).toString();
         const insert = `[[${name}:${arg}]]`;
-        const newText = safeText.slice(0, start) + insert + safeText.slice(end);
+        const newText = safeText.slice(0, from) + insert + safeText.slice(to);
 
         // If we inserted placeholder or selection, place cursor to edit inside the arg.
-        const argStart = start + (`[[${name}:`).length;
-        const argEnd = start + (`[[${name}:`).length + arg.length;
+        const argStart = from + (`[[${name}:`).length;
+        const argEnd = from + (`[[${name}:`).length + arg.length;
         return {
             text: newText,
             selectionStart: argStart,
@@ -96,19 +98,13 @@ export function applyInlineTag(
     }
 
     // Wrap tags
-    if (hasSelection) {
-        const insert = `[[${name}:${selected}]]`;
-        const newText = safeText.slice(0, start) + insert + safeText.slice(end);
-        const innerStart = start + (`[[${name}:`).length;
-        const innerEnd = innerStart + selected.length;
-        return { text: newText, selectionStart: innerStart, selectionEnd: innerEnd };
-    }
-
-    const inner = placeholder;
-    const insert = `[[${name}:${inner}]]`;
-    const newText = safeText.slice(0, start) + insert + safeText.slice(end);
-    const innerStart = start + (`[[${name}:`).length;
-    const innerEnd = innerStart + inner.length;
+    // If an explicit value is provided (e.g. math modal), use it as the payload.
+    // Otherwise, wrap the selection (if any) or insert a placeholder.
+    const payload = (explicitValue || (hasSelection ? selected : '') || placeholder).toString();
+    const insert = `[[${name}:${payload}]]`;
+    const newText = safeText.slice(0, from) + insert + safeText.slice(to);
+    const innerStart = from + (`[[${name}:`).length;
+    const innerEnd = innerStart + payload.length;
     return { text: newText, selectionStart: innerStart, selectionEnd: innerEnd };
 }
 
@@ -351,6 +347,16 @@ export function lintTags(text: string, context?: LintContext): TagIssue[] {
             }
             if (id && tableIds.size > 0 && !tableIds.has(id)) {
                 issues.push({ type: 'warning', message: `La tabla "${id}" no existe en Tablas del documento.`, from: t.from, to: t.to });
+            }
+        }
+
+        if (t.name === 'math') {
+            const content = t.payload;
+            if (!content.trim()) {
+                issues.push({ type: 'hint', message: '[[math:...]] está vacío.', from: t.from, to: t.to });
+            }
+            if (content.includes('\n')) {
+                issues.push({ type: 'warning', message: '[[math:...]] es inline; evita saltos de línea (usa [[ecuacion:...]]).', from: t.from, to: t.to });
             }
         }
 

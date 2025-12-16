@@ -10,10 +10,17 @@
  *    - Bibliografia: DocumentoID, Clave, Tipo, Autor, Titulo, Anio, Editorial, Url
  */
 
+// Carpeta destino en Drive (preferida). Ejemplo de URL:
+// https://drive.google.com/drive/folders/<ESTE_ES_EL_ID>
 const CARPETA_SALIDA_ID = '1NnO4B8EJCx6VNrmDxWwwW3KsHCTID_c2';
 
 // FIX: Flag de debug para optimizar logging en producción
-const DEBUG = false;
+const DEBUG = true;
+
+// Mapas globales para referencias por ID
+var G_FIG_MAP = {};
+var G_TAB_MAP = {};
+var G_ID_WARNINGS = [];
 
 /**
  * Crea el menú en la interfaz de Google Sheets
@@ -61,8 +68,12 @@ let logMensajes = [];
 
 function log(mensaje) {
     console.log(mensaje);
-    // FIX: Solo acumular logs en modo debug para evitar timeout
-    if (DEBUG) {
+    // Acumular logs útiles para el usuario.
+    // Nota: Aunque DEBUG esté apagado, conviene mostrar ✅/⚠️/❌ para diagnóstico.
+    const esImportante =
+        mensaje &&
+        (mensaje.startsWith('✅') || mensaje.startsWith('⚠️') || mensaje.startsWith('❌'));
+    if (DEBUG || esImportante) {
         logMensajes.push(mensaje);
     }
 }
@@ -97,7 +108,14 @@ function generarLatex() {
     try {
         log('🚀 Iniciando generación de LaTeX...');
 
-        // 1. Obtener datos de la hoja "Documentos"
+        // 1. Verificar que estamos en la hoja "Documentos"
+        const hojaActiva = ss.getActiveSheet();
+        if (hojaActiva.getName() !== 'Documentos') {
+            ui.alert('⚠️ Por favor, selecciona una celda en la hoja "Documentos" antes de generar el archivo.');
+            return;
+        }
+
+        // 2. Obtener datos de la hoja "Documentos"
         const hojaDocs = ss.getSheetByName('Documentos');
         if (!hojaDocs) {
             ui.alert('❌ Error: No se encuentra la hoja "Documentos".');
@@ -113,15 +131,20 @@ function generarLatex() {
         const datosDoc = obtenerDatosFila(hojaDocs, filaActiva);
         const docId = datosDoc['ID'];
 
-        if (!docId) {
-            ui.alert('❌ Error: La fila seleccionada no tiene un ID de documento.');
+        log(`🔍 Fila activa: ${filaActiva}`);
+        log(`📋 Datos obtenidos: ${JSON.stringify(datosDoc)}`);
+        log(`🆔 ID encontrado: "${docId}" (tipo: ${typeof docId})`);
+
+        if (!docId || docId.toString().trim() === '') {
+            ui.alert('❌ Error: La fila seleccionada no tiene un ID de documento válido.');
+            log('❌ ID vacío o inválido');
             return;
         }
 
         log(`📄 Procesando documento ID: ${docId}`);
         log(`📝 Título: ${datosDoc['Titulo']}`);
 
-        // 2. Leer todas las hojas relacionadas
+        // 3. Leer todas las hojas relacionadas
         const secciones = obtenerRegistros(ss, 'Secciones', docId, 'DocumentoID');
         const bibliografia = obtenerRegistros(ss, 'Bibliografia', docId, 'DocumentoID');
         const figuras = obtenerRegistros(ss, 'Figuras', docId, 'DocumentoID');
@@ -147,13 +170,29 @@ function generarLatex() {
             return oa - ob;
         });
 
-        // 3. Construir el contenido LaTeX
+        // 4. Construir el contenido LaTeX
         const tex = construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario, ss);
 
-        // 4. Guardar archivos en Drive
-        guardarArchivos(datosDoc, tex, bibliografia);
+        // 5. Guardar archivos en Drive
+        const salida = guardarArchivos(datosDoc, tex, bibliografia);
 
-        ui.alert('✅ ¡Éxito!', `Archivos generados correctamente.\n\n${logMensajes.join('\n')}`, ui.ButtonSet.OK);
+        // Advertencias de referencias rotas
+        if (G_ID_WARNINGS && G_ID_WARNINGS.length) {
+            log(`⚠️ Referencias no resueltas: ${G_ID_WARNINGS.length}`);
+            G_ID_WARNINGS.forEach(w => log(`⚠️ ${w}`));
+        }
+
+        const resumenSalida = salida
+            ? `\n\n📁 Carpeta: ${salida.carpetaNombre}\n${salida.carpetaUrl}` +
+            `\n\n📄 Archivo: ${salida.texNombre}\n${salida.texUrl}` +
+            (salida.bibUrl ? `\n\n📚 Bibliografía:\n${salida.bibUrl}` : '')
+            : '';
+
+        ui.alert(
+            '✅ ¡Éxito!',
+            `Archivos generados correctamente.${resumenSalida}\n\n${logMensajes.join('\n')}`,
+            ui.ButtonSet.OK
+        );
 
     } catch (e) {
         ui.alert('❌ Error', `${e.toString()}\n\nStack: ${e.stack}`, ui.ButtonSet.OK);
@@ -171,6 +210,37 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     // Crear mapas para acceso rápido
     const figurasMap = crearMapaPorSeccion(figuras);
     const tablasMap = crearMapaPorSeccion(tablas);
+
+    // Construir mapas ID->metadatos para hipervínculos y validación
+    G_FIG_MAP = {};
+    (figuras || []).forEach(f => {
+        const sec = (f['SeccionOrden'] || '').toString();
+        const ord = (f['Fig.'] || f['OrdenFigura'] || '').toString();
+        const id = (sec && ord) ? `FIG-${sec}-${ord}` : (ord ? `FIG-${ord}` : '');
+        if (id) {
+            G_FIG_MAP[id] = {
+                id: id,
+                caption: (f['Título/Descripción'] || f['Titulo'] || '').toString(),
+                ruta: (f['Ruta de Imagen'] || f['RutaArchivo'] || '').toString(),
+                seccion: sec
+            };
+        }
+    });
+
+    G_TAB_MAP = {};
+    (tablas || []).forEach(t => {
+        const sec = (t['SeccionOrden'] || t['ID_Seccion'] || '').toString();
+        const ord = (t['Orden'] || t['OrdenTabla'] || '').toString();
+        const id = (sec && ord) ? `TBL-${sec}-${ord}` : (ord ? `TBL-${ord}` : '');
+        if (id) {
+            G_TAB_MAP[id] = {
+                id: id,
+                title: (t['Título'] || t['Titulo'] || '').toString(),
+                rango: (t['Datos CSV'] || t['DatosCSV'] || '').toString(),
+                seccion: sec
+            };
+        }
+    });
 
     // --- Metadatos del documento (requerido para axessibility) ---
     tex += `\\DocumentMetadata{\n`;
@@ -236,26 +306,52 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
         tex += `\\listatablas\n\\newpage\n\n`;
     }
 
+    // --- Agradecimientos ---
+    if (datosDoc['Agradecimientos'] && datosDoc['Agradecimientos'].toString().trim()) {
+        tex += `\\clearpage\n`;
+        tex += `\\begin{center}\n`;
+        tex += `{\\Large\\patriafont\\bfseries\\color{gobmxGuinda}Agradecimientos}\\\\[1cm]\n`;
+        tex += `\\end{center}\n\n`;
+        tex += `${procesarConEtiquetas(datosDoc['Agradecimientos'])}\n\n`;
+    }
+
+    // --- Presentación ---
+    // Nota: en Sheets puede venir como "Presentación" (con acento) según el encabezado.
+    const presentacionRaw = (datosDoc['Presentación'] !== undefined && datosDoc['Presentación'] !== null)
+        ? datosDoc['Presentación']
+        : datosDoc['Presentacion'];
+    if (presentacionRaw && presentacionRaw.toString().trim()) {
+        tex += `\\clearpage\n`;
+        tex += `\\begin{center}\n`;
+        tex += `{\\Large\\patriafont\\bfseries\\color{gobmxGuinda}Presentación}\\\\[1cm]\n`;
+        tex += `\\end{center}\n\n`;
+        tex += `${procesarConEtiquetas(presentacionRaw)}\n\n`;
+    }
+
     // --- Resumen Ejecutivo ---
-    if (datosDoc['ResumenEjecutivo']) {
-        tex += `\\begin{resumenejecutivo}\n`;
-        tex += `${procesarConEtiquetas(datosDoc['ResumenEjecutivo'])}\n`;
-        tex += `\\end{resumenejecutivo}\n\n`;
+    if (datosDoc['ResumenEjecutivo'] && datosDoc['ResumenEjecutivo'].toString().trim()) {
+        tex += `\\clearpage\n`;
+        tex += `\\begin{center}\n`;
+        tex += `{\\Large\\patriafont\\bfseries\\color{gobmxGuinda}Resumen Ejecutivo}\\\\[1cm]\n`;
+        tex += `\\end{center}\n\n`;
+        tex += `${procesarConEtiquetas(datosDoc['ResumenEjecutivo'])}\n\n`;
     }
 
     // --- Datos Clave ---
-    if (datosDoc['DatosClave']) {
-        tex += `\\begin{datosclave}\n`;
+    if (datosDoc['DatosClave'] && datosDoc['DatosClave'].toString().trim()) {
+        tex += `\\clearpage\n`;
+        tex += `\\begin{center}\n`;
+        tex += `{\\Large\\patriafont\\bfseries\\color{gobmxGuinda}Datos Clave}\\\\[1cm]\n`;
+        tex += `\\end{center}\n\n`;
         const textoDatos = datosDoc['DatosClave'].toString();
         const items = textoDatos.split(/[;\n]/);
-        tex += `  \\begin{itemize}\n`;
+        tex += `\\begin{itemize}\n`;
         items.forEach(item => {
             if (item.trim()) {
-                tex += `    \\item ${escaparLatex(item.trim())}\n`;
+                tex += `  \\item ${escaparLatex(item.trim())}\n`;
             }
         });
-        tex += `  \\end{itemize}\n`;
-        tex += `\\end{datosclave}\n\n`;
+        tex += `\\end{itemize}\n\n`;
     }
 
     // --- Secciones ---
@@ -624,19 +720,47 @@ function procesarContraportada(contenidoRaw) {
  * FIX: Guarda los archivos .tex y .bib en Drive (optimizado para evitar timeout)
  */
 function obtenerCarpetaSalida_() {
-    const props = PropertiesService.getScriptProperties();
-    const idConfigurado = (props.getProperty('CARPETA_SALIDA_ID') || CARPETA_SALIDA_ID || '').toString().trim();
+    const userProps = PropertiesService.getUserProperties();
 
-    if (idConfigurado) {
+    // IMPORTANTE:
+    // - Priorizamos el ID fijo (CARPETA_SALIDA_ID) para que siempre genere en la carpeta “en línea”.
+    // - Para colaboradores, usamos UserProperties (por usuario) para recordar un fallback sin afectar a otros.
+    const idFijo = (CARPETA_SALIDA_ID || '').toString().trim();
+    const idUser = (userProps.getProperty('CARPETA_SALIDA_ID') || '').toString().trim();
+
+    const candidatos = [];
+    if (idFijo) candidatos.push({ id: idFijo, fuente: 'CARPETA_SALIDA_ID (const)' });
+    if (idUser && idUser !== idFijo) candidatos.push({ id: idUser, fuente: 'UserProperties.CARPETA_SALIDA_ID' });
+
+    for (let i = 0; i < candidatos.length; i++) {
+        const c = candidatos[i];
         try {
-            const carpeta = DriveApp.getFolderById(idConfigurado);
-            // Forzar una lectura para validar acceso/permisos
+            const carpeta = DriveApp.getFolderById(c.id);
+            // Forzar lectura para validar acceso/permisos
+            carpeta.getName();
+            log(`✅ Carpeta de salida OK usando ${c.fuente}: ${carpeta.getName()} (ID: ${c.id})`);
+            return carpeta;
+        } catch (e) {
+            log(`⚠️ No se pudo acceder a carpeta (fuente: ${c.fuente}, ID: ${c.id}). ` +
+                `Asegura que la carpeta esté compartida con la cuenta que ejecuta el script. Detalle: ${e.toString()}`);
+        }
+    }
+
+    return obtenerCarpetaFallback_();
+}
+
+function obtenerCarpetaFallback_() {
+    const userProps = PropertiesService.getUserProperties();
+
+    // Si ya existe un fallback por-usuario, reusarlo.
+    const fallbackId = (userProps.getProperty('CARPETA_SALIDA_FALLBACK_ID') || '').toString().trim();
+    if (fallbackId) {
+        try {
+            const carpeta = DriveApp.getFolderById(fallbackId);
             carpeta.getName();
             return carpeta;
         } catch (e) {
-            log(`⚠️ No se pudo acceder a la carpeta de salida (ID: ${idConfigurado}). ` +
-                `Si compartiste el proyecto, es normal: el otro usuario no tiene permiso sobre TU carpeta. ` +
-                `Se usará una carpeta alternativa en 'Mi unidad'. Detalle: ${e.toString()}`);
+            // Si ya no existe/no hay acceso, se recrea abajo.
         }
     }
 
@@ -646,25 +770,43 @@ function obtenerCarpetaSalida_() {
     const existentes = root.getFoldersByName(nombreFallback);
     const carpetaFallback = existentes.hasNext() ? existentes.next() : root.createFolder(nombreFallback);
 
-    // Guardar para siguientes ejecuciones
-    props.setProperty('CARPETA_SALIDA_ID', carpetaFallback.getId());
-    log(`✅ Carpeta de salida configurada automáticamente: ${carpetaFallback.getName()} (ID: ${carpetaFallback.getId()})`);
+    // Guardar solo por-usuario: no afecta a otros colaboradores.
+    userProps.setProperty('CARPETA_SALIDA_FALLBACK_ID', carpetaFallback.getId());
+    log(`⚠️ Usando carpeta fallback en 'Mi unidad': ${carpetaFallback.getName()} (ID: ${carpetaFallback.getId()})`);
     return carpetaFallback;
 }
 
+function esAccesoDenegado_(e) {
+    const msg = (e && e.toString) ? e.toString() : String(e);
+    return /acceso denegado|access denied/i.test(msg);
+}
+
 function guardarArchivos(datosDoc, tex, bibliografia) {
-    const carpeta = obtenerCarpetaSalida_();
+    let carpeta = obtenerCarpetaSalida_();
     const nombreBase = datosDoc['DocumentoCorto'] || 'documento_generado';
 
+    const carpetaId = carpeta.getId();
+    const carpetaNombre = carpeta.getName();
+    const carpetaUrl = `https://drive.google.com/drive/folders/${carpetaId}`;
+    log(`📁 Guardando en carpeta: ${carpetaNombre} (ID: ${carpetaId})`);
+
     // FIX: Optimizar eliminación de archivos existentes
-    try {
+    const intentarGuardarEnCarpeta_ = (carpetaDestino) => {
+        const carpetaIdLocal = carpetaDestino.getId();
+        const carpetaNombreLocal = carpetaDestino.getName();
+        const carpetaUrlLocal = `https://drive.google.com/drive/folders/${carpetaIdLocal}`;
+        log(`📁 Guardando en carpeta: ${carpetaNombreLocal} (ID: ${carpetaIdLocal})`);
+
         // Guardar .tex (solo eliminar si existe)
-        const archivosTexExistentes = carpeta.getFilesByName(nombreBase + '.tex');
+        const texNombre = nombreBase + '.tex';
+        const archivosTexExistentes = carpetaDestino.getFilesByName(texNombre);
         if (archivosTexExistentes.hasNext()) {
             archivosTexExistentes.next().setTrashed(true);
         }
-        carpeta.createFile(nombreBase + '.tex', tex, 'text/plain');
-        log(`✅ Archivo ${nombreBase}.tex creado`);
+        const fileTex = carpetaDestino.createFile(texNombre, tex, MimeType.PLAIN_TEXT);
+        const texId = fileTex.getId();
+        const texUrl = fileTex.getUrl();
+        log(`✅ Archivo ${texNombre} creado (ID: ${texId})`);
 
         // Guardar .bib si hay referencias (optimizado)
         if (bibliografia.length > 0) {
@@ -684,14 +826,53 @@ function guardarArchivos(datosDoc, tex, bibliografia) {
 
             const bibContent = bibEntries.join('\n');
 
-            const archivosBibExistentes = carpeta.getFilesByName('referencias.bib');
+            const archivosBibExistentes = carpetaDestino.getFilesByName('referencias.bib');
             if (archivosBibExistentes.hasNext()) {
                 archivosBibExistentes.next().setTrashed(true);
             }
-            carpeta.createFile('referencias.bib', bibContent, 'text/plain');
-            log(`✅ Archivo referencias.bib creado con ${bibliografia.length} referencias`);
+            const fileBib = carpetaDestino.createFile('referencias.bib', bibContent, MimeType.PLAIN_TEXT);
+            log(`✅ Archivo referencias.bib creado con ${bibliografia.length} referencias (ID: ${fileBib.getId()})`);
+
+            return {
+                carpetaId: carpetaIdLocal,
+                carpetaNombre: carpetaNombreLocal,
+                carpetaUrl: carpetaUrlLocal,
+                texNombre,
+                texId,
+                texUrl,
+                bibId: fileBib.getId(),
+                bibUrl: fileBib.getUrl()
+            };
         }
+
+        return {
+            carpetaId: carpetaIdLocal,
+            carpetaNombre: carpetaNombreLocal,
+            carpetaUrl: carpetaUrlLocal,
+            texNombre,
+            texId,
+            texUrl,
+            bibId: '',
+            bibUrl: ''
+        };
+    };
+
+    try {
+        return intentarGuardarEnCarpeta_(carpeta);
     } catch (e) {
+        if (esAccesoDenegado_(e)) {
+            // Caso típico: el colaborador tiene acceso al Sheet pero NO permisos de edición en la carpeta.
+            log(
+                `⚠️ Acceso denegado al escribir en la carpeta de salida. ` +
+                `Esto pasa si el usuario no tiene permiso de EDITOR en esa carpeta de Drive. ` +
+                `Se guardará en una carpeta fallback en su 'Mi unidad'. Detalle: ${e.toString()}`
+            );
+            carpeta = obtenerCarpetaFallback_();
+            // Recordar por-usuario (no global) para evitar errores repetidos.
+            PropertiesService.getUserProperties().setProperty('CARPETA_SALIDA_ID', carpeta.getId());
+            return intentarGuardarEnCarpeta_(carpeta);
+        }
+
         log(`❌ Error al guardar archivos: ${e.toString()}`);
         throw e;
     }
@@ -975,6 +1156,40 @@ function procesarConEtiquetas(texto) {
         return `ZCITEPOLDER${citas.length - 1}Z`;
     });
 
+    // Referencias a FIGURAS por ID -> hyperref con título
+    const figurasRefs = [];
+    str = str.replace(/\[\[figura:([\s\S]*?)\]\]/g, function (match, contenido) {
+        const raw = contenido.toString().trim();
+        const meta = G_FIG_MAP && G_FIG_MAP[raw];
+        if (meta) {
+            const texto = `\\hyperref[fig:${raw}]{Figura ${raw} \\textemdash{} ${escaparLatex(meta.caption || '')}}`;
+            figurasRefs.push(texto);
+            return `ZFIGPLACEHOLDER${figurasRefs.length - 1}Z`;
+        } else {
+            G_ID_WARNINGS.push(`Referencia a figura no encontrada: ${raw}`);
+            const texto = `\\textbf{Figura ${raw}}`;
+            figurasRefs.push(texto);
+            return `ZFIGPLACEHOLDER${figurasRefs.length - 1}Z`;
+        }
+    });
+
+    // Referencias a TABLAS por ID -> hyperref con título
+    const tablasRefs = [];
+    str = str.replace(/\[\[tabla:([\s\S]*?)\]\]/g, function (match, contenido) {
+        const raw = contenido.toString().trim();
+        const meta = G_TAB_MAP && G_TAB_MAP[raw];
+        if (meta) {
+            const texto = `\\hyperref[tab:${raw}]{Tabla ${raw} \\textemdash{} ${escaparLatex(meta.title || '')}}`;
+            tablasRefs.push(texto);
+            return `ZTABPLACEHOLDER${tablasRefs.length - 1}Z`;
+        } else {
+            G_ID_WARNINGS.push(`Referencia a tabla no encontrada: ${raw}`);
+            const texto = `\\textbf{Tabla ${raw}}`;
+            tablasRefs.push(texto);
+            return `ZTABPLACEHOLDER${tablasRefs.length - 1}Z`;
+        }
+    });
+
     // FIX: PASO 4 - Extraer y proteger RECUADROS MULTI-LÍNEA
     const recuadros = [];
     str = str.replace(/\[\[recuadro:([^\]]*)\]\]([\s\S]*?)\[\[\/recuadro\]\]/g, function (match, titulo, contenido) {
@@ -1029,6 +1244,16 @@ function procesarConEtiquetas(texto) {
     // Restaurar etiquetas
     str = str.replace(/ZETIQUETAPLACEHOLDER(\d+)Z/g, function (match, index) {
         return etiquetas[parseInt(index)];
+    });
+
+    // Restaurar referencias de figuras
+    str = str.replace(/ZFIGPLACEHOLDER(\d+)Z/g, function (match, index) {
+        return figurasRefs[parseInt(index)];
+    });
+
+    // Restaurar referencias de tablas
+    str = str.replace(/ZTABPLACEHOLDER(\d+)Z/g, function (match, index) {
+        return tablasRefs[parseInt(index)];
     });
 
     // Restaurar citas
@@ -1148,6 +1373,9 @@ function generarFigura(figura) {
     const fuente = figura['Fuente'] || '';
     const textoAlt = figura['TextoAlternativo'] || caption;
     const ancho = figura['Ancho'] || '0.8';
+    const sec = (figura['SeccionOrden'] || '').toString();
+    const ord = (figura['Fig.'] || figura['OrdenFigura'] || '').toString();
+    const id = (sec && ord) ? `FIG-${sec}-${ord}` : (ord ? `FIG-${ord}` : '');
 
     log(`  🖼️  Figura detectada: ${previewTexto(caption, 40)}...`);
 
@@ -1174,8 +1402,9 @@ function generarFigura(figura) {
 
     // Caption va después de la imagen (abajo, alineado a la izquierda por configuración del cls)
     if (caption) {
-        tex += `  \\caption{${escaparLatex(caption)}}\n`;
-        tex += `  \\label{fig:${generarLabel(caption)}}\n`;
+        const capTxt = escaparLatex(caption);
+        tex += `  \\caption{${capTxt}}\n`;
+        tex += `  \\label{fig:${id || generarLabel(caption)}}\n`;
     }
 
     tex += `\\end{figure}\n`;
@@ -1197,6 +1426,9 @@ function generarTabla(tabla, ss) {
     const titulo = tabla['Titulo'] || '';
     const fuente = tabla['Fuente'] || '';
     const datosRef = tabla['DatosCSV'] || '';
+    const sec = (tabla['SeccionOrden'] || tabla['ID_Seccion'] || '').toString();
+    const ord = (tabla['Orden'] || tabla['OrdenTabla'] || '').toString();
+    const id = (sec && ord) ? `TBL-${sec}-${ord}` : (ord ? `TBL-${ord}` : '');
 
     log(`  📊 Tabla detectada: ${previewTexto(titulo, 40)}...`);
 
@@ -1243,7 +1475,7 @@ function generarTabla(tabla, ss) {
             if (hojaDatos) {
                 const datosTabla = hojaDatos.getRange(rango).getValues();
                 log(`    ✅ Datos leídos: ${datosTabla.length} filas`);
-                const resultado = procesarDatosArray(datosTabla, titulo);
+                const resultado = procesarDatosArray(datosTabla, titulo, false, id);
                 esLarga = resultado.tipo === 'longtable';
                 if (esLarga) {
                     // Para tablas largas: usar tabladoradoLargo (sin caption, va en longtable)
@@ -1252,8 +1484,9 @@ function generarTabla(tabla, ss) {
                 } else {
                     // FIX: Para tablas cortas: usar tabladoradoCorto (mismo estilo que longtable)
                     texInicio = `\\begin{tabladoradoCorto}\n`;
-                    texInicio += `  \\caption{${escaparLatex(titulo)}}\n`;
-                    texInicio += `  \\label{tab:${generarLabel(titulo)}}\n`;
+                    const capTxt = escaparLatex(titulo);
+                    texInicio += `  \\caption{${capTxt}}\n`;
+                    texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
                     texFin = `\\end{tabladoradoCorto}\n`;
                 }
                 texInicio += resultado.contenido;
@@ -1280,7 +1513,8 @@ function generarTabla(tabla, ss) {
 
     if (!texInicio) {
         // FIX: Fallback: usar tabladoradoCorto para tablas simples (estilo consistente)
-        texInicio = `\\begin{tabladoradoCorto}\n  \\caption{${escaparLatex(titulo)}}\n  \\label{tab:${generarLabel(titulo)}}\n`;
+        const capTxt = escaparLatex(titulo);
+        texInicio = `\\begin{tabladoradoCorto}\n  \\caption{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n`;
         texFin = `\\end{tabladoradoCorto}\n`;
     }
     if (tex === '') {
@@ -1301,7 +1535,7 @@ function generarTabla(tabla, ss) {
  * Procesa un array 2D de datos (desde Google Sheets) y genera tabla LaTeX
  * Si la tabla tiene muchas columnas, la divide automáticamente
  */
-function procesarDatosArray(datos, tituloTabla, forzarLongtable = false) {
+function procesarDatosArray(datos, tituloTabla, forzarLongtable = false, forcedId) {
     if (!datos || datos.length === 0) {
         return { tipo: 'tabular', contenido: `  \\begin{tabular}{lc}\n    % Sin datos\n  \\end{tabular}\n` };
     }
@@ -1322,19 +1556,19 @@ function procesarDatosArray(datos, tituloTabla, forzarLongtable = false) {
 
         // Para tablas medianas o si se fuerza longtable
         if (numFilas > MAX_FILAS_POR_PARTE) {
-            return { tipo: 'longtable', contenido: dividirTablaPorFilas(datos, MAX_FILAS_POR_PARTE, tituloTabla) };
+            return { tipo: 'longtable', contenido: dividirTablaPorFilas(datos, MAX_FILAS_POR_PARTE, tituloTabla, forcedId) };
         }
-        return { tipo: 'longtable', contenido: generarTablaSimple(datos, tituloTabla) };
+        return { tipo: 'longtable', contenido: generarTablaSimple(datos, tituloTabla, forcedId) };
     }
 
     // Dividir tabla en múltiples partes (siempre longtable)
-    return { tipo: 'longtable', contenido: dividirTabla(datos, MAX_COLS_POR_TABLA, tituloTabla) };
+    return { tipo: 'longtable', contenido: dividirTabla(datos, MAX_COLS_POR_TABLA, tituloTabla, forcedId) };
 }
 
 /**
  * Genera una tabla simple sin división
  */
-function generarTablaSimple(datos, tituloTabla) {
+function generarTablaSimple(datos, tituloTabla, forcedId) {
     const numCols = datos[0].length;
 
     // Calcular ancho de columnas para longtable
@@ -1345,7 +1579,9 @@ function generarTablaSimple(datos, tituloTabla) {
     // Usar longtable para permitir saltos de página automáticos
     let tex = `  \\begin{longtable}{${especCols}}\n`;
     if (tituloTabla) {
-        tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+        const capTxt = escaparLatex(tituloTabla);
+        const idTxt = forcedId ? ` \\textit{(${forcedId})}` : '';
+        tex += `    \\caption{${capTxt}${idTxt}}\\label{tab:${forcedId || generarLabel(tituloTabla)}}\\\\\n`;
     }
 
     // Encabezado para la primera página con fondo dorado
@@ -1412,7 +1648,7 @@ function generarTablaCompacta(datos) {
  * Divide una tabla grande en múltiples partes (por columnas)
  * Cada parte usa longtable para permitir saltos de página automáticos
  */
-function dividirTabla(datos, maxCols, tituloTabla) {
+function dividirTabla(datos, maxCols, tituloTabla, forcedId) {
     const numCols = datos[0].length;
     let tex = '';
     let parte = 1;
@@ -1443,7 +1679,9 @@ function dividirTabla(datos, maxCols, tituloTabla) {
         // Usar longtable para permitir saltos de página
         tex += `  \\begin{longtable}{${especCols}}\n`;
         if (tituloTabla && parte === 1) {
-            tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+            const capTxt = escaparLatex(tituloTabla);
+            const idTxt = forcedId ? ` \\textit{(${forcedId})}` : '';
+            tex += `    \\caption{${capTxt}${idTxt}}\\label{tab:${forcedId || generarLabel(tituloTabla)}}\\\\\n`;
         }
 
         // Extraer encabezados de esta parte con fondo dorado
@@ -1491,7 +1729,7 @@ function dividirTabla(datos, maxCols, tituloTabla) {
 /**
  * Divide una tabla por filas en partes con longtable y nota de continuación
  */
-function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla) {
+function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla, forcedId) {
     const numCols = datos[0].length;
     const anchoRestante = `${(11 / (numCols - 1)).toFixed(2)}cm`;
     const especCols = 'p{3cm}' + ('p{' + anchoRestante + '}').repeat(numCols - 1);
@@ -1502,7 +1740,9 @@ function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla) {
         const fin = Math.min(inicio + maxFilasParte, datos.length);
         tex += `  \\begin{longtable}{${especCols}}\n`;
         if (tituloTabla && parte === 1) {
-            tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+            const capTxt = escaparLatex(tituloTabla);
+            const idTxt = forcedId ? ` \\textit{(${forcedId})}` : '';
+            tex += `    \\caption{${capTxt}${idTxt}}\\label{tab:${forcedId || generarLabel(tituloTabla)}}\\\\\n`;
         }
         tex += `    \\toprule\n`;
         const encabezados = procesarCeldasFila(datos[0], true).map(c => `\\encabezadodorado{${c}}`).join(' & ');

@@ -145,7 +145,7 @@ const handleResponse = async (response: Response) => {
 
 export const fetchSpreadsheet = async (spreadsheetId: string, token: string): Promise<Spreadsheet> => {
   if (token === 'DEMO') {
-    await new Promise(resolve => setTimeout(resolve, 600));
+    await new Promise(resolve => setTimeout(resolve, 180));
     return getMockSpreadsheet();
   }
 
@@ -157,7 +157,7 @@ export const fetchSpreadsheet = async (spreadsheetId: string, token: string): Pr
 
 export const createSpreadsheet = async (title: string, token: string): Promise<Spreadsheet> => {
   if (token === 'DEMO') {
-    await new Promise(resolve => setTimeout(resolve, 800));
+    await new Promise(resolve => setTimeout(resolve, 220));
     const mock = getMockSpreadsheet();
     mock.properties.title = title;
     return mock;
@@ -180,7 +180,7 @@ export const updateCellValue = async (
   token: string
 ) => {
   if (token === 'DEMO') {
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 100));
     return { updatedRange: 'Demo!A1' };
   }
 
@@ -215,7 +215,7 @@ export const appendRow = async (
   token: string
 ) => {
   if (token === 'DEMO') {
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 150));
     return {};
   }
 
@@ -239,7 +239,7 @@ export const deleteRow = async (
     token: string
 ) => {
     if (token === 'DEMO') {
-        await new Promise(resolve => setTimeout(resolve, 400));
+        await new Promise(resolve => setTimeout(resolve, 130));
         return {};
     }
 
@@ -271,7 +271,7 @@ export const deleteDimensionRange = async (
     token: string
 ) => {
     if (token === 'DEMO') {
-        await new Promise(resolve => setTimeout(resolve, 400));
+        await new Promise(resolve => setTimeout(resolve, 130));
         return {};
     }
 
@@ -296,7 +296,7 @@ export const deleteDimensionRange = async (
 
 export const createNewTab = async (spreadsheetId: string, title: string, token: string) => {
   if (token === 'DEMO') {
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 160));
     return {};
   }
 

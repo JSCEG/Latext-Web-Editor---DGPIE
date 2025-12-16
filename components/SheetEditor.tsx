@@ -6,6 +6,7 @@ import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus
 import { clsx } from 'clsx';
 import { LintPanel } from './LintPanel';
 import { applyInlineTag, insertBlockTag, lintTags, normalizeOnSave, TagIssue } from '../tagEngine';
+import { computeFigureId, computeTableId } from '../utils/idUtils';
 
 interface SheetEditorProps {
     spreadsheet: Spreadsheet;
@@ -183,6 +184,23 @@ const parseRange = (rangeStr: string) => {
         endCol: columnLetterToIndex(endMatch[1]),
         endRow: parseInt(endMatch[2])
     };
+
+    // removed duplicate out-of-scope createNewForSection
+
+    useEffect(() => {
+        const loadPreviewData = async () => {
+            if (!selectorPreview) return;
+            if (selectorPreview.type !== 'tabla') return;
+            const item = availableTableItems.find(x => x.id === selectorPreview.id);
+            const range = item?.range || '';
+            if (!range) return;
+            try {
+                const values = await fetchValues(spreadsheet.spreadsheetId, sanitizeRangeString(range), token);
+                setSelectorPreview(prev => prev ? { ...prev, data: values } : prev);
+            } catch { }
+        };
+        loadPreviewData();
+    }, [selectorPreview]);
 };
 
 export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, initialDocId, onRefresh, onBack }) => {
@@ -208,13 +226,111 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
     // Secciones editor enhancements
     const sectionContentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const equationModalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
     const [sectionLintIssues, setSectionLintIssues] = useState<TagIssue[]>([]);
     const [availableBibliographyKeys, setAvailableBibliographyKeys] = useState<string[]>([]);
     const [availableFigureIds, setAvailableFigureIds] = useState<string[]>([]);
     const [availableTableIds, setAvailableTableIds] = useState<string[]>([]);
+    const [availableFigureItems, setAvailableFigureItems] = useState<{ id: string; title: string; section: string; route?: string }[]>([]);
+    const [availableTableItems, setAvailableTableItems] = useState<{ id: string; title: string; section: string; range?: string }[]>([]);
+    const [selectorPreview, setSelectorPreview] = useState<{ type: 'figura' | 'tabla'; id: string; title: string; image?: string; data?: string[][] } | null>(null);
     const [equationModal, setEquationModal] = useState<{ open: boolean; mode: 'math' | 'ecuacion'; title: string; value: string }>(
         { open: false, mode: 'math', title: 'Insertar ecuación', value: '' }
     );
+
+    type EquationSymbolGroup = 'Todos' | 'Griegas' | 'Operadores' | 'Relaciones' | 'Flechas' | 'Conjuntos' | 'Funciones';
+    const [equationPaletteGroup, setEquationPaletteGroup] = useState<EquationSymbolGroup>('Griegas');
+    const [equationPaletteQuery, setEquationPaletteQuery] = useState<string>('');
+
+    type EquationSymbolGroupBase = Exclude<EquationSymbolGroup, 'Todos'>;
+    type EquationSymbol = { group: EquationSymbolGroupBase; latex: string; label: string; keywords: string[] };
+
+    const EQUATION_SYMBOLS: EquationSymbol[] = [
+        // Griegas
+        { group: 'Griegas', latex: '\\alpha', label: 'α', keywords: ['alpha', 'alfa'] },
+        { group: 'Griegas', latex: '\\beta', label: 'β', keywords: ['beta'] },
+        { group: 'Griegas', latex: '\\gamma', label: 'γ', keywords: ['gamma'] },
+        { group: 'Griegas', latex: '\\Gamma', label: 'Γ', keywords: ['Gamma'] },
+        { group: 'Griegas', latex: '\\delta', label: 'δ', keywords: ['delta'] },
+        { group: 'Griegas', latex: '\\Delta', label: 'Δ', keywords: ['Delta'] },
+        { group: 'Griegas', latex: '\\epsilon', label: 'ϵ', keywords: ['epsilon', 'varepsilon'] },
+        { group: 'Griegas', latex: '\\varepsilon', label: 'ε', keywords: ['varepsilon', 'epsilon'] },
+        { group: 'Griegas', latex: '\\theta', label: 'θ', keywords: ['theta', 'teta'] },
+        { group: 'Griegas', latex: '\\vartheta', label: 'ϑ', keywords: ['vartheta'] },
+        { group: 'Griegas', latex: '\\lambda', label: 'λ', keywords: ['lambda'] },
+        { group: 'Griegas', latex: '\\mu', label: 'μ', keywords: ['mu'] },
+        { group: 'Griegas', latex: '\\pi', label: 'π', keywords: ['pi'] },
+        { group: 'Griegas', latex: '\\Pi', label: 'Π', keywords: ['Pi'] },
+        { group: 'Griegas', latex: '\\rho', label: 'ρ', keywords: ['rho'] },
+        { group: 'Griegas', latex: '\\sigma', label: 'σ', keywords: ['sigma'] },
+        { group: 'Griegas', latex: '\\Sigma', label: 'Σ', keywords: ['Sigma'] },
+        { group: 'Griegas', latex: '\\phi', label: 'ϕ', keywords: ['phi'] },
+        { group: 'Griegas', latex: '\\varphi', label: 'φ', keywords: ['varphi'] },
+        { group: 'Griegas', latex: '\\omega', label: 'ω', keywords: ['omega'] },
+        { group: 'Griegas', latex: '\\Omega', label: 'Ω', keywords: ['Omega'] },
+
+        // Operadores
+        { group: 'Operadores', latex: '+', label: '+', keywords: ['suma', 'plus'] },
+        { group: 'Operadores', latex: '-', label: '−', keywords: ['resta', 'minus'] },
+        { group: 'Operadores', latex: '\\pm', label: '±', keywords: ['pm', 'mas menos'] },
+        { group: 'Operadores', latex: '\\times', label: '×', keywords: ['multiplicacion', 'cruz'] },
+        { group: 'Operadores', latex: '\\cdot', label: '·', keywords: ['multiplicacion', 'punto'] },
+        { group: 'Operadores', latex: '\\div', label: '÷', keywords: ['division'] },
+        { group: 'Operadores', latex: '\\sum', label: '∑', keywords: ['sumatoria'] },
+        { group: 'Operadores', latex: '\\prod', label: '∏', keywords: ['productoria'] },
+        { group: 'Operadores', latex: '\\int', label: '∫', keywords: ['integral'] },
+        { group: 'Operadores', latex: '\\iint', label: '∬', keywords: ['integral doble'] },
+        { group: 'Operadores', latex: '\\iiint', label: '∭', keywords: ['integral triple'] },
+        { group: 'Operadores', latex: '\\oint', label: '∮', keywords: ['integral cerrada', 'contorno'] },
+        { group: 'Operadores', latex: '\\partial', label: '∂', keywords: ['parcial'] },
+        { group: 'Operadores', latex: '\\nabla', label: '∇', keywords: ['nabla', 'gradiente'] },
+        { group: 'Operadores', latex: '\\infty', label: '∞', keywords: ['infinito'] },
+
+        // Relaciones
+        { group: 'Relaciones', latex: '=', label: '=', keywords: ['igual'] },
+        { group: 'Relaciones', latex: '\\neq', label: '≠', keywords: ['diferente'] },
+        { group: 'Relaciones', latex: '\\approx', label: '≈', keywords: ['aprox'] },
+        { group: 'Relaciones', latex: '\\sim', label: '∼', keywords: ['similar'] },
+        { group: 'Relaciones', latex: '\\le', label: '≤', keywords: ['menor igual'] },
+        { group: 'Relaciones', latex: '\\ge', label: '≥', keywords: ['mayor igual'] },
+        { group: 'Relaciones', latex: '\\in', label: '∈', keywords: ['pertenece'] },
+        { group: 'Relaciones', latex: '\\notin', label: '∉', keywords: ['no pertenece'] },
+        { group: 'Relaciones', latex: '\\subseteq', label: '⊆', keywords: ['subset', 'subconjunto'] },
+        { group: 'Relaciones', latex: '\\supseteq', label: '⊇', keywords: ['superset', 'superconjunto'] },
+
+        // Flechas
+        { group: 'Flechas', latex: '\\leftarrow', label: '←', keywords: ['izquierda'] },
+        { group: 'Flechas', latex: '\\rightarrow', label: '→', keywords: ['derecha'] },
+        { group: 'Flechas', latex: '\\leftrightarrow', label: '↔', keywords: ['doble'] },
+        { group: 'Flechas', latex: '\\Leftarrow', label: '⇐', keywords: ['doble izquierda'] },
+        { group: 'Flechas', latex: '\\Rightarrow', label: '⇒', keywords: ['doble derecha'] },
+        { group: 'Flechas', latex: '\\Leftrightarrow', label: '⇔', keywords: ['equivalencia'] },
+        { group: 'Flechas', latex: '\\mapsto', label: '↦', keywords: ['mapea'] },
+
+        // Conjuntos
+        { group: 'Conjuntos', latex: '\\emptyset', label: '∅', keywords: ['vacio', 'empty'] },
+        { group: 'Conjuntos', latex: '\\cup', label: '∪', keywords: ['union'] },
+        { group: 'Conjuntos', latex: '\\cap', label: '∩', keywords: ['interseccion'] },
+        { group: 'Conjuntos', latex: '\\setminus', label: '∖', keywords: ['diferencia'] },
+        { group: 'Conjuntos', latex: '\\forall', label: '∀', keywords: ['para todo'] },
+        { group: 'Conjuntos', latex: '\\exists', label: '∃', keywords: ['existe'] },
+        { group: 'Conjuntos', latex: '\\mathbb{N}', label: 'ℕ', keywords: ['naturales'] },
+        { group: 'Conjuntos', latex: '\\mathbb{Z}', label: 'ℤ', keywords: ['enteros'] },
+        { group: 'Conjuntos', latex: '\\mathbb{Q}', label: 'ℚ', keywords: ['racionales'] },
+        { group: 'Conjuntos', latex: '\\mathbb{R}', label: 'ℝ', keywords: ['reales'] },
+        { group: 'Conjuntos', latex: '\\mathbb{C}', label: 'ℂ', keywords: ['complejos'] },
+
+        // Funciones
+        { group: 'Funciones', latex: '\\sin', label: 'sin', keywords: ['seno'] },
+        { group: 'Funciones', latex: '\\cos', label: 'cos', keywords: ['coseno'] },
+        { group: 'Funciones', latex: '\\tan', label: 'tan', keywords: ['tangente'] },
+        { group: 'Funciones', latex: '\\log', label: 'log', keywords: ['logaritmo'] },
+        { group: 'Funciones', latex: '\\ln', label: 'ln', keywords: ['log natural'] },
+        { group: 'Funciones', latex: '\\exp', label: 'exp', keywords: ['exponencial'] },
+        { group: 'Funciones', latex: '\\lim', label: 'lim', keywords: ['limite'] },
+        { group: 'Funciones', latex: '\\max', label: 'max', keywords: ['maximo'] },
+        { group: 'Funciones', latex: '\\min', label: 'min', keywords: ['minimo'] },
+    ];
 
     // Nested Grid Editor State (for Table Content inside Form)
     const [nestedGridData, setNestedGridData] = useState<string[][]>([]);
@@ -253,6 +369,106 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
     const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
         setNotification({ message, type });
+    };
+
+    const EQUATION_PLACEHOLDER_RE = /\{\{\d+\}\}/g;
+
+    const focusNextEquationPlaceholder = (opts?: { wrap?: boolean }) => {
+        const el = equationModalTextareaRef.current;
+        if (!el) return false;
+
+        const text = el.value || '';
+        const from = el.selectionEnd ?? el.selectionStart ?? 0;
+        const wrap = opts?.wrap ?? true;
+
+        const findFrom = (startIndex: number) => {
+            const re = new RegExp(EQUATION_PLACEHOLDER_RE.source, 'g');
+            re.lastIndex = startIndex;
+            return re.exec(text);
+        };
+
+        let match = findFrom(from);
+        if (!match && wrap) match = findFrom(0);
+        if (!match) return false;
+
+        el.focus();
+        el.setSelectionRange(match.index, match.index + match[0].length);
+        return true;
+    };
+
+    const insertIntoEquationModal = (snippet: string, options?: { selectFirstPlaceholder?: boolean }) => {
+        const el = equationModalTextareaRef.current;
+
+        const start = el ? el.selectionStart : (equationModal.value || '').length;
+        const end = el ? el.selectionEnd : start;
+
+        const placeholderMatch = (options?.selectFirstPlaceholder ?? false)
+            ? new RegExp(EQUATION_PLACEHOLDER_RE.source, 'g').exec(snippet)
+            : null;
+        const placeholderOffset = placeholderMatch ? placeholderMatch.index : null;
+        const placeholderLen = placeholderMatch ? placeholderMatch[0].length : 0;
+
+        setEquationModal(prev => {
+            const current = (prev.value ?? '').toString();
+            const from = Math.max(0, Math.min(Math.min(start, end), current.length));
+            const to = Math.max(0, Math.min(Math.max(start, end), current.length));
+            return { ...prev, value: current.slice(0, from) + snippet + current.slice(to) };
+        });
+
+        requestAnimationFrame(() => {
+            const el2 = equationModalTextareaRef.current;
+            if (!el2) return;
+
+            const current = el2.value || '';
+            const from = Math.max(0, Math.min(Math.min(start, end), current.length));
+
+            if (options?.selectFirstPlaceholder && placeholderOffset !== null) {
+                const selStart = Math.max(0, Math.min(from + placeholderOffset, current.length));
+                const selEnd = Math.max(0, Math.min(selStart + placeholderLen, current.length));
+                el2.focus();
+                el2.setSelectionRange(selStart, selEnd);
+                return;
+            }
+
+            const pos = Math.max(0, Math.min(from + snippet.length, current.length));
+            el2.focus();
+            el2.setSelectionRange(pos, pos);
+        });
+    };
+
+    const commitEquationModal = () => {
+        const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
+        if (contentIdx === -1) {
+            setEquationModal({ ...equationModal, open: false });
+            return;
+        }
+
+        const el = sectionContentTextareaRef.current;
+        const selStart = el ? el.selectionStart : 0;
+        const selEnd = el ? el.selectionEnd : 0;
+        const currentValue = (formData[contentIdx] || '').toString();
+        const tagName = equationModal.mode === 'math' ? 'math' : 'ecuacion';
+        const payload = (equationModal.value || '...').replace(EQUATION_PLACEHOLDER_RE, '...');
+
+        const res = applyInlineTag(currentValue, selStart, selEnd, tagName, { value: payload, placeholder: '...' });
+        const newData = [...formData];
+        newData[contentIdx] = res.text;
+        setFormData(newData);
+        setEquationModal({ ...equationModal, open: false });
+
+        const nextIssues = lintTags(res.text, {
+            bibliographyKeys: availableBibliographyKeys,
+            figureIds: availableFigureIds,
+            tableIds: availableTableIds,
+        });
+        setSectionLintIssues(nextIssues);
+
+        requestAnimationFrame(() => {
+            const el2 = sectionContentTextareaRef.current;
+            if (!el2) return;
+            el2.focus();
+            el2.setSelectionRange(res.selectionStart, res.selectionEnd);
+        });
     };
 
     // --- Helpers ---
@@ -431,6 +647,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         const findSheetByTitle = (title: string) =>
             spreadsheet.sheets.find(s => normalizeSheetName(s.properties.title) === normalizeSheetName(title));
 
+
         const extractColumnValuesByDoc = (sheetTitle: string, columnCandidates: string[]) => {
             const sheet = findSheetByTitle(sheetTitle);
             const rowData = sheet?.data?.[0]?.rowData;
@@ -452,12 +669,58 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         };
 
         const bibKeys = extractColumnValuesByDoc('Bibliografía', CLAVE_VARIANTS);
-        const figIds = extractColumnValuesByDoc('Figuras', ['ID', 'FiguraID', 'IDFigura', ...ORDEN_COL_VARIANTS]);
-        const tabIds = extractColumnValuesByDoc('Tablas', ['ID', 'TablaID', 'IDTabla', ...ORDEN_COL_VARIANTS]);
-
         setAvailableBibliographyKeys(uniqueSorted(bibKeys));
+
+        const figurasSheet = findSheetByTitle('Figuras');
+        const tablasSheet = findSheetByTitle('Tablas');
+
+        const figurasItems: { id: string; title: string; section: string; route?: string }[] = [];
+        const tablasItems: { id: string; title: string; section: string; range?: string }[] = [];
+
+        if (figurasSheet?.data?.[0]?.rowData?.length && figurasSheet.data[0].rowData.length > 1) {
+            const headers = figurasSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+            const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
+            const secIdx = findColumnIndex(headers, [...SECCION_COL_VARIANTS, 'SeccionOrden', 'SecciónOrden']);
+            const ordIdx = findColumnIndex(headers, [...ORDEN_COL_VARIANTS, 'OrdenFigura']);
+            const titleIdx = findColumnIndex(headers, ['Título/Descripción', 'Titulo', 'Descripción', 'Descripcion']);
+            const routeIdx = findColumnIndex(headers, ['Ruta de Imagen', 'RutaArchivo']);
+            figurasSheet.data[0].rowData.slice(1).forEach(r => {
+                const dId = r.values?.[docIdx]?.userEnteredValue?.stringValue || r.values?.[docIdx]?.formattedValue || '';
+                if (dId !== currentDocId) return;
+                const sec = r.values?.[secIdx]?.userEnteredValue?.stringValue || r.values?.[secIdx]?.formattedValue || '';
+                const ord = r.values?.[ordIdx]?.userEnteredValue?.stringValue || r.values?.[ordIdx]?.formattedValue || '';
+                const title = r.values?.[titleIdx]?.userEnteredValue?.stringValue || r.values?.[titleIdx]?.formattedValue || '';
+                const route = r.values?.[routeIdx]?.userEnteredValue?.stringValue || r.values?.[routeIdx]?.formattedValue || '';
+                const id = computeFigureId(sec, ord);
+                if (id) figurasItems.push({ id, title, section: sec, route });
+            });
+        }
+
+        if (tablasSheet?.data?.[0]?.rowData?.length && tablasSheet.data[0].rowData.length > 1) {
+            const headers = tablasSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+            const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
+            const secIdx = findColumnIndex(headers, [...SECCION_COL_VARIANTS, 'SeccionOrden', 'SecciónOrden', 'ID_Seccion']);
+            const ordIdx = findColumnIndex(headers, [...ORDEN_COL_VARIANTS, 'OrdenTabla', 'Orden']);
+            const titleIdx = findColumnIndex(headers, ['Título', 'Titulo']);
+            const rangeIdx = findColumnIndex(headers, CSV_COL_VARIANTS);
+            tablasSheet.data[0].rowData.slice(1).forEach(r => {
+                const dId = r.values?.[docIdx]?.userEnteredValue?.stringValue || r.values?.[docIdx]?.formattedValue || '';
+                if (dId !== currentDocId) return;
+                const sec = r.values?.[secIdx]?.userEnteredValue?.stringValue || r.values?.[secIdx]?.formattedValue || '';
+                const ord = r.values?.[ordIdx]?.userEnteredValue?.stringValue || r.values?.[ordIdx]?.formattedValue || '';
+                const title = r.values?.[titleIdx]?.userEnteredValue?.stringValue || r.values?.[titleIdx]?.formattedValue || '';
+                const range = r.values?.[rangeIdx]?.userEnteredValue?.stringValue || r.values?.[rangeIdx]?.formattedValue || '';
+                const id = computeTableId(sec, ord);
+                if (id) tablasItems.push({ id, title, section: sec, range });
+            });
+        }
+
+        const figIds = figurasItems.map(i => i.id);
+        const tabIds = tablasItems.map(i => i.id);
         setAvailableFigureIds(uniqueSorted(figIds));
         setAvailableTableIds(uniqueSorted(tabIds));
+        setAvailableFigureItems(figurasItems);
+        setAvailableTableItems(tablasItems);
     }, [activeTab, spreadsheet, currentDocId]);
 
     // --- Logic to Calculate Next Order ---
@@ -674,6 +937,18 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
         setViewMode('FORM');
     };
+
+    const createNewForSection = (kind: 'figura' | 'tabla') => {
+        if (kind === 'figura') {
+            setActiveTab('figuras');
+        } else {
+            setActiveTab('tablas');
+        }
+        setViewMode('LIST');
+        setMobileMenuOpen(false);
+    };
+
+    // removed nextOrderFor; behavior simplified to respect existing create flow
 
     const handleEdit = (rowIndex: number) => {
         setEditingRowIndex(rowIndex);
@@ -1363,6 +1638,12 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     setSectionLintIssues(nextIssues);
                                                 };
 
+                                                const getCurrentSectionOrder = (): string => {
+                                                    const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+                                                    const val = ordIdx !== -1 ? (formData[ordIdx] || '').toString().trim() : '';
+                                                    return val;
+                                                };
+
                                                 const wrapInline = (name: string, opts?: { value?: string; placeholder?: string }) => {
                                                     const el = sectionContentTextareaRef.current;
                                                     const selStart = el ? el.selectionStart : 0;
@@ -1378,6 +1659,16 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     const res = insertBlockTag(currentValue, pos, name, title);
                                                     applyEdit(res);
                                                     lintNow(res.text);
+                                                };
+
+                                                const insertSnippet = (snippet: string) => {
+                                                    const el = sectionContentTextareaRef.current;
+                                                    const pos = el ? el.selectionStart : currentValue.length;
+                                                    const before = currentValue.slice(0, pos);
+                                                    const after = currentValue.slice(pos);
+                                                    const nextText = before + snippet + after;
+                                                    applyEdit({ text: nextText, selectionStart: pos, selectionEnd: pos + snippet.length });
+                                                    lintNow(nextText);
                                                 };
 
                                                 return (
@@ -1469,16 +1760,32 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                             onChange={(e) => {
                                                                                 const v = e.target.value;
                                                                                 if (!v) return;
-                                                                                wrapInline('figura', { value: v });
+                                                                                if (v === '__CREATE_FIG__') {
+                                                                                    const secIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
+                                                                                    const currentSec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
+                                                                                    if (currentSec) createNewForSection('figura', currentSec);
+                                                                                } else {
+                                                                                    const item = availableFigureItems.find(x => x.id === v);
+                                                                                    if (item) setSelectorPreview({ type: 'figura', id: item.id, title: item.title, image: item.route });
+                                                                                    wrapInline('figura', { value: v });
+                                                                                }
                                                                                 e.currentTarget.value = '';
                                                                             }}
                                                                             title="Insertar referencia a figura"
                                                                         >
                                                                             <option value="">Selecciona…</option>
-                                                                            {availableFigureIds.map(k => (
-                                                                                <option key={k} value={k}>{k}</option>
-                                                                            ))}
+                                                                            {(function () {
+                                                                                const currentSec = getCurrentSectionOrder();
+                                                                                const list = currentSec ? availableFigureItems.filter(i => (i.section || '') === currentSec) : availableFigureItems;
+                                                                                return list.map(i => (
+                                                                                    <option key={i.id} value={i.id}>{i.title || i.id}</option>
+                                                                                ));
+                                                                            })()}
                                                                         </select>
+                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => createNewForSection('figura')}>Crear nueva figura</Button>
+                                                                        {selectorPreview?.type === 'figura' && (
+                                                                            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectorPreview(selectorPreview)}>Ver</Button>
+                                                                        )}
                                                                     </div>
 
                                                                     <div className="flex items-center gap-2">
@@ -1491,15 +1798,85 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                             onChange={(e) => {
                                                                                 const v = e.target.value;
                                                                                 if (!v) return;
-                                                                                wrapInline('tabla', { value: v });
+                                                                                if (v === '__CREATE_TBL__') {
+                                                                                    const secIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
+                                                                                    const currentSec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
+                                                                                    if (currentSec) createNewForSection('tabla', currentSec);
+                                                                                } else {
+                                                                                    const item = availableTableItems.find(x => x.id === v);
+                                                                                    if (item) setSelectorPreview({ type: 'tabla', id: item.id, title: item.title });
+                                                                                    wrapInline('tabla', { value: v });
+                                                                                }
                                                                                 e.currentTarget.value = '';
                                                                             }}
                                                                             title="Insertar referencia a tabla"
                                                                         >
                                                                             <option value="">Selecciona…</option>
-                                                                            {availableTableIds.map(k => (
-                                                                                <option key={k} value={k}>{k}</option>
-                                                                            ))}
+                                                                            {(function () {
+                                                                                const currentSec = getCurrentSectionOrder();
+                                                                                const list = currentSec ? availableTableItems.filter(i => (i.section || '') === currentSec) : availableTableItems;
+                                                                                return list.map(i => (
+                                                                                    <option key={i.id} value={i.id}>{i.title || i.id}</option>
+                                                                                ));
+                                                                            })()}
+                                                                        </select>
+                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => createNewForSection('tabla')}>Crear nueva tabla</Button>
+                                                                        {selectorPreview?.type === 'tabla' && (
+                                                                            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectorPreview(selectorPreview)}>Ver</Button>
+                                                                        )}
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
+                                                                            <Lightbulb size={12} /> Ejemplos
+                                                                        </div>
+                                                                        <select
+                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
+                                                                            value=""
+                                                                            onChange={(e) => {
+                                                                                const v = e.target.value;
+                                                                                if (!v) return;
+
+                                                                                const citeKey = availableBibliographyKeys[0] || 'clave_biblio';
+                                                                                const figId = availableFigureIds[0] || '2.1';
+                                                                                const tableId = availableTableIds[0] || '3.2';
+
+                                                                                if (v === 'cita-nota') {
+                                                                                    insertSnippet(
+                                                                                        `Texto con [[cita:${citeKey}]] y una nota [[nota:Nota al pie o comentario...]].\n\n` +
+                                                                                        `Ver [[figura:${figId}]] y [[tabla:${tableId}]].\n`
+                                                                                    );
+                                                                                } else if (v === 'guinda-dorado') {
+                                                                                    insertSnippet(`Texto con énfasis: [[guinda:Guinda]] y [[dorado:Dorado]].\n\n`);
+                                                                                } else if (v === 'caja-nota') {
+                                                                                    insertSnippet(
+                                                                                        `\n\n[[caja:Título opcional]]\n` +
+                                                                                        `Contenido dentro de recuadro. Puedes agregar una [[nota:Nota al pie / comentario...]].\n` +
+                                                                                        `[[/caja]]\n\n`
+                                                                                    );
+                                                                                } else if (v === 'bloque-alerta') {
+                                                                                    insertSnippet(
+                                                                                        `\n\n[[alerta:Título]]\n` +
+                                                                                        `Escribe aquí el mensaje de alerta...\n` +
+                                                                                        `[[/alerta]]\n\n`
+                                                                                    );
+                                                                                } else if (v === 'math-basico') {
+                                                                                    insertSnippet(`\n\n[[math:\\frac{a}{b} + \\Delta x]]\n\n`);
+                                                                                } else if (v === 'ecuacion') {
+                                                                                    insertSnippet(`\n\n[[ecuacion:E = mc^2]]\n\n`);
+                                                                                }
+
+                                                                                e.currentTarget.value = '';
+                                                                            }}
+                                                                            title="Insertar ejemplos de etiquetas"
+                                                                        >
+                                                                            <option value="">Selecciona…</option>
+                                                                            <option value="cita-nota">Cita + Nota + Figura/Tabla</option>
+                                                                            <option value="guinda-dorado">Guinda + Dorado</option>
+                                                                            <option value="caja-nota">Recuadro (Caja) + Nota</option>
+                                                                            <option value="bloque-alerta">Bloque Alerta</option>
+                                                                            <option value="math-basico">Math inline (fracción + delta)</option>
+                                                                            <option value="ecuacion">Ecuación (display)</option>
                                                                         </select>
                                                                     </div>
 
@@ -1535,6 +1912,38 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                         </Button>
                                                                     </div>
                                                                 </div>
+                                                                {selectorPreview && (
+                                                                    <div className="mt-3 border border-gray-200 rounded p-3 bg-gray-50">
+                                                                        <div className="text-xs text-gray-600 mb-2">Previsualización: {selectorPreview.type === 'figura' ? 'Figura' : 'Tabla'} — {selectorPreview.title}</div>
+                                                                        {selectorPreview.type === 'figura' ? (
+                                                                            <div className="flex items-center justify-start">
+                                                                                {selectorPreview.image ? (
+                                                                                    <img src={selectorPreview.image} alt={selectorPreview.title} className="max-h-40 object-contain border rounded" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                                                                                ) : (
+                                                                                    <div className="text-xs text-gray-500">Sin ruta de imagen</div>
+                                                                                )}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="overflow-x-auto">
+                                                                                {selectorPreview.data && selectorPreview.data.length ? (
+                                                                                    <table className="text-xs">
+                                                                                        <tbody>
+                                                                                            {selectorPreview.data.slice(0, 6).map((row, r) => (
+                                                                                                <tr key={r}>
+                                                                                                    {row.slice(0, 6).map((cell, c) => (
+                                                                                                        <td key={c} className={clsx("px-2 py-1 border", r === 0 ? "font-semibold bg-gray-100" : "")}>{cell}</td>
+                                                                                                    ))}
+                                                                                                </tr>
+                                                                                            ))}
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                ) : (
+                                                                                    <div className="text-xs text-gray-500">Cargando rango…</div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </div>
 
@@ -1705,9 +2114,104 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 </button>
                                             </div>
 
+                                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                                                <div className="text-[11px] text-gray-600 mr-1">Plantillas:</div>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\frac{ {{1}} }{ {{2}} }', { selectFirstPlaceholder: true })} title="Fracción">
+                                                    {'\\frac'}
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\sqrt{ {{1}} }', { selectFirstPlaceholder: true })} title="Raíz">
+                                                    {'\\sqrt'}
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('{{1}}^{ {{2}} }', { selectFirstPlaceholder: true })} title="Exponente">
+                                                    x^n
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\int_{ {{1}} }^{ {{2}} } {{3}} \\, d{{4}}', { selectFirstPlaceholder: true })} title="Integral">
+                                                    {'\\int'}
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\frac{d {{1}}}{d {{2}}}', { selectFirstPlaceholder: true })} title="Derivada">
+                                                    d/dx
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\frac{\\partial {{1}}}{\\partial {{2}}}', { selectFirstPlaceholder: true })} title="Derivada parcial">
+                                                    {'\\partial'}
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\Delta')} title="Delta">
+                                                    {'\\Delta'}
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\cdot')} title="Multiplicación punto">
+                                                    {'\\cdot'}
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\times')} title="Multiplicación cruz">
+                                                    {'\\times'}
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\sin( {{1}} )', { selectFirstPlaceholder: true })} title="Seno">
+                                                    {'\\sin'}
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\cos( {{1}} )', { selectFirstPlaceholder: true })} title="Coseno">
+                                                    {'\\cos'}
+                                                </Button>
+                                            </div>
+
+                                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                                                <div className="text-[11px] text-gray-600 mr-1">Símbolos:</div>
+                                                <select
+                                                    className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                    value={equationPaletteGroup}
+                                                    onChange={(e) => setEquationPaletteGroup(e.target.value as EquationSymbolGroup)}
+                                                >
+                                                    <option value="Todos">Todos</option>
+                                                    <option value="Griegas">Griegas</option>
+                                                    <option value="Operadores">Operadores</option>
+                                                    <option value="Relaciones">Relaciones</option>
+                                                    <option value="Flechas">Flechas</option>
+                                                    <option value="Conjuntos">Conjuntos</option>
+                                                    <option value="Funciones">Funciones</option>
+                                                </select>
+                                                <div className="relative flex-1 min-w-[180px]">
+                                                    <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                    <input
+                                                        className="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                        value={equationPaletteQuery}
+                                                        onChange={(e) => setEquationPaletteQuery(e.target.value)}
+                                                        placeholder="Buscar (alpha, integral, <=, R, flecha...)"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="border border-gray-200 rounded-md p-2 max-h-[160px] overflow-auto mb-2">
+                                                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                                    {EQUATION_SYMBOLS
+                                                        .filter(s => equationPaletteGroup === 'Todos' || s.group === equationPaletteGroup)
+                                                        .filter(s => {
+                                                            const q = equationPaletteQuery.trim().toLowerCase();
+                                                            if (!q) return true;
+                                                            const hay = [s.label, s.latex, ...s.keywords].join(' ').toLowerCase();
+                                                            return hay.includes(q);
+                                                        })
+                                                        .map((s) => (
+                                                            <button
+                                                                key={`${s.group}:${s.latex}`}
+                                                                type="button"
+                                                                className="border border-gray-300 rounded-md px-2 py-1 text-left hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
+                                                                title={s.latex}
+                                                                onClick={() => insertIntoEquationModal(s.latex)}
+                                                            >
+                                                                <div className="text-sm leading-none text-gray-900">{s.label}</div>
+                                                                <div className="text-[10px] leading-tight text-gray-600 truncate">{s.latex}</div>
+                                                            </button>
+                                                        ))}
+                                                </div>
+                                            </div>
+
                                             <textarea
+                                                ref={equationModalTextareaRef}
                                                 className="w-full min-h-[180px] px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
                                                 value={equationModal.value}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Tab') {
+                                                        e.preventDefault();
+                                                        focusNextEquationPlaceholder({ wrap: true });
+                                                    }
+                                                }}
                                                 onChange={(e) => setEquationModal({ ...equationModal, value: e.target.value })}
                                                 placeholder={equationModal.mode === 'math' ? 'a^2 + b^2 = c^2' : 'Escribe la ecuación (puede ser multi-línea)…'}
                                             />
@@ -1716,40 +2220,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 <Button variant="ghost" onClick={() => setEquationModal({ ...equationModal, open: false })}>Cancelar</Button>
                                                 <Button
                                                     variant="burgundy"
-                                                    onClick={() => {
-                                                        const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
-                                                        if (contentIdx === -1) {
-                                                            setEquationModal({ ...equationModal, open: false });
-                                                            return;
-                                                        }
-
-                                                        const el = sectionContentTextareaRef.current;
-                                                        const selStart = el ? el.selectionStart : 0;
-                                                        const selEnd = el ? el.selectionEnd : 0;
-                                                        const currentValue = (formData[contentIdx] || '').toString();
-                                                        const tagName = equationModal.mode === 'math' ? 'math' : 'ecuacion';
-                                                        const payload = equationModal.value || '...';
-
-                                                        const res = applyInlineTag(currentValue, selStart, selEnd, tagName, { value: payload, placeholder: '...' });
-                                                        const newData = [...formData];
-                                                        newData[contentIdx] = res.text;
-                                                        setFormData(newData);
-                                                        setEquationModal({ ...equationModal, open: false });
-
-                                                        const nextIssues = lintTags(res.text, {
-                                                            bibliographyKeys: availableBibliographyKeys,
-                                                            figureIds: availableFigureIds,
-                                                            tableIds: availableTableIds,
-                                                        });
-                                                        setSectionLintIssues(nextIssues);
-
-                                                        requestAnimationFrame(() => {
-                                                            const el2 = sectionContentTextareaRef.current;
-                                                            if (!el2) return;
-                                                            el2.focus();
-                                                            el2.setSelectionRange(res.selectionStart, res.selectionEnd);
-                                                        });
-                                                    }}
+                                                    onClick={commitEquationModal}
                                                 >
                                                     Insertar
                                                 </Button>
