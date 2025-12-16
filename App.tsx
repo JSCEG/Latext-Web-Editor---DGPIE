@@ -99,21 +99,21 @@ const App: React.FC = () => {
     let finalToken = token.trim();
 
     // Feature: Remove wrapping quotes if user copied them accidentally (e.g. "ya29...")
-    if ((finalToken.startsWith('"') && finalToken.endsWith('"')) || 
-        (finalToken.startsWith("'") && finalToken.endsWith("'"))) {
-        finalToken = finalToken.slice(1, -1);
+    if ((finalToken.startsWith('"') && finalToken.endsWith('"')) ||
+      (finalToken.startsWith("'") && finalToken.endsWith("'"))) {
+      finalToken = finalToken.slice(1, -1);
     }
 
     // Feature: Auto-extract token if user pastes the full JSON response
     if (finalToken.startsWith('{')) {
-        try {
-            const json = JSON.parse(finalToken);
-            if (json.access_token) {
-                finalToken = json.access_token;
-            }
-        } catch (e) {
-            console.log("Not a JSON object, treating as raw string");
+      try {
+        const json = JSON.parse(finalToken);
+        if (json.access_token) {
+          finalToken = json.access_token;
         }
+      } catch (e) {
+        console.log("Not a JSON object, treating as raw string");
+      }
     }
 
     if (finalToken.length > 10) {
@@ -144,12 +144,12 @@ const App: React.FC = () => {
   const handleError = (err: any) => {
     const msg = err.message || '';
     if (
-      msg.includes('401') || 
-      msg.includes('UNAUTHENTICATED') || 
+      msg.includes('401') ||
+      msg.includes('UNAUTHENTICATED') ||
       msg.includes('invalid authentication credentials')
     ) {
       // Token expired - Force logout so user can re-enter it
-      localStorage.removeItem('sheet_token'); 
+      localStorage.removeItem('sheet_token');
       setToken('');
       setIsAuthenticated(false);
       setError("Token inválido o expirado. Por favor genera uno nuevo en Google OAuth Playground y asegúrate de copiar solo el 'access_token'.");
@@ -192,14 +192,14 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
         <div className="bg-white max-w-md w-full rounded-lg shadow-xl p-8 border-t-4 border-[#691C32]">
           <div className="text-center mb-6">
-             <h2 className="text-[#691C32] font-bold text-lg uppercase tracking-widest mb-1">Gobierno de México</h2>
-             <div className="h-px w-24 bg-[#BC955C] mx-auto mb-4"></div>
+            <h2 className="text-[#691C32] font-bold text-lg uppercase tracking-widest mb-1">Gobierno de México</h2>
+            <div className="h-px w-24 bg-[#BC955C] mx-auto mb-4"></div>
             <h1 className="text-2xl font-bold text-gray-800">Acceso Editor LatexT</h1>
             <p className="text-gray-500 mt-2 text-sm">Ingrese su Token de Google Sheets</p>
           </div>
 
           <div className="mb-6">
-             <button
+            <button
               type="button"
               onClick={() => setShowHelp(!showHelp)}
               className="flex items-center justify-center w-full text-sm font-medium text-[#691C32] hover:underline py-2 rounded-lg transition-colors"
@@ -207,7 +207,7 @@ const App: React.FC = () => {
               <HelpCircle size={16} className="mr-2" />
               {showHelp ? 'Ocultar Instrucciones' : '¿Cómo obtener un token?'}
             </button>
-            
+
             {showHelp && (
               <div className="mt-3 bg-gray-50 p-4 rounded text-sm text-gray-600 border border-gray-200">
                 <p className="mb-2 font-semibold">Pasos rápidos:</p>
@@ -232,7 +232,7 @@ const App: React.FC = () => {
                 className="w-full h-24 p-3 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#691C32] outline-none resize-none font-mono"
               />
             </div>
-            
+
             {error && (
               <div className="p-3 bg-red-50 text-red-700 rounded text-sm flex items-start gap-2 animate-in fade-in slide-in-from-top-2">
                 <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />
@@ -241,12 +241,12 @@ const App: React.FC = () => {
             )}
 
             <div className="space-y-3">
-                <Button type="submit" className="w-full" size="lg" variant="burgundy">
-                    Iniciar Sesión
-                </Button>
-                <Button type="button" variant="outline" className="w-full" onClick={handleDemoLogin}>
-                    <PlayCircle size={16} className="mr-2"/> Probar Demo
-                </Button>
+              <Button type="submit" className="w-full" size="lg" variant="burgundy">
+                Iniciar Sesión
+              </Button>
+              <Button type="button" variant="outline" className="w-full" onClick={handleDemoLogin}>
+                <PlayCircle size={16} className="mr-2" /> Probar Demo
+              </Button>
             </div>
           </form>
         </div>
@@ -269,34 +269,34 @@ const App: React.FC = () => {
   // Main Layout
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900">
-        
+
       {/* HEADER GOBIERNO */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-            {/* Logos Area */}
-            <div className="flex items-center gap-4">
-                <div className="flex flex-col">
-                    <span className="text-xs text-gray-500 uppercase tracking-widest">Gobierno de</span>
-                    <span className="text-xl font-bold text-[#691C32] leading-none">México</span>
-                </div>
-                <div className="h-8 w-px bg-gray-300 mx-2"></div>
-                <div className="flex flex-col">
-                    <span className="text-xl font-bold text-[#BC955C] leading-none">Energía</span>
-                    <span className="text-[10px] text-gray-400 uppercase tracking-wider">Secretaría de Energía</span>
-                </div>
+          {/* Logos Area */}
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col">
+              <span className="text-xs text-gray-500 uppercase tracking-widest">Gobierno de</span>
+              <span className="text-xl font-bold text-[#691C32] leading-none">México</span>
             </div>
+            <div className="h-8 w-px bg-gray-300 mx-2"></div>
+            <div className="flex flex-col">
+              <span className="text-xl font-bold text-[#BC955C] leading-none">Energía</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider">Secretaría de Energía</span>
+            </div>
+          </div>
 
-            {/* App Title */}
-            <div className="hidden md:block">
-                <h1 className="text-2xl font-bold text-[#691C32] tracking-tight">Editor LatexT</h1>
-            </div>
+          {/* App Title */}
+          <div className="hidden md:block">
+            <h1 className="text-2xl font-bold text-[#691C32] tracking-tight">Editor LatexT</h1>
+          </div>
 
-            {/* Help/Actions */}
-            <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-700 hover:bg-red-50">
-                   <LogOut size={16} className="mr-2"/> Salir
-                </Button>
-            </div>
+          {/* Help/Actions */}
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-700 hover:bg-red-50">
+              <LogOut size={16} className="mr-2" /> Salir
+            </Button>
+          </div>
         </div>
         {/* Gold Bar */}
         <div className="h-1 bg-[#BC955C] w-full"></div>
@@ -305,43 +305,43 @@ const App: React.FC = () => {
       {/* Error Banner for Main Layout */}
       {error && (
         <div className="max-w-7xl mx-auto px-4 mt-4">
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r shadow-sm flex items-start justify-between animate-in fade-in slide-in-from-top-2">
-                <div className="flex gap-3">
-                    <ShieldAlert className="h-5 w-5 text-red-500 mt-0.5" />
-                    <div className="text-sm text-red-700">
-                        <p className="font-bold">Error de Conexión</p>
-                        <p>{error}</p>
-                    </div>
-                </div>
-                <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
-                    <X size={18} />
-                </button>
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r shadow-sm flex items-start justify-between animate-in fade-in slide-in-from-top-2">
+            <div className="flex gap-3">
+              <ShieldAlert className="h-5 w-5 text-red-500 mt-0.5" />
+              <div className="text-sm text-red-700">
+                <p className="font-bold">Error de Conexión</p>
+                <p>{error}</p>
+              </div>
             </div>
+            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+              <X size={18} />
+            </button>
+          </div>
         </div>
       )}
 
       {/* Main Content */}
       <main>
         {currentView === AppView.DASHBOARD ? (
-            <Dashboard
-              onCreate={handleCreate}
-              onOpen={loadSpreadsheet}
-              onLogout={handleLogout}
-              documents={dashboardDocuments}
-            />
+          <Dashboard
+            onCreate={handleCreate}
+            onOpen={loadSpreadsheet}
+            onLogout={handleLogout}
+            documents={dashboardDocuments}
+          />
         ) : (
-            currentSpreadsheet && (
-            <SheetEditor 
-                spreadsheet={currentSpreadsheet} 
-                token={token}
-                initialDocId={initialDocId}
-                onRefresh={() => loadSpreadsheet(currentSpreadsheet.spreadsheetId)}
-                onBack={() => {
-                  setInitialDocId(undefined);
-                  setCurrentView(AppView.DASHBOARD);
-                }}
+          currentSpreadsheet && (
+            <SheetEditor
+              spreadsheet={currentSpreadsheet}
+              token={token}
+              initialDocId={initialDocId}
+              onRefresh={() => loadSpreadsheet(currentSpreadsheet.spreadsheetId)}
+              onBack={() => {
+                setInitialDocId(undefined);
+                setCurrentView(AppView.DASHBOARD);
+              }}
             />
-            )
+          )
         )}
       </main>
     </div>

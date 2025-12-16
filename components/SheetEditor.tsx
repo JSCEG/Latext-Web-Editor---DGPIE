@@ -4,6 +4,8 @@ import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValue
 import { Button } from './Button';
 import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
+import { LintPanel } from './LintPanel';
+import { applyInlineTag, insertBlockTag, lintTags, normalizeOnSave, TagIssue } from '../tagEngine';
 
 interface SheetEditorProps {
     spreadsheet: Spreadsheet;
@@ -55,6 +57,37 @@ const SECCION_COL_VARIANTS = ['ID_Seccion', 'Seccion', 'SeccionOrden', 'ID Secci
 const ORDEN_COL_VARIANTS = ['Orden', 'OrdenTabla', 'Numero', 'Fig.', 'Figura', 'Fig', 'Número', 'OrdenFigura', 'Orden Figura', 'Orden_Figura'];
 const DOC_ID_VARIANTS = ['DocumentoID', 'ID Documento', 'ID', 'DocID'];
 const TITLE_VARIANTS = ['Titulo', 'Título', 'Nombre'];
+const NIVEL_VARIANTS = ['Nivel', 'level'];
+const CONTENIDO_VARIANTS = ['Contenido', 'content', 'texto', 'cuerpo'];
+const CLAVE_VARIANTS = ['Clave', 'Key', 'ID'];
+
+type SectionLevelOption = {
+    value: string;
+    label: string;
+    help: string;
+};
+
+const SECTION_LEVEL_OPTIONS: SectionLevelOption[] = [
+    { value: 'seccion', label: 'Sección', help: 'Crea un título principal (LaTeX: \\section). En anexos se renderiza como “Anexo A…”.' },
+    { value: 'subseccion', label: 'Subsección', help: 'Título nivel 2 (LaTeX: \\subsection). En anexos: A.1, A.2…' },
+    { value: 'subsubseccion', label: 'Subsubsección', help: 'Título nivel 3 (LaTeX: \\subsubsection).' },
+    { value: 'parrafo', label: 'Párrafo', help: 'Título corto (LaTeX: \\paragraph). Útil para subtítulos dentro de una sección.' },
+    { value: 'subparrafo', label: 'Subpárrafo', help: 'Título aún más pequeño (LaTeX: \\subparagraph). Nota: el GAS actual no lo genera; si lo eliges, se guardará como texto.' },
+    { value: 'anexo', label: 'Anexo', help: 'Inicia modo anexos (GAS inserta \\anexos una vez) y crea la sección como anexo (A, B, C…).' },
+    { value: 'subanexo', label: 'Subanexo', help: 'Subsección dentro de anexos (A.1, A.2…).' },
+    { value: 'portada', label: 'Portada de sección', help: 'Genera una portada visual previa a una sección (GAS: \\portadaseccion).' },
+    { value: 'directorio', label: 'Directorio', help: 'Contenido especial para la página de créditos/directorio (GAS: \\paginacreditos).' },
+    { value: 'contraportada', label: 'Contraportada / Datos finales', help: 'Contenido especial de contraportada (GAS: \\contraportada).' },
+];
+
+const normalizeLevelValue = (value: string) =>
+    (value ?? '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ');
 
 // --- Helper Functions for Range Math ---
 const columnLetterToIndex = (letter: string) => {
@@ -173,6 +206,16 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     // Relationship Data State (For dropdowns/validation)
     const [availableSections, setAvailableSections] = useState<{ id: string, title: string }[]>([]);
 
+    // Secciones editor enhancements
+    const sectionContentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const [sectionLintIssues, setSectionLintIssues] = useState<TagIssue[]>([]);
+    const [availableBibliographyKeys, setAvailableBibliographyKeys] = useState<string[]>([]);
+    const [availableFigureIds, setAvailableFigureIds] = useState<string[]>([]);
+    const [availableTableIds, setAvailableTableIds] = useState<string[]>([]);
+    const [equationModal, setEquationModal] = useState<{ open: boolean; mode: 'math' | 'ecuacion'; title: string; value: string }>(
+        { open: false, mode: 'math', title: 'Insertar ecuación', value: '' }
+    );
+
     // Nested Grid Editor State (for Table Content inside Form)
     const [nestedGridData, setNestedGridData] = useState<string[][]>([]);
     const [nestedGridRange, setNestedGridRange] = useState<string>('');
@@ -282,7 +325,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 initialSelectionAppliedForSpreadsheet.current = spreadsheet.spreadsheetId;
             }
         }
-  }, [spreadsheet, initialDocId]);
+    }, [spreadsheet, initialDocId]);
 
     useEffect(() => {
         setViewMode('LIST');
@@ -371,6 +414,50 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 setGridData(body);
             }
         }
+    }, [activeTab, spreadsheet, currentDocId]);
+
+    // Load IDs/keys for Secciones selectors (citas/figuras/tablas)
+    useEffect(() => {
+        if (activeTab !== 'secciones' || !currentDocId) {
+            setAvailableBibliographyKeys([]);
+            setAvailableFigureIds([]);
+            setAvailableTableIds([]);
+            return;
+        }
+
+        const norm = (s: string) => (s ?? '').toString().trim();
+        const uniqueSorted = (arr: string[]) => Array.from(new Set(arr.map(norm).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+
+        const findSheetByTitle = (title: string) =>
+            spreadsheet.sheets.find(s => normalizeSheetName(s.properties.title) === normalizeSheetName(title));
+
+        const extractColumnValuesByDoc = (sheetTitle: string, columnCandidates: string[]) => {
+            const sheet = findSheetByTitle(sheetTitle);
+            const rowData = sheet?.data?.[0]?.rowData;
+            if (!rowData || rowData.length < 2) return [] as string[];
+
+            const headers = rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+            const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
+            const colIdx = findColumnIndex(headers, columnCandidates);
+            if (docIdx === -1 || colIdx === -1) return [] as string[];
+
+            const out: string[] = [];
+            rowData.slice(1).forEach(r => {
+                const dId = r.values?.[docIdx]?.userEnteredValue?.stringValue || r.values?.[docIdx]?.formattedValue || '';
+                if (dId !== currentDocId) return;
+                const v = r.values?.[colIdx]?.userEnteredValue?.stringValue || r.values?.[colIdx]?.formattedValue || '';
+                if (v) out.push(v);
+            });
+            return out;
+        };
+
+        const bibKeys = extractColumnValuesByDoc('Bibliografía', CLAVE_VARIANTS);
+        const figIds = extractColumnValuesByDoc('Figuras', ['ID', 'FiguraID', 'IDFigura', ...ORDEN_COL_VARIANTS]);
+        const tabIds = extractColumnValuesByDoc('Tablas', ['ID', 'TablaID', 'IDTabla', ...ORDEN_COL_VARIANTS]);
+
+        setAvailableBibliographyKeys(uniqueSorted(bibKeys));
+        setAvailableFigureIds(uniqueSorted(figIds));
+        setAvailableTableIds(uniqueSorted(tabIds));
     }, [activeTab, spreadsheet, currentDocId]);
 
     // --- Logic to Calculate Next Order ---
@@ -714,6 +801,34 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const handleSaveForm = async () => {
         if (!activeSheet) return;
 
+        // Secciones: lint + normalize before save, and block save on errors
+        if (activeTab === 'secciones') {
+            const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
+            if (contentIdx !== -1) {
+                const raw = (formData[contentIdx] || '').toString();
+                const normalized = normalizeOnSave(raw);
+                const issues = lintTags(normalized, {
+                    bibliographyKeys: availableBibliographyKeys,
+                    figureIds: availableFigureIds,
+                    tableIds: availableTableIds,
+                });
+                setSectionLintIssues(issues);
+
+                const errors = issues.filter(i => i.type === 'error');
+                if (errors.length > 0) {
+                    showNotification(`Hay ${errors.length} error(es) en etiquetas. Corrige antes de guardar.`, 'error');
+                    return;
+                }
+
+                // Apply normalization to the value that will be saved
+                if (normalized !== raw) {
+                    const next = [...formData];
+                    next[contentIdx] = normalized;
+                    setFormData(next);
+                }
+            }
+        }
+
         // Validate Section and Order logic for both Tablas AND Figuras
         if (activeTab === 'tablas' || activeTab === 'figuras') {
             const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
@@ -756,6 +871,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
                     if (csvIndex !== -1 && nestedGridRange) {
                         finalFormData[csvIndex] = nestedGridRange;
+                    }
+                }
+
+                if (activeTab === 'secciones') {
+                    const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
+                    if (contentIdx !== -1) {
+                        finalFormData[contentIdx] = normalizeOnSave((finalFormData[contentIdx] || '').toString());
                     }
                 }
 
@@ -1185,7 +1307,207 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                             const isCsvRange = CSV_COL_VARIANTS.includes(header);
                                             const isSeccion = SECCION_COL_VARIANTS.includes(header);
                                             const isOrden = ORDEN_COL_VARIANTS.includes(header);
+                                            const isNivel = activeTab === 'secciones' && findColumnIndex([header], NIVEL_VARIANTS) !== -1;
+                                            const isContenido = activeTab === 'secciones' && findColumnIndex([header], CONTENIDO_VARIANTS) !== -1;
                                             const colSpan = ((activeTab === 'tablas' || activeTab === 'figuras') && !isSeccion && !isOrden) ? "col-span-2" : "col-span-1";
+
+                                            if (activeTab === 'secciones' && isNivel) {
+                                                const current = normalizeLevelValue(formData[i] || '');
+                                                const selected = SECTION_LEVEL_OPTIONS.find(o => o.value === current) || SECTION_LEVEL_OPTIONS[0];
+
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                        <select
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                            value={selected?.value}
+                                                            onChange={(e) => {
+                                                                const newData = [...formData];
+                                                                newData[i] = e.target.value;
+                                                                setFormData(newData);
+                                                            }}
+                                                        >
+                                                            {SECTION_LEVEL_OPTIONS.map(opt => (
+                                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                            ))}
+                                                        </select>
+                                                        <p className="text-xs text-gray-500">{selected?.help}</p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            if (activeTab === 'secciones' && isContenido) {
+                                                const currentValue = (formData[i] || '').toString();
+                                                const issues = sectionLintIssues;
+                                                const errorCount = issues.filter(x => x.type === 'error').length;
+                                                const warningCount = issues.filter(x => x.type === 'warning').length;
+
+                                                const applyEdit = (res: { text: string; selectionStart: number; selectionEnd: number }) => {
+                                                    const newData = [...formData];
+                                                    newData[i] = res.text;
+                                                    setFormData(newData);
+                                                    requestAnimationFrame(() => {
+                                                        const el = sectionContentTextareaRef.current;
+                                                        if (!el) return;
+                                                        el.focus();
+                                                        el.setSelectionRange(res.selectionStart, res.selectionEnd);
+                                                    });
+                                                };
+
+                                                const lintNow = (nextText: string) => {
+                                                    const nextIssues = lintTags(nextText, {
+                                                        bibliographyKeys: availableBibliographyKeys,
+                                                        figureIds: availableFigureIds,
+                                                        tableIds: availableTableIds,
+                                                    });
+                                                    setSectionLintIssues(nextIssues);
+                                                };
+
+                                                const wrapInline = (name: string, opts?: { value?: string; placeholder?: string }) => {
+                                                    const el = sectionContentTextareaRef.current;
+                                                    const selStart = el ? el.selectionStart : 0;
+                                                    const selEnd = el ? el.selectionEnd : 0;
+                                                    const res = applyInlineTag(currentValue, selStart, selEnd, name, opts);
+                                                    applyEdit(res);
+                                                    lintNow(res.text);
+                                                };
+
+                                                const insertBlock = (name: string, title?: string) => {
+                                                    const el = sectionContentTextareaRef.current;
+                                                    const pos = el ? el.selectionStart : currentValue.length;
+                                                    const res = insertBlockTag(currentValue, pos, name, title);
+                                                    applyEdit(res);
+                                                    lintNow(res.text);
+                                                };
+
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-3"}>
+                                                        <div className="flex items-start justify-between gap-4">
+                                                            <div className="space-y-1">
+                                                                <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                                <p className="text-xs text-gray-500">
+                                                                    Inserta etiquetas con los botones (no las escribas a mano). Se valida en vivo y no se permite guardar si hay errores.
+                                                                </p>
+                                                            </div>
+                                                            <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 whitespace-nowrap">
+                                                                {errorCount > 0 ? (
+                                                                    <span className="text-red-700 font-semibold">{errorCount} error(es)</span>
+                                                                ) : (
+                                                                    <span className="text-emerald-700 font-semibold">Sin errores</span>
+                                                                )}
+                                                                {warningCount > 0 ? <span className="ml-2 text-amber-700">{warningCount} warning(s)</span> : null}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Toolbar */}
+                                                        <div className="flex flex-col gap-3">
+                                                            <div className="flex flex-wrap gap-2 items-center">
+                                                                <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('nota', { placeholder: 'Nota...' })}>Nota</Button>
+                                                                <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('dorado', { placeholder: 'Texto...' })}>Dorado</Button>
+                                                                <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('guinda', { placeholder: 'Texto...' })}>Guinda</Button>
+                                                                <Button type="button" variant="outline" size="sm" onClick={() => {
+                                                                    const el = sectionContentTextareaRef.current;
+                                                                    const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
+                                                                    setEquationModal({ open: true, mode: 'math', title: 'Insertar math inline ([[math:...]])', value: sel || '' });
+                                                                }}>Math</Button>
+
+                                                                <div className="w-px h-6 bg-gray-300 mx-1" />
+
+                                                                <select
+                                                                    className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
+                                                                    value=""
+                                                                    onChange={(e) => {
+                                                                        const v = e.target.value;
+                                                                        if (!v) return;
+                                                                        wrapInline('cita', { value: v });
+                                                                        e.currentTarget.value = '';
+                                                                    }}
+                                                                    title="Insertar cita"
+                                                                >
+                                                                    <option value="">Cita…</option>
+                                                                    {availableBibliographyKeys.map(k => (
+                                                                        <option key={k} value={k}>{k}</option>
+                                                                    ))}
+                                                                </select>
+
+                                                                <select
+                                                                    className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
+                                                                    value=""
+                                                                    onChange={(e) => {
+                                                                        const v = e.target.value;
+                                                                        if (!v) return;
+                                                                        wrapInline('figura', { value: v });
+                                                                        e.currentTarget.value = '';
+                                                                    }}
+                                                                    title="Insertar referencia a figura"
+                                                                >
+                                                                    <option value="">Figura…</option>
+                                                                    {availableFigureIds.map(k => (
+                                                                        <option key={k} value={k}>{k}</option>
+                                                                    ))}
+                                                                </select>
+
+                                                                <select
+                                                                    className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
+                                                                    value=""
+                                                                    onChange={(e) => {
+                                                                        const v = e.target.value;
+                                                                        if (!v) return;
+                                                                        wrapInline('tabla', { value: v });
+                                                                        e.currentTarget.value = '';
+                                                                    }}
+                                                                    title="Insertar referencia a tabla"
+                                                                >
+                                                                    <option value="">Tabla…</option>
+                                                                    {availableTableIds.map(k => (
+                                                                        <option key={k} value={k}>{k}</option>
+                                                                    ))}
+                                                                </select>
+
+                                                                <div className="w-px h-6 bg-gray-300 mx-1" />
+
+                                                                <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('caja', 'Título opcional')}>Caja</Button>
+                                                                <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('alerta', 'Título')}>Alerta</Button>
+                                                                <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('info', 'Título')}>Info</Button>
+                                                                <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('destacado')}>Destacado</Button>
+
+                                                                <Button type="button" variant="ghost" size="sm" onClick={() => {
+                                                                    const el = sectionContentTextareaRef.current;
+                                                                    const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
+                                                                    setEquationModal({ open: true, mode: 'ecuacion', title: 'Insertar ecuación display ([[ecuacion:...]] multi-línea)', value: sel || '' });
+                                                                }}>Ecuación</Button>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Editor */}
+                                                        <textarea
+                                                            ref={sectionContentTextareaRef}
+                                                            className={clsx(
+                                                                'w-full min-h-[360px] px-4 py-3 border rounded-md text-sm leading-relaxed focus:outline-none focus:ring-1 bg-white text-gray-900',
+                                                                errorCount > 0 ? 'border-red-300 focus:ring-red-400' : 'border-gray-300 focus:ring-[#691C32]'
+                                                            )}
+                                                            value={currentValue}
+                                                            onChange={(e) => {
+                                                                const newData = [...formData];
+                                                                newData[i] = e.target.value;
+                                                                setFormData(newData);
+                                                                lintNow(e.target.value);
+                                                            }}
+                                                            placeholder="Escribe el contenido aquí…"
+                                                        />
+
+                                                        <LintPanel
+                                                            issues={issues}
+                                                            onSelectRange={(from, to) => {
+                                                                const el = sectionContentTextareaRef.current;
+                                                                if (!el) return;
+                                                                el.focus();
+                                                                el.setSelectionRange(from, to);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                );
+                                            }
 
                                             if ((activeTab === 'tablas' || activeTab === 'figuras') && isSeccion) {
                                                 return (
@@ -1303,6 +1625,73 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                         })}
                                     </div>
                                 </div>
+
+                                {/* Equation Modal (Secciones) */}
+                                {equationModal.open && activeTab === 'secciones' && (
+                                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                                        <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                                            <div className="flex items-start justify-between gap-4 mb-3">
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-[#691C32]">{equationModal.title}</h3>
+                                                    <p className="text-xs text-gray-500">Se insertará como etiqueta bien formada en el texto.</p>
+                                                </div>
+                                                <button className="text-gray-500 hover:text-gray-700" onClick={() => setEquationModal({ ...equationModal, open: false })}>
+                                                    <X size={18} />
+                                                </button>
+                                            </div>
+
+                                            <textarea
+                                                className="w-full min-h-[180px] px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                value={equationModal.value}
+                                                onChange={(e) => setEquationModal({ ...equationModal, value: e.target.value })}
+                                                placeholder={equationModal.mode === 'math' ? 'a^2 + b^2 = c^2' : 'Escribe la ecuación (puede ser multi-línea)…'}
+                                            />
+
+                                            <div className="flex justify-end gap-3 mt-4">
+                                                <Button variant="ghost" onClick={() => setEquationModal({ ...equationModal, open: false })}>Cancelar</Button>
+                                                <Button
+                                                    variant="burgundy"
+                                                    onClick={() => {
+                                                        const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
+                                                        if (contentIdx === -1) {
+                                                            setEquationModal({ ...equationModal, open: false });
+                                                            return;
+                                                        }
+
+                                                        const el = sectionContentTextareaRef.current;
+                                                        const selStart = el ? el.selectionStart : 0;
+                                                        const selEnd = el ? el.selectionEnd : 0;
+                                                        const currentValue = (formData[contentIdx] || '').toString();
+                                                        const tagName = equationModal.mode === 'math' ? 'math' : 'ecuacion';
+                                                        const payload = equationModal.value || '...';
+
+                                                        const res = applyInlineTag(currentValue, selStart, selEnd, tagName, { value: payload, placeholder: '...' });
+                                                        const newData = [...formData];
+                                                        newData[contentIdx] = res.text;
+                                                        setFormData(newData);
+                                                        setEquationModal({ ...equationModal, open: false });
+
+                                                        const nextIssues = lintTags(res.text, {
+                                                            bibliographyKeys: availableBibliographyKeys,
+                                                            figureIds: availableFigureIds,
+                                                            tableIds: availableTableIds,
+                                                        });
+                                                        setSectionLintIssues(nextIssues);
+
+                                                        requestAnimationFrame(() => {
+                                                            const el2 = sectionContentTextareaRef.current;
+                                                            if (!el2) return;
+                                                            el2.focus();
+                                                            el2.setSelectionRange(res.selectionStart, res.selectionEnd);
+                                                        });
+                                                    }}
+                                                >
+                                                    Insertar
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Nested Grid Editor (Only for Tablas) */}
                                 {activeTab === 'tablas' && (

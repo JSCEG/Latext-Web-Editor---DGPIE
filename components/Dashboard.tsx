@@ -13,9 +13,9 @@ export type DocumentCard = {
 };
 
 interface DashboardProps {
-  onCreate: (title: string) => void;
+    onCreate: (title: string) => void;
     onOpen: (spreadsheetId: string, docId?: string) => void;
-  onLogout: () => void;
+    onLogout: () => void;
     documents: DocumentCard[];
 }
 
@@ -23,25 +23,25 @@ interface DashboardProps {
 const DEFAULT_SHEET_ID = '1zKKvxR_56Gk5ku4ZZ682hSpOgQQo3gC0xXOB_nta3Zg';
 
 export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout, documents }) => {
-  const [inputSheetId, setInputSheetId] = useState('');
+    const [inputSheetId, setInputSheetId] = useState('');
 
-  return (
-    <div className="max-w-7xl mx-auto p-8 space-y-8 animate-in fade-in duration-500">
-      
-      {/* Title Section */}
-      <div className="flex justify-between items-end border-b-4 border-[#691C32] pb-2">
-        <div>
-           <h1 className="text-3xl font-bold text-[#691C32]">Documentos Disponibles</h1>
-        </div>
-        <div>
-            <Button onClick={() => onCreate("Nuevo Documento")}>
-                <Plus size={16} className="mr-2"/> Nuevo Documento
-            </Button>
-        </div>
-      </div>
+    return (
+        <div className="max-w-7xl mx-auto p-8 space-y-8 animate-in fade-in duration-500">
 
-      {/* Document Card List */}
-      <div className="space-y-4">
+            {/* Title Section */}
+            <div className="flex justify-between items-end border-b-4 border-[#691C32] pb-2">
+                <div>
+                    <h1 className="text-3xl font-bold text-[#691C32]">Documentos Disponibles</h1>
+                </div>
+                <div>
+                    <Button onClick={() => onCreate("Nuevo Documento")}>
+                        <Plus size={16} className="mr-2" /> Nuevo Documento
+                    </Button>
+                </div>
+            </div>
+
+            {/* Document Card List */}
+            <div className="space-y-4">
 
                 {documents.length > 0 ? (
                     documents.map((doc) => (
@@ -102,23 +102,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                     </div>
                 )}
 
-      </div>
+            </div>
 
-      <div className="mt-8 pt-8 border-t border-gray-200 text-center">
-        <p className="text-gray-500 text-sm">¿Tienes otro ID de hoja de cálculo?</p>
-         <div className="max-w-md mx-auto mt-4 flex gap-2">
-            <input 
-                type="text" 
-                placeholder="Pegar ID de Google Sheets aquí" 
-                className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#691C32]"
-                value={inputSheetId}
-                onChange={(e) => setInputSheetId(e.target.value)}
-            />
-            <Button variant="secondary" onClick={() => onOpen(inputSheetId)} disabled={!inputSheetId}>
-                Abrir Externo
-            </Button>
-         </div>
-      </div>
-    </div>
-  );
+            <div className="mt-8 pt-8 border-t border-gray-200 text-center">
+                <p className="text-gray-500 text-sm">¿Tienes otro ID de hoja de cálculo?</p>
+                <div className="max-w-md mx-auto mt-4 flex gap-2">
+                    <input
+                        type="text"
+                        placeholder="Pegar ID de Google Sheets aquí"
+                        className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#691C32]"
+                        value={inputSheetId}
+                        onChange={(e) => setInputSheetId(e.target.value)}
+                    />
+                    <Button variant="secondary" onClick={() => onOpen(inputSheetId)} disabled={!inputSheetId}>
+                        Abrir Externo
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
 };
