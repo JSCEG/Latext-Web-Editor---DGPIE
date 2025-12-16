@@ -46,9 +46,10 @@ type DocumentOption = {
 
 // Helper to find column index with loose matching
 const findColumnIndex = (headers: string[], candidates: string[]) => {
+    const norm = (s: string) => s.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/_/g, '');
     return headers.findIndex(h => {
-        const normHeader = h.trim().toLowerCase().replace(/_/g, '');
-        return candidates.some(c => c.trim().toLowerCase().replace(/_/g, '') === normHeader);
+        const normHeader = norm(h);
+        return candidates.some(c => norm(c) === normHeader);
     });
 };
 
@@ -120,7 +121,14 @@ const quoteSheetName = (name: string) => {
 };
 
 // Helper to normalize sheet names for comparison (ignores case, spaces, underscores, quotes)
-const normalizeSheetName = (name: string) => name.trim().toLowerCase().replace(/['"_\s]/g, '');
+const normalizeSheetName = (name: string) =>
+    name
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/['"_\s]/g, '')
+        .replace(/s$/g, '');
 
 // Robust Helper to sanitize and format range string
 const sanitizeRangeString = (range: string): string => {
