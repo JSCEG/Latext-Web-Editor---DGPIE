@@ -155,6 +155,9 @@ const App: React.FC = () => {
     setToken('DEMO');
     setIsAuthenticated(true);
     setError(null);
+    const demoUser = { name: 'Usuario Demo', email: 'demo@gob.mx' };
+    setCurrentUser(demoUser);
+    socketService.connect(demoUser);
   }
 
   const googleLogin = useGoogleLogin({
@@ -179,10 +182,13 @@ const App: React.FC = () => {
 
           // Save profile for reload persistence
           localStorage.setItem('user_profile', JSON.stringify(userData));
+          setCurrentUser(userData);
 
           socketService.connect(userData);
         } catch (e) {
-          socketService.connect({ name: 'Usuario Google', email: 'google@gob.mx' });
+          const fallbackUser = { name: 'Usuario Google', email: 'google@gob.mx' };
+          setCurrentUser(fallbackUser);
+          socketService.connect(fallbackUser);
         }
       }
     },
