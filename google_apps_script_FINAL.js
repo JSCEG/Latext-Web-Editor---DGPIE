@@ -103,6 +103,8 @@ function previewTexto(valor, maxLen = 50) {
  */
 function generarLatex() {
     logMensajes = [];
+    G_REFERENCED_IDS = { figuras: {}, tablas: {} };
+    G_ID_WARNINGS = [];
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const ui = SpreadsheetApp.getUi();
 
@@ -229,8 +231,8 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
         if (id) {
             G_FIG_MAP[id] = {
                 id: id,
-                caption: (f['Título/Descripción'] || f['Titulo'] || '').toString(),
-                ruta: (f['Ruta de Imagen'] || f['RutaArchivo'] || '').toString(),
+                caption: (f['Caption'] || f['Título/Descripción'] || f['Titulo'] || '').toString(),
+                ruta: (f['RutaArchivo'] || f['Ruta de Imagen'] || '').toString(),
                 seccion: sec
             };
         }
@@ -254,7 +256,7 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     // Índices por número de orden (globales, ignorando SeccionOrden)
     const FIG_ORDER_MAP = {};
     (figuras || []).forEach(f => {
-        const ord = (f['Fig.'] || f['OrdenFigura'] || '').toString().trim();
+        const ord = (f['Fig.'] || f['OrdenFigura'] || f['Orden'] || '').toString().trim();
         if (ord) FIG_ORDER_MAP[ord] = f;
     });
 
@@ -463,57 +465,14 @@ function procesarSecciones(secciones, figurasOrderMap, tablasOrderMap, ss) {
         // --- NIVELES NORMALES ---
         // FIX: Pasar estado de anexos para limpiar prefijos duplicados
         contenido += generarComandoSeccion(nivel, titulo, anexosIniciados);
-        contenido += procesarContenido(contenidoRaw);
+        contenido += procesarContenido(contenidoRaw, ss);
 
-        // Inserción basada exclusivamente en referencias explícitas en el contenido
+        // Log de referencias (para diagnósticos), la inserción por [[...]] se hace inline
         const refs = extraerReferenciasDesdeContenido(contenidoRaw);
-        if (refs.length > 0) {
-            refs.forEach(ref => {
-                if (ref.tipo === 'figura') {
-                    let fig = null;
-                    if (ref.id && G_FIG_MAP[ref.id]) {
-                        // Referencia por ID
-                        const metaId = G_FIG_MAP[ref.id];
-                        fig = figurasOrderMap[ref.orden] || null; // si también se indica orden
-                        if (!fig) {
-                            fig = { RutaArchivo: metaId.ruta, Caption: metaId.caption, Fuente: '', TextoAlternativo: metaId.caption, Ancho: '0.8', 'Fig.': '' };
-                        }
-                    }
-                    if (!fig && ref.orden && figurasOrderMap[ref.orden]) fig = figurasOrderMap[ref.orden];
-                    if (fig) {
-                        contenido += generarFigura(fig);
-                        const ordVal = (fig['Fig.'] || fig['OrdenFigura'] || '').toString().trim();
-                        const secVal = (fig['SeccionOrden'] || '').toString().trim();
-                        const derivedId = secVal ? `FIG-${secVal}-${ordVal}` : (ordVal ? `FIG-${ordVal}` : ref.id || `ORD:${ref.orden}`);
-                        const key = ref.id || derivedId || `ORD:${ref.orden}`;
-                        G_REFERENCED_IDS.figuras[key] = true;
-                        log(`   ↳ Figura insertada: ${key}`);
-                    } else {
-                        log(`   ⚠️ Referencia a figura no resuelta: ${ref.id || ref.orden}`);
-                    }
-                } else if (ref.tipo === 'tabla') {
-                    let tbl = null;
-                    if (ref.id && G_TAB_MAP[ref.id]) {
-                        const metaId = G_TAB_MAP[ref.id];
-                        tbl = tablasOrderMap[ref.orden] || null;
-                        if (!tbl) {
-                            tbl = { Titulo: metaId.title, Fuente: '', DatosCSV: metaId.rango, Orden: '' };
-                        }
-                    }
-                    if (!tbl && ref.orden && tablasOrderMap[ref.orden]) tbl = tablasOrderMap[ref.orden];
-                    if (tbl) {
-                        contenido += generarTabla(tbl, ss);
-                        const ordVal = (tbl['Orden'] || tbl['OrdenTabla'] || '').toString().trim();
-                        const secVal = (tbl['SeccionOrden'] || tbl['ID_Seccion'] || '').toString().trim();
-                        const derivedId = secVal ? `TBL-${secVal}-${ordVal}` : (ordVal ? `TBL-${ordVal}` : ref.id || `ORD:${ref.orden}`);
-                        const key = ref.id || derivedId || `ORD:${ref.orden}`;
-                        G_REFERENCED_IDS.tablas[key] = true;
-                        log(`   ↳ Tabla insertada: ${key}`);
-                    } else {
-                        log(`   ⚠️ Referencia a tabla no resuelta: ${ref.id || ref.orden}`);
-                    }
-                }
-            });
+        if (refs.length) {
+            log(`   ↳ Referencias detectadas: ${refs.map(r => `${r.tipo}:${r.id || r.orden}`).join(', ')}`);
+        } else {
+            log(`   ↳ Sin referencias explícitas en contenido`);
         }
 
         contenido += '\n\n';
@@ -590,7 +549,7 @@ function generarComandoSeccion(nivel, titulo, anexosIniciados = false) {
  * FIX: Procesa el contenido de una sección (listas, bloques, etc.)
  * Corregido para no romper listas con líneas en blanco
  */
-function procesarContenido(contenidoRaw) {
+function procesarContenido(contenidoRaw, ss) {
     const lineas = contenidoRaw.split('\n');
     let resultado = '';
     let enLista = false;
@@ -674,16 +633,30 @@ function procesarContenido(contenidoRaw) {
             // Procesar línea normal solo si no estamos en lista
             if (!enLista) {
                 if (lineaTrim.startsWith('[[tabla:')) {
-                    // Referencia a tabla inline
-                    const match = lineaTrim.match(/\[\[tabla:(.+?)\]\]/);
-                    if (match) {
-                        resultado += `% Referencia a tabla: ${match[1]}\n`;
+                    const match = lineaTrim.match(/\[\[tabla:([^\]]+)\]\]/i);
+                    const id = match ? match[1].trim() : '';
+                    if (id) {
+                        if (ss && G_TAB_MAP[id]) {
+                            const meta = G_TAB_MAP[id];
+                            const tbl = { Titulo: meta.title, Fuente: '', DatosCSV: meta.rango, Orden: '', ID: id };
+                            resultado += generarTabla(tbl, ss);
+                            G_REFERENCED_IDS.tablas[id] = true;
+                        } else {
+                            resultado += `% Referencia a tabla: ${id}\n`;
+                        }
                     }
                 } else if (lineaTrim.startsWith('[[figura:')) {
-                    // Referencia a figura inline
-                    const match = lineaTrim.match(/\[\[figura:(.+?)\]\]/);
-                    if (match) {
-                        resultado += `% Referencia a figura: ${match[1]}\n`;
+                    const match = lineaTrim.match(/\[\[figura:([^\]]+)\]\]/i);
+                    const id = match ? match[1].trim() : '';
+                    if (id) {
+                        if (ss && G_FIG_MAP[id]) {
+                            const meta = G_FIG_MAP[id];
+                            const fig = { RutaArchivo: meta.ruta, Caption: meta.caption, Fuente: '', TextoAlternativo: meta.caption, Ancho: '0.8', ID: id };
+                            resultado += generarFigura(fig);
+                            G_REFERENCED_IDS.figuras[id] = true;
+                        } else {
+                            resultado += `% Referencia a figura: ${id}\n`;
+                        }
                     }
                 } else if (lineaTrim !== '') {
                     resultado += `${procesarConEtiquetas(linea)}\n`;
@@ -1178,9 +1151,10 @@ function extraerReferenciasDesdeContenido(texto) {
         refs.push({ tipo: 'figura', id: m[1].trim(), orden: '' });
     }
 
-    // 2) "Tabla 12", "Tabla No. 12", "Figura 3", con variaciones y diacríticos
-    const regexTablaNum = /(tabla)\s*(?:n\.?\s*o\.?\s*)?(?:numero\s*|n[uú]mero\s*)?(\d+)/gi;
-    const regexFiguraNum = /(figura)\s*(?:n\.?\s*o\.?\s*)?(?:numero\s*|n[uú]mero\s*)?(\d+)/gi;
+    // 2) Referencias por texto natural con variaciones:
+    //    "Tabla 12", "Tabla No. 12", "Tab. 3", "Figura 3", "Fig. 4", "Fig 5"
+    const regexTablaNum = /(tabla|tab\.?)(?:\s*(?:n\.?\s*o\.?|n[uú]mero|numero))?\s*(\d+)/gi;
+    const regexFiguraNum = /(figura|fig\.?)(?:\s*(?:n\.?\s*o\.?|n[uú]mero|numero))?\s*(\d+)/gi;
     let mt;
     while ((mt = regexTablaNum.exec(str)) !== null) {
         refs.push({ tipo: 'tabla', id: '', orden: mt[2].trim() });
@@ -1469,9 +1443,10 @@ function generarFigura(figura) {
     const fuente = figura['Fuente'] || '';
     const textoAlt = figura['TextoAlternativo'] || caption;
     const ancho = figura['Ancho'] || '0.8';
+    const forcedId = (figura['ID'] || '').toString();
     const sec = (figura['SeccionOrden'] || '').toString();
-    const ord = (figura['Fig.'] || figura['OrdenFigura'] || '').toString();
-    const id = (sec && ord) ? `FIG-${sec}-${ord}` : (ord ? `FIG-${ord}` : '');
+    const ord = (figura['Fig.'] || figura['OrdenFigura'] || figura['Orden'] || '').toString();
+    const id = forcedId || ((sec && ord) ? `FIG-${sec}-${ord}` : (ord ? `FIG-${ord}` : ''));
 
     log(`  🖼️  Figura detectada: ${previewTexto(caption, 40)}...`);
 
@@ -1522,9 +1497,10 @@ function generarTabla(tabla, ss) {
     const titulo = tabla['Titulo'] || '';
     const fuente = tabla['Fuente'] || '';
     const datosRef = tabla['DatosCSV'] || '';
+    const forcedId = (tabla['ID'] || '').toString();
     const sec = (tabla['SeccionOrden'] || tabla['ID_Seccion'] || '').toString();
     const ord = (tabla['Orden'] || tabla['OrdenTabla'] || '').toString();
-    const id = (sec && ord) ? `TBL-${sec}-${ord}` : (ord ? `TBL-${ord}` : '');
+    const id = forcedId || ((sec && ord) ? `TBL-${sec}-${ord}` : (ord ? `TBL-${ord}` : ''));
 
     log(`  📊 Tabla detectada: ${previewTexto(titulo, 40)}...`);
 
