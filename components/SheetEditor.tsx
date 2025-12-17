@@ -4,7 +4,7 @@ import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValue
 import { socketService } from '../services/socketService';
 import { UserActivityTracker } from './UserActivityTracker';
 import { Button } from './Button';
-import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, ChevronDown, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle, MoreVertical } from 'lucide-react';
+import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, ChevronDown, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle, MoreVertical, Hash, Calendar, User, Building, AlignLeft, Database, Heart } from 'lucide-react';
 import { clsx } from 'clsx';
 import { LintPanel } from './LintPanel';
 import { applyInlineTag, insertBlockTag, lintTags, normalizeOnSave, TagIssue } from '../tagEngine';
@@ -1597,35 +1597,14 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                         <h1 className="text-lg font-bold text-[#691C32] capitalize leading-tight">
                             {activeTab === 'metadatos' ? 'Editor de Documento' : activeTab}
                         </h1>
-                        {availableDocs.length > 0 ? (
-                            <div className="relative mt-1 w-full md:max-w-[320px]">
-                                <select
-                                    aria-label="Seleccionar DocumentoID"
-                                    className="appearance-none w-full text-sm text-gray-800 bg-white border border-gray-300 rounded-md px-3 py-2 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#691C32] focus:border-[#691C32] hover:border-[#691C32]/40 transition-colors duration-150"
-                                    value={currentDocId || ''}
-                                    onChange={(e) => {
-                                        const nextId = e.target.value;
-                                        setCurrentDocId(nextId);
-                                        const selected = availableDocs.find(d => d.id === nextId);
-                                        if (selected) {
-                                            setCurrentDocRowIndex(selected.rowIndex);
-                                        }
-                                    }}
-                                    title="Seleccionar DocumentoID"
-                                >
-                                    {availableDocs.map((d, idx) => (
-                                        <option key={`${d.id}-${idx}`} value={d.id} className="text-gray-900">
-                                            {d.id}{d.title ? ` - ${d.title}` : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                                <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-gray-500">
-                                    <ChevronDown size={16} />
-                                </span>
-                            </div>
-                        ) : (
-                            <span className="text-xs text-gray-400 font-mono">{currentDocId}</span>
-                        )}
+                        <div className="mt-1 text-sm text-gray-700 font-medium flex items-center gap-2">
+                            <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs font-mono border border-gray-200">
+                                {currentDocId}
+                            </span>
+                            <span className="truncate max-w-[200px] md:max-w-[400px]" title={availableDocs.find(d => d.id === currentDocId)?.title || ''}>
+                                {availableDocs.find(d => d.id === currentDocId)?.title || 'Cargando título...'}
+                            </span>
+                        </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
