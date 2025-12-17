@@ -275,6 +275,12 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
 
     // --- Preámbulo ---
     tex += `\\documentclass{sener2025}\n\n`;
+    // Forzar notas al pie en el pie de página y páginas equilibradas
+    tex += `\\usepackage[bottom]{footmisc}\n`;
+    tex += `\\usepackage{needspace}\n`;
+    tex += `\\flushbottom\n`;
+    tex += `\\setlength{\\skip\\footins}{6pt plus 2pt minus 1pt}\n`;
+    tex += `\\setlength{\\footnotesep}{8pt}\n\n`;
 
     if (bibliografia.length > 0) {
         tex += `\\addbibresource{referencias.bib}\n\n`;
@@ -1450,7 +1456,8 @@ function generarFigura(figura) {
 
     log(`  🖼️  Figura detectada: ${previewTexto(caption, 40)}...`);
 
-    let tex = `\\begin{figure}[H]\n`;
+    let tex = `\\Needspace{18\\baselineskip}\n`;
+    tex += `\\begin{figure}[H]\n`;
     // Agrupar \centering e imagen para que no afecte al caption
     tex += `  {\\centering\n`;
 
