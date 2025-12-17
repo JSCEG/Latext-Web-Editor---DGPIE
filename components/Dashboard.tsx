@@ -21,7 +21,7 @@ interface DashboardProps {
 }
 
 // Hardcoded ID provided by user
-const DEFAULT_SHEET_ID = '1zKKvxR_56Gk5ku4ZZ682hSpOgQQo3gC0xXOB_nta3Zg';
+const DEFAULT_SHEET_ID = '1HpvaN82xj75IhTg0ZyeGOBWluivCQdQh9OuDL-nnGgI';
 
 export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout, documents }) => {
     const [inputSheetId, setInputSheetId] = useState('');

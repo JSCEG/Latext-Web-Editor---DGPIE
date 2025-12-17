@@ -8,8 +8,7 @@ import { Button } from './components/Button';
 import { ShieldAlert, HelpCircle, PlayCircle, HelpCircle as HelpIcon, LogOut, X } from 'lucide-react';
 import { GOOGLE_SCOPES } from './config';
 
-const MASTER_SPREADSHEET_ID = '1zKKvxR_56Gk5ku4ZZ682hSpOgQQo3gC0xXOB_nta3Zg';
-const EXTRA_SPREADSHEET_ID = '1HpvaN82xj75IhTg0ZyeGOBWluivCQdQh9OuDL-nnGgI';
+const MASTER_SPREADSHEET_ID = '1HpvaN82xj75IhTg0ZyeGOBWluivCQdQh9OuDL-nnGgI';
 
 const App: React.FC = () => {
   const [token, setToken] = useState<string>('');
@@ -79,13 +78,6 @@ const App: React.FC = () => {
         const spreadsheetIdToLoad = token === 'DEMO' ? 'demo-latex-gov' : MASTER_SPREADSHEET_ID;
         const data = await fetchSpreadsheet(spreadsheetIdToLoad, token);
         let docs = extractDocuments(data).map(d => ({ ...d, sheetId: spreadsheetIdToLoad }));
-        try {
-          const extra = await fetchSpreadsheet(EXTRA_SPREADSHEET_ID, token);
-          const extraDocs = extractDocuments(extra).map(d => ({ ...d, sheetId: EXTRA_SPREADSHEET_ID }));
-          docs = [...docs, ...extraDocs];
-        } catch (e) {
-          console.warn('No se pudo cargar hoja extra:', e);
-        }
         setDashboardDocuments(docs);
       } catch (err: any) {
         handleError(err);
