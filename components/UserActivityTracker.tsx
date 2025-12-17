@@ -2,7 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Users, Circle, FileText, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { socketService, ConnectedUser } from '../services/socketService';
 
-export const UserActivityTracker: React.FC = () => {
+interface UserActivityTrackerProps {
+    variant?: 'floating' | 'sidebar';
+}
+
+export const UserActivityTracker: React.FC<UserActivityTrackerProps> = ({ variant = 'floating' }) => {
     const [users, setUsers] = useState<ConnectedUser[]>([]);
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -14,18 +18,27 @@ export const UserActivityTracker: React.FC = () => {
     }, []);
 
     const onlineCount = users.length;
+    const isFloating = variant === 'floating';
 
     return (
-        <div className="fixed bottom-4 right-4 z-50 w-80 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden font-sans">
+        <div 
+            className={isFloating 
+                ? "fixed bottom-4 right-4 z-50 w-80 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden font-sans transition-all duration-300 ease-in-out"
+                : "w-full border-t border-gray-200 bg-gray-50 font-sans"
+            }
+        >
             {/* Header */}
             <div 
-                className="bg-[#691C32] text-white px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-[#541628] transition-colors"
+                className={isFloating
+                    ? "bg-[#691C32] text-white px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-[#541628] transition-colors"
+                    : "w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 cursor-pointer transition-colors"
+                }
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div className="flex items-center gap-2">
-                    <Users size={16} />
-                    <span className="font-semibold text-sm">Colaboradores</span>
-                    <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs font-medium">
+                    <Users size={isFloating ? 16 : 18} className={!isFloating ? "text-gray-500" : ""} />
+                    <span className={!isFloating ? "text-gray-700" : ""}>Colaboradores</span>
+                    <span className={`${isFloating ? "bg-white/20 text-white" : "bg-gray-200 text-gray-700"} px-2 py-0.5 rounded-full text-xs font-medium`}>
                         {onlineCount}
                     </span>
                 </div>
@@ -33,8 +46,14 @@ export const UserActivityTracker: React.FC = () => {
             </div>
 
             {/* Content */}
-            {isExpanded && (
-                <div className="max-h-96 overflow-y-auto">
+            <div 
+                className={`transition-all duration-300 ease-in-out overflow-hidden ${
+                    isExpanded 
+                        ? (isFloating ? "max-h-96 opacity-100" : "max-h-[500px] opacity-100 border-t border-gray-200") 
+                        : "max-h-0 opacity-0"
+                }`}
+            >
+                <div className={isFloating ? "overflow-y-auto max-h-96" : "overflow-y-auto max-h-80 bg-white"}>
                     {users.length === 0 ? (
                         <div className="p-4 text-center text-gray-500 text-sm">
                             No hay otros usuarios conectados.
@@ -51,14 +70,14 @@ export const UserActivityTracker: React.FC = () => {
                                                 </div>
                                                 <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${user.status === 'editing' ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
                                             </div>
-                                            <div>
-                                                <p className="text-sm font-medium text-gray-800">{user.name}</p>
+                                            <div className="overflow-hidden">
+                                                <p className="text-sm font-medium text-gray-800 truncate">{user.name}</p>
                                                 <p className="text-[10px] text-gray-500 truncate max-w-[120px]">{user.email}</p>
                                             </div>
                                         </div>
                                         
                                         {user.currentDoc && (
-                                            <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded text-[10px] font-medium border border-blue-100">
+                                            <div className="flex-shrink-0 flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded text-[10px] font-medium border border-blue-100">
                                                 <FileText size={10} />
                                                 {user.currentDoc}
                                             </div>
@@ -74,9 +93,9 @@ export const UserActivityTracker: React.FC = () => {
                                             <ul className="space-y-1">
                                                 {user.recentChanges.map((change, idx) => (
                                                     <li key={idx} className="text-[10px] text-gray-600 flex justify-between">
-                                                        <span className="truncate max-w-[140px]">• {change.desc}</span>
-                                                        <span className="text-gray-400 ml-2">
-                                                            {new Date(change.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}
+                                                        <span className="truncate max-w-[120px]">• {change.desc}</span>
+                                                        <span className="text-gray-400 ml-2 whitespace-nowrap">
+                                                            {new Date(change.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                                         </span>
                                                     </li>
                                                 ))}
@@ -88,7 +107,7 @@ export const UserActivityTracker: React.FC = () => {
                         </div>
                     )}
                 </div>
-            )}
+            </div>
         </div>
     );
 };

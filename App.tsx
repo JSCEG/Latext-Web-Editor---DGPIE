@@ -500,7 +500,7 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main>
-        {isAuthenticated && <UserActivityTracker />}
+        {isAuthenticated && currentView === AppView.DASHBOARD && <UserActivityTracker />}
         {currentView === AppView.DASHBOARD ? (
           <Dashboard
             onCreate={handleCreate}

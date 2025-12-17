@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Spreadsheet } from '../types';
 import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValues, updateValues, insertDimension, createNewTab } from '../services/sheetsService';
 import { socketService } from '../services/socketService';
+import { UserActivityTracker } from './UserActivityTracker';
 import { Button } from './Button';
 import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, ChevronDown, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle, MoreVertical } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -1663,6 +1664,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                             </button>
                         ))}
                     </nav>
+                    <UserActivityTracker variant="sidebar" />
                 </div>
 
                 {/* Main Content Area */}
