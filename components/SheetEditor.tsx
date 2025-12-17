@@ -142,35 +142,6 @@ const sanitizeRangeString = (range: string): string => {
             if (lastBang !== -1 && lastBang < clean.length - 2) {
                 clean = clean.slice(1, -1);
             }
-
-            // Validación adicional de Secciones: campos obligatorios, estado y duplicados
-            const docIdx = findColumnIndex(formHeaders, DOC_ID_VARIANTS);
-            const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
-            const nivelIdx = findColumnIndex(formHeaders, NIVEL_VARIANTS);
-            const tituloIdx = findColumnIndex(formHeaders, TITLE_VARIANTS);
-            const estadoIdx = formHeaders.findIndex(h => h.trim().toLowerCase() === 'estado');
-
-            const docIdVal = docIdx !== -1 ? (formData[docIdx] || '').toString().trim() : currentDocId;
-            const ordVal = ordIdx !== -1 ? (formData[ordIdx] || '').toString().trim() : '';
-            const nivelVal = nivelIdx !== -1 ? (formData[nivelIdx] || '').toString().trim() : '';
-            const tituloVal = tituloIdx !== -1 ? (formData[tituloIdx] || '').toString().trim() : '';
-            const estadoVal = estadoIdx !== -1 ? (formData[estadoIdx] || '').toString().trim().toLowerCase() : 'disponible';
-
-            if (!docIdVal) { showNotification('DocumentoID es obligatorio.', 'error'); return; }
-            if (!ordVal) { showNotification('Orden es obligatorio.', 'error'); return; }
-            if (!nivelVal) { showNotification('Nivel es obligatorio.', 'error'); return; }
-            if (!tituloVal) { showNotification('Título es obligatorio.', 'error'); return; }
-            if (estadoVal !== 'disponible' && estadoVal !== 'available') { showNotification('El estado debe ser "disponible" para procesar.', 'error'); return; }
-
-            const gridDocIdx = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
-            const gridOrdIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
-            const hasDup = gridData.some((row, idx) => {
-                if (editingRowIndex !== null && idx === editingRowIndex) return false;
-                const d = gridDocIdx !== -1 ? (row[gridDocIdx] || '') : '';
-                const o = gridOrdIdx !== -1 ? (row[gridOrdIdx] || '') : '';
-                return d === docIdVal && o === ordVal;
-            });
-            if (hasDup) { showNotification(`Ya existe una sección con Orden "${ordVal}" en el documento ${docIdVal}.`, 'error'); return; }
         }
     }
 
@@ -221,25 +192,6 @@ const parseRange = (rangeStr: string) => {
         endCol: columnLetterToIndex(endMatch[1]),
         endRow: parseInt(endMatch[2])
     };
-
-
-
-    // removed duplicate out-of-scope createNewForSection
-
-    useEffect(() => {
-        const loadPreviewData = async () => {
-            if (!selectorPreview) return;
-            if (selectorPreview.type !== 'tabla') return;
-            const item = availableTableItems.find(x => x.id === selectorPreview.id);
-            const range = item?.range || '';
-            if (!range) return;
-            try {
-                const values = await fetchValues(spreadsheet.spreadsheetId, sanitizeRangeString(range), token);
-                setSelectorPreview(prev => prev ? { ...prev, data: values } : prev);
-            } catch { }
-        };
-        loadPreviewData();
-    }, [selectorPreview]);
 };
 
 export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, initialDocId, onRefresh, onBack }) => {
@@ -999,6 +951,21 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
         setViewMode('FORM');
     };
+
+    useEffect(() => {
+        const loadPreviewData = async () => {
+            if (!selectorPreview) return;
+            if (selectorPreview.type !== 'tabla') return;
+            const item = availableTableItems.find(x => x.id === selectorPreview.id);
+            const range = item?.range || '';
+            if (!range) return;
+            try {
+                const values = await fetchValues(spreadsheet.spreadsheetId, sanitizeRangeString(range), token);
+                setSelectorPreview(prev => prev ? { ...prev, data: values } : prev);
+            } catch { }
+        };
+        loadPreviewData();
+    }, [selectorPreview]);
 
     const validateCurrentDocumentOrders = () => {
         if (activeTab !== 'secciones') { showNotification('Esta validación aplica en Secciones.', 'error'); return; }
