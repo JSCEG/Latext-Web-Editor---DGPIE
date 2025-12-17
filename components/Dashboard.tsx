@@ -46,7 +46,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
 
                 {documents.length > 0 ? (
                     documents.map((doc) => (
-                        <div key={doc.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow">
+                        <div
+                            key={`${doc.sheetId || 'master'}-${doc.id}`}
+                            aria-label={`Documento ${doc.id}`}
+                            className="group bg-white rounded-lg shadow-sm border border-gray-200 p-6 md:p-8 flex flex-col md:flex-row gap-6 hover:shadow-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-[#691C32]/30"
+                        >
                             {/* Icon / ID */}
                             <div className="flex-shrink-0">
                                 <div className="w-12 h-16 bg-red-50 border border-red-100 rounded flex flex-col items-center justify-center text-[#691C32]">
@@ -63,11 +67,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                                         {doc.title || `Documento ${doc.id}`}
                                     </h2>
                                     {doc.subtitle && (
-                                        <p className="text-gray-500 italic text-sm mt-1">{doc.subtitle}</p>
+                                        <p className="text-gray-600 italic text-sm mt-1 line-clamp-2">{doc.subtitle}</p>
                                     )}
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 text-sm text-gray-600">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 text-sm text-gray-700">
                                     {doc.author && (
                                         <div className="flex items-center gap-2">
                                             <User size={14} className="text-[#13322B]" />
