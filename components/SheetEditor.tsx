@@ -1390,9 +1390,24 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
                 showNotification("Guardado correctamente.", "success");
                 socketService.reportAction(`Guardó cambios en ${activeTab} (${currentDocId})`);
-                onRefresh();
-                setSearchTerm('');
-                setViewMode('LIST');
+
+                // Update local state to reflect changes without full reload
+                const newGridData = [...gridData];
+                if (editingRowIndex === null) {
+                    // New item added
+                    newGridData.push(finalFormData);
+                    setGridData(newGridData);
+                    setEditingRowIndex(newGridData.length - 1);
+                } else {
+                    // Existing item updated
+                    newGridData[editingRowIndex] = finalFormData;
+                    setGridData(newGridData);
+                }
+
+                // Do not refresh or switch view mode, to keep user context
+                // onRefresh();
+                // setSearchTerm('');
+                // setViewMode('LIST');
             }
         } catch (e) {
             console.error(e);
