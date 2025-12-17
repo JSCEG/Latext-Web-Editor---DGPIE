@@ -751,10 +751,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
         let maxOrder = 0;
         gridData.forEach(row => {
-            if (row[secColIdx] === sectionId) {
+            const rowSec = (row[secColIdx] || '').toString().trim();
+            // Handle subsection matching (exact match)
+            if (rowSec === sectionId.trim()) {
                 const valStr = row[ordColIdx];
-                // Handle potentially mixed types (e.g., "1", "1.0", or even "2.1" if user broke convention)
-                // We try to extract the integer part if possible
                 const ordVal = parseInt(valStr);
                 if (!isNaN(ordVal) && ordVal > maxOrder) {
                     maxOrder = ordVal;
@@ -767,11 +767,25 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const isOrderDuplicate = (sectionId: string, orderVal: string, ignoreRowIndex: number | null) => {
         const secColIdx = findColumnIndex(gridHeaders, SECCION_COL_VARIANTS);
         const ordColIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
-        if (secColIdx === -1 || ordColIdx === -1) return false;
+
+        // If we can't find columns, we can't validate duplicates properly, but we shouldn't block
+        if (ordColIdx === -1) return false;
+
+        const targetSec = (sectionId || '').toString().trim();
+        const targetOrd = (orderVal || '').toString().trim();
 
         return gridData.some((row, idx) => {
-            if (ignoreRowIndex !== null && gridData[ignoreRowIndex] === row) return false;
-            return row[secColIdx] === sectionId && row[ordColIdx] === orderVal;
+            if (ignoreRowIndex !== null && idx === ignoreRowIndex) return false;
+
+            const rowOrd = (row[ordColIdx] || '').toString().trim();
+
+            if (secColIdx !== -1) {
+                const rowSec = (row[secColIdx] || '').toString().trim();
+                return rowSec === targetSec && rowOrd === targetOrd;
+            } else {
+                // Fallback: if no section column, just check order (unlikely to be desired but safer than crashing)
+                return rowOrd === targetOrd;
+            }
         });
     };
 
@@ -1231,6 +1245,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         if (activeTab === 'tablas' || activeTab === 'figuras') {
             const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
             const ordColIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+
+            // Allow saving even if columns are missing (maybe intended?), but warn if possible
             if (secColIdx !== -1 && ordColIdx !== -1) {
                 const section = formData[secColIdx];
                 const order = formData[ordColIdx];
@@ -1241,13 +1257,39 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     return;
                 }
 
+                if (!section) {
+                    showNotification("Selecciona una Sección.", "error");
+                    return;
+                }
+
                 if (isOrderDuplicate(section, order, editingRowIndex)) {
                     showNotification(`El Número ${order} ya existe en la sección ${section}.`, "error");
                     return;
                 }
-                if (!section) {
-                    showNotification("Selecciona una Sección.", "error");
-                    return;
+
+                // Extra check: Check for Duplicate Titles (Nombres)
+                const titleIdx = findColumnIndex(formHeaders, TITLE_VARIANTS);
+                if (titleIdx !== -1) {
+                    const title = (formData[titleIdx] || '').toString().trim();
+                    if (title) {
+                        const isTitleDup = gridData.some((row, idx) => {
+                            if (editingRowIndex !== null && idx === editingRowIndex) return false;
+                            return (row[titleIdx] || '').toString().trim().toLowerCase() === title.toLowerCase();
+                        });
+                        if (isTitleDup) {
+                            showNotification(`Advertencia: El título "${title}" ya existe en otro registro.`, 'info');
+                        }
+                    }
+                }
+            } else {
+                // If columns are missing, we should probably warn but proceed if legacy sheet
+                if (ordColIdx !== -1) {
+                    const order = formData[ordColIdx];
+                    // Fallback validation for order only
+                    if (isOrderDuplicate('', order, editingRowIndex)) {
+                        showNotification(`El Número ${order} ya existe.`, "error");
+                        return;
+                    }
                 }
             }
         }
@@ -1496,6 +1538,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             case 'tablas': return {
                 title: "¿Eliminar tabla?",
                 text: "Esta acción eliminará la tabla de la lista principal y también borrará sus datos internos de la hoja de cálculo. No se puede deshacer."
+            };
+            case 'figuras': return {
+                title: "¿Eliminar figura?",
+                text: "Esta acción eliminará la figura. Asegúrate de que no esté referenciada en el texto (ej. [[figura:FIG-X-Y]]) para evitar errores de compilación."
             };
             case 'bibliografia': return {
                 title: "¿Eliminar referencia?",
