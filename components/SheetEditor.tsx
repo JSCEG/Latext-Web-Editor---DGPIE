@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Spreadsheet } from '../types';
 import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValues, updateValues, insertDimension, createNewTab } from '../services/sheetsService';
+import { socketService } from '../services/socketService';
 import { Button } from './Button';
 import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, ChevronDown, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle, MoreVertical } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -493,6 +494,18 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const activeSheet = getActiveSheet();
 
     // --- Initialization Effects ---
+    useEffect(() => {
+        // Socket: Enter document room when docId is settled
+        if (currentDocId) {
+            socketService.enterDocument(currentDocId);
+        }
+        return () => {
+            // Optional: Leave when unmounting or changing doc
+            // socketService.leaveDocument(); 
+            // Note: server handles 'leave' automatically on 'enter_document' of new doc
+        };
+    }, [currentDocId]);
+
     useEffect(() => {
         const metaSheet = getMetadataSheet();
         const rowData = metaSheet?.data?.[0]?.rowData;
@@ -1375,6 +1388,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 }
 
                 showNotification("Guardado correctamente.", "success");
+                socketService.reportAction(`Guardó cambios en ${activeTab} (${currentDocId})`);
                 onRefresh();
                 setSearchTerm('');
                 setViewMode('LIST');

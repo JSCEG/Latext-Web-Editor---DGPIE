@@ -7,6 +7,9 @@ import { createSpreadsheet, fetchSpreadsheet, appendRow } from './services/sheet
 import { Button } from './components/Button';
 import { ShieldAlert, HelpCircle, PlayCircle, HelpCircle as HelpIcon, LogOut, X } from 'lucide-react';
 import { GOOGLE_SCOPES } from './config';
+import type { NewDocumentData } from './components/Dashboard';
+import { socketService } from './services/socketService';
+import { UserActivityTracker } from './components/UserActivityTracker';
 
 const MASTER_SPREADSHEET_ID = '1HpvaN82xj75IhTg0ZyeGOBWluivCQdQh9OuDL-nnGgI';
 
@@ -94,6 +97,11 @@ const App: React.FC = () => {
     if (savedToken) {
       setToken(savedToken);
       setIsAuthenticated(true);
+      // Try to connect socket if possible (would need user info, using dummy for reload)
+      socketService.connect({
+        name: 'Usuario (Reconectado)',
+        email: 'user@gob.mx'
+      });
     }
   }, []);
 
@@ -408,6 +416,7 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main>
+        {isAuthenticated && <UserActivityTracker />}
         {currentView === AppView.DASHBOARD ? (
           <Dashboard
             onCreate={handleCreate}
