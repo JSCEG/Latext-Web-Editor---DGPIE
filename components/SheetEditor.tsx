@@ -142,6 +142,35 @@ const sanitizeRangeString = (range: string): string => {
             if (lastBang !== -1 && lastBang < clean.length - 2) {
                 clean = clean.slice(1, -1);
             }
+
+            // Validación adicional de Secciones: campos obligatorios, estado y duplicados
+            const docIdx = findColumnIndex(formHeaders, DOC_ID_VARIANTS);
+            const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+            const nivelIdx = findColumnIndex(formHeaders, NIVEL_VARIANTS);
+            const tituloIdx = findColumnIndex(formHeaders, TITLE_VARIANTS);
+            const estadoIdx = formHeaders.findIndex(h => h.trim().toLowerCase() === 'estado');
+
+            const docIdVal = docIdx !== -1 ? (formData[docIdx] || '').toString().trim() : currentDocId;
+            const ordVal = ordIdx !== -1 ? (formData[ordIdx] || '').toString().trim() : '';
+            const nivelVal = nivelIdx !== -1 ? (formData[nivelIdx] || '').toString().trim() : '';
+            const tituloVal = tituloIdx !== -1 ? (formData[tituloIdx] || '').toString().trim() : '';
+            const estadoVal = estadoIdx !== -1 ? (formData[estadoIdx] || '').toString().trim().toLowerCase() : 'disponible';
+
+            if (!docIdVal) { showNotification('DocumentoID es obligatorio.', 'error'); return; }
+            if (!ordVal) { showNotification('Orden es obligatorio.', 'error'); return; }
+            if (!nivelVal) { showNotification('Nivel es obligatorio.', 'error'); return; }
+            if (!tituloVal) { showNotification('Título es obligatorio.', 'error'); return; }
+            if (estadoVal !== 'disponible' && estadoVal !== 'available') { showNotification('El estado debe ser "disponible" para procesar.', 'error'); return; }
+
+            const gridDocIdx = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+            const gridOrdIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+            const hasDup = gridData.some((row, idx) => {
+                if (editingRowIndex !== null && idx === editingRowIndex) return false;
+                const d = gridDocIdx !== -1 ? (row[gridDocIdx] || '') : '';
+                const o = gridOrdIdx !== -1 ? (row[gridOrdIdx] || '') : '';
+                return d === docIdVal && o === ordVal;
+            });
+            if (hasDup) { showNotification(`Ya existe una sección con Orden "${ordVal}" en el documento ${docIdVal}.`, 'error'); return; }
         }
     }
 
@@ -192,6 +221,8 @@ const parseRange = (rangeStr: string) => {
         endCol: columnLetterToIndex(endMatch[1]),
         endRow: parseInt(endMatch[2])
     };
+
+
 
     // removed duplicate out-of-scope createNewForSection
 
@@ -932,6 +963,29 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             }
         }
 
+        if (activeTab === 'secciones') {
+            const nivelIdx = findColumnIndex(gridHeaders, NIVEL_VARIANTS);
+            const ordenIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+            if (nivelIdx !== -1 && !newRow[nivelIdx]) newRow[nivelIdx] = 'seccion';
+            // Pre‑calcular siguiente orden disponible (nivel seccion)
+            if (ordenIdx !== -1 && (!newRow[ordenIdx] || newRow[ordenIdx].toString().trim() === '')) {
+                const headers = gridHeaders;
+                const idxDoc = findColumnIndex(headers, DOC_ID_VARIANTS);
+                const idxOrd = findColumnIndex(headers, ORDEN_COL_VARIANTS);
+                let maxTop = 0;
+                gridData.forEach((row, idx) => {
+                    if (idx === 0) return;
+                    const dId = idxDoc !== -1 ? (row[idxDoc] || '') : '';
+                    if (dId !== currentDocId) return;
+                    const o = idxOrd !== -1 ? (row[idxOrd] || '') : '';
+                    if (!o) return;
+                    const top = parseInt(String(o).split('.')[0]);
+                    if (!isNaN(top)) maxTop = Math.max(maxTop, top);
+                });
+                newRow[ordenIdx] = String(maxTop + 1);
+            }
+        }
+
         setFormData(newRow);
         setFormHeaders(gridHeaders);
         setNestedGridRange(initialRangeStr);
@@ -944,6 +998,34 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         }
 
         setViewMode('FORM');
+    };
+
+    const validateCurrentDocumentOrders = () => {
+        if (activeTab !== 'secciones') { showNotification('Esta validación aplica en Secciones.', 'error'); return; }
+        const headers = gridHeaders;
+        const idxDoc = findColumnIndex(headers, DOC_ID_VARIANTS);
+        const idxOrden = findColumnIndex(headers, ORDEN_COL_VARIANTS);
+        const idxNivel = findColumnIndex(headers, NIVEL_VARIANTS);
+        const idxTitulo = findColumnIndex(headers, TITLE_VARIANTS);
+        const idxContenido = findColumnIndex(headers, CONTENIDO_VARIANTS);
+        const idxEstado = headers.findIndex(h => h.trim().toLowerCase() === 'estado');
+        const used: Record<string, number> = {} as any;
+        let disponibles = 0, duplicados = 0, faltantes = 0;
+        gridData.forEach((row, idx) => {
+            if (idx === 0) return;
+            const dId = idxDoc !== -1 ? (row[idxDoc] || '') : '';
+            if (dId !== currentDocId) return;
+            const est = idxEstado !== -1 ? String(row[idxEstado] || '').toLowerCase().trim() : 'disponible';
+            if (est !== 'disponible' && est !== 'available') return;
+            disponibles++;
+            const ord = idxOrden !== -1 ? (row[idxOrden] || '') : '';
+            const niv = idxNivel !== -1 ? (row[idxNivel] || '') : '';
+            const tit = idxTitulo !== -1 ? (row[idxTitulo] || '') : '';
+            const cont = idxContenido !== -1 ? (row[idxContenido] || '') : '';
+            if (!ord || !niv || !tit || !cont) faltantes++;
+            if (ord) { if (used[ord]) duplicados++; else used[ord] = 1; }
+        });
+        showNotification(`Órdenes disponibles: ${disponibles}. Duplicados: ${duplicados}. Faltantes: ${faltantes}.`, (duplicados || faltantes) ? 'error' : 'success');
     };
 
     const createNewForSection = (kind: 'figura' | 'tabla') => {
@@ -1066,6 +1148,17 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 }
             }
 
+            // Safeguard: do not delete row from other DocumentoID
+            const docIdx = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+            if (docIdx !== -1) {
+                const rowDoc = (gridData[rowIndex]?.[docIdx] || '').toString();
+                if (rowDoc && rowDoc !== currentDocId) {
+                    showNotification(`No puedes eliminar registros de otro documento (${rowDoc}).`, 'error');
+                    setSaving(false);
+                    setDeleteModal({ isOpen: false, rowIndex: null });
+                    return;
+                }
+            }
             console.log(`Borrando fila principal en ${activeTab}: ${rowIndex + 1}`);
             await deleteRow(
                 spreadsheet.spreadsheetId,
@@ -1171,7 +1264,23 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 }
 
                 if (editingRowIndex === null) {
-                    await appendRow(spreadsheet.spreadsheetId, sheetTitle, finalFormData, token);
+                    if (activeTab === 'secciones') {
+                        const headers = gridHeaders;
+                        const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
+                        let lastDataIdx = -1;
+                        for (let i = 1; i < gridData.length; i++) {
+                            const row = gridData[i];
+                            const dId = docIdx !== -1 ? (row[docIdx] || '') : '';
+                            if (dId === currentDocId) lastDataIdx = i - 1;
+                        }
+                        const insertAtSheetRow = (lastDataIdx >= 0) ? (lastDataIdx + 2 + 1) : 2;
+                        await insertDimension(spreadsheet.spreadsheetId, activeSheet.properties.sheetId, insertAtSheetRow - 1, 1, 'ROWS', token);
+                        const endColLetter = indexToColumnLetter(finalFormData.length - 1);
+                        const targetRange = `${sheetTitle}!A${insertAtSheetRow}:${endColLetter}${insertAtSheetRow}`;
+                        await updateValues(spreadsheet.spreadsheetId, targetRange, [finalFormData], token);
+                    } else {
+                        await appendRow(spreadsheet.spreadsheetId, sheetTitle, finalFormData, token);
+                    }
                 } else {
                     const startRow = editingRowIndex + 2;
                     const endColLetter = indexToColumnLetter(finalFormData.length - 1);
@@ -1261,6 +1370,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
                 showNotification("Guardado correctamente.", "success");
                 onRefresh();
+                setSearchTerm('');
                 setViewMode('LIST');
             }
         } catch (e) {
@@ -1300,10 +1410,26 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         updateRangeString(newData);
     };
 
-    const filteredData = gridData.map((row, index) => ({ row, index })).filter(({ row }) =>
-        row.some(cell => cell.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-    const displayedRows = filteredData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+    const normalizedQuery = (searchTerm || '').toString().trim().toLowerCase();
+    const filteredData = gridData.map((row, index) => ({ row, index })).filter(({ row }) => {
+        if (!normalizedQuery) return true;
+        return row.some(cell => cell.toLowerCase().includes(normalizedQuery));
+    });
+    const sortedData = (activeTab === 'secciones') ? [...filteredData].sort((a, b) => {
+        const hIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+        const av = hIdx !== -1 ? (a.row[hIdx] || '') : '';
+        const bv = hIdx !== -1 ? (b.row[hIdx] || '') : '';
+        const ap = String(av).split('.').map(n => parseInt(n) || 0);
+        const bp = String(bv).split('.').map(n => parseInt(n) || 0);
+        for (let k = 0; k < Math.max(ap.length, bp.length); k++) {
+            const da = ap[k] || 0, db = bp[k] || 0;
+            if (da !== db) return da - db;
+        }
+        return 0;
+    }) : filteredData;
+    const displayedRows = (activeTab === 'secciones' && !normalizedQuery)
+        ? sortedData
+        : sortedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
     const Breadcrumbs = () => (
         <nav className="flex items-center text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
@@ -1528,6 +1654,11 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                     <Button onClick={handlePreCreate}>
                                         <Plus size={16} className="mr-2" /> Nuevo Elemento
                                     </Button>
+                                    {activeTab === 'secciones' && (
+                                        <Button variant="secondary" onClick={() => validateCurrentDocumentOrders()}>
+                                            Validar órdenes
+                                        </Button>
+                                    )}
                                 </div>
 
                                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -1552,17 +1683,22 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {displayedRows.length > 0 ? displayedRows.map(({ row, index }) => (
-                                                    <tr key={index} className={clsx("hover:bg-gray-50", saving && "opacity-50 pointer-events-none")}>
-                                                        <td className="px-6 py-4 text-left">
-                                                            <div className="flex justify-start gap-2">
-                                                                <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-800"><Edit size={16} /></button>
-                                                                <button onClick={() => requestDelete(index)} className="text-red-600 hover:text-red-800"><Trash2 size={16} /></button>
-                                                            </div>
-                                                        </td>
-                                                        {row.map((cell, i) => <td key={i} className="px-6 py-4 truncate max-w-xs text-gray-700">{cell}</td>)}
-                                                    </tr>
-                                                )) : (
+                                                {displayedRows.length > 0 ? displayedRows.map(({ row, index }) => {
+                                                    const docIdxLocal = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+                                                    const rowDocId = docIdxLocal !== -1 ? (row[docIdxLocal] || '') : '';
+                                                    const canDelete = !rowDocId || rowDocId === currentDocId;
+                                                    return (
+                                                        <tr key={index} className={clsx("hover:bg-gray-50", saving && "opacity-50 pointer-events-none")}>
+                                                            <td className="px-6 py-4 text-left">
+                                                                <div className="flex justify-start gap-2">
+                                                                    <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-800" title="Editar"><Edit size={16} /></button>
+                                                                    <button onClick={() => canDelete ? requestDelete(index) : null} className={clsx("", canDelete ? "text-red-600 hover:text-red-800" : "text-gray-400 cursor-not-allowed")} title={canDelete ? "Eliminar" : "No puedes eliminar registros de otro DocumentoID"}><Trash2 size={16} /></button>
+                                                                </div>
+                                                            </td>
+                                                            {row.map((cell, i) => <td key={i} className="px-6 py-4 truncate max-w-xs text-gray-700">{cell}</td>)}
+                                                        </tr>
+                                                    );
+                                                }) : (
                                                     <tr><td colSpan={gridHeaders.length + 1} className="px-6 py-12 text-center text-gray-500">No hay registros.</td></tr>
                                                 )}
                                             </tbody>
