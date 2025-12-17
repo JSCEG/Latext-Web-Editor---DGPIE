@@ -524,7 +524,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         const preferredId = canApplyInitial ? initialDocId! : currentDocId;
 
         // Keep current selection if it still exists; otherwise pick preferred/first.
-        const selected = docs.find(d => d.id === preferredId) || docs.find(d => d.id === currentDocId) || docs[0];
+        const selected = docs.find(d => d.id === preferredId) || docs.find(d => d.id === currentDocId) || docs.find(d => d.id === 'D01') || docs[0];
         if (selected) {
             if (selected.id !== currentDocId) setCurrentDocId(selected.id);
             if (selected.rowIndex !== currentDocRowIndex) setCurrentDocRowIndex(selected.rowIndex);
@@ -533,6 +533,17 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             }
         }
     }, [spreadsheet, initialDocId]);
+
+    useEffect(() => {
+        // Force update currentDocId if initialDocId is provided and available in docs
+        if (initialDocId && availableDocs.length > 0) {
+            const match = availableDocs.find(d => d.id === initialDocId);
+            if (match && currentDocId !== match.id) {
+                setCurrentDocId(match.id);
+                setCurrentDocRowIndex(match.rowIndex);
+            }
+        }
+    }, [availableDocs, initialDocId]);
 
     useEffect(() => {
         setViewMode('LIST');
@@ -621,7 +632,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 setGridData(body);
             }
         }
-    }, [activeTab, spreadsheet, currentDocId]);
+    }, [activeTab, spreadsheet, currentDocId, currentDocRowIndex]);
 
     // Load IDs/keys for Secciones selectors (citas/figuras/tablas)
     useEffect(() => {
@@ -1576,17 +1587,19 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                 <select
                                     aria-label="Seleccionar DocumentoID"
                                     className="appearance-none w-full text-sm text-gray-800 bg-white border border-gray-300 rounded-md px-3 py-2 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#691C32] focus:border-[#691C32] hover:border-[#691C32]/40 transition-colors duration-150"
-                                    value={currentDocId}
+                                    value={currentDocId || ''}
                                     onChange={(e) => {
                                         const nextId = e.target.value;
-                                        const selected = availableDocs.find(d => d.id === nextId);
                                         setCurrentDocId(nextId);
-                                        if (selected) setCurrentDocRowIndex(selected.rowIndex);
+                                        const selected = availableDocs.find(d => d.id === nextId);
+                                        if (selected) {
+                                            setCurrentDocRowIndex(selected.rowIndex);
+                                        }
                                     }}
                                     title="Seleccionar DocumentoID"
                                 >
-                                    {availableDocs.map(d => (
-                                        <option key={d.id} value={d.id} className="text-gray-900">
+                                    {availableDocs.map((d, idx) => (
+                                        <option key={`${d.id}-${idx}`} value={d.id} className="text-gray-900">
                                             {d.id}{d.title ? ` - ${d.title}` : ''}
                                         </option>
                                     ))}

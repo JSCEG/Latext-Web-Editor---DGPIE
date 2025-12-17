@@ -3,7 +3,7 @@ import { useGoogleLogin } from '@react-oauth/google';
 import { Dashboard } from './components/Dashboard';
 import { SheetEditor } from './components/SheetEditor';
 import { Spreadsheet, AppView } from './types';
-import { createSpreadsheet, fetchSpreadsheet } from './services/sheetsService';
+import { createSpreadsheet, fetchSpreadsheet, appendRow } from './services/sheetsService';
 import { Button } from './components/Button';
 import { ShieldAlert, HelpCircle, PlayCircle, HelpCircle as HelpIcon, LogOut, X } from 'lucide-react';
 import { GOOGLE_SCOPES } from './config';
@@ -194,14 +194,44 @@ const App: React.FC = () => {
     }
   };
 
-  const handleCreate = async (title: string) => {
+  const handleCreate = async (data: NewDocumentData) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await createSpreadsheet(title, token);
-      await loadSpreadsheet(data.spreadsheetId);
+      const spreadsheetId = token === 'DEMO' ? 'demo-latex-gov' : MASTER_SPREADSHEET_ID;
+
+      // Order must match the sheet columns: 
+      // ID, Titulo, Subtitulo, Autor, Fecha, Institucion, Unidad, NombreCorto, PalabrasClave, Version, 
+      // Agradecimientos, Presentacion, ResumenEjecutivo, DatosClave, PortadaRuta, ContraportadaRuta
+      const rowValues = [
+        data.id,
+        data.title,
+        data.subtitle,
+        data.author,
+        data.date,
+        data.institution,
+        data.unit,
+        data.shortName,
+        data.keywords,
+        data.version,
+        data.acknowledgments,
+        data.presentation,
+        data.executiveSummary,
+        data.keyData,
+        data.coverPath,
+        data.backCoverPath
+      ];
+
+      await appendRow(spreadsheetId, 'Documentos', rowValues, token);
+
+      // Refresh dashboard to show the new document
+      const sheetData = await fetchSpreadsheet(spreadsheetId, token);
+      let docs = extractDocuments(sheetData).map(d => ({ ...d, sheetId: spreadsheetId }));
+      setDashboardDocuments(docs);
+
     } catch (err: any) {
       handleError(err);
+    } finally {
       setLoading(false);
     }
   };
