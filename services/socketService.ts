@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 
 // Change this URL if deployed elsewhere
-const SERVER_URL = 'http://localhost:3003';
+const SERVER_URL = 'https://latext-web-editor-dgpie.onrender.com';
 
 export interface ConnectedUser {
     socketId: string;
