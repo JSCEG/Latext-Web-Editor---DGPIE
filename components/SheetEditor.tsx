@@ -956,6 +956,12 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         setMobileMenuOpen(false);
     };
 
+    const openTab = (tab: 'bibliografia' | 'figuras' | 'tablas' | 'secciones') => {
+        setActiveTab(tab);
+        setViewMode('LIST');
+        setMobileMenuOpen(false);
+    };
+
     // removed nextOrderFor; behavior simplified to respect existing create flow
 
     const handleEdit = (rowIndex: number) => {
@@ -1593,6 +1599,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                             const isNivel = activeTab === 'secciones' && findColumnIndex([header], NIVEL_VARIANTS) !== -1;
                                             const isContenido = activeTab === 'secciones' && findColumnIndex([header], CONTENIDO_VARIANTS) !== -1;
                                             const colSpan = ((activeTab === 'tablas' || activeTab === 'figuras') && !isSeccion && !isOrden) ? "col-span-2" : "col-span-1";
+                                            const isTipoBiblio = activeTab === 'bibliografia' && header.trim().toLowerCase() === 'tipo';
 
                                             if (activeTab === 'secciones' && isNivel) {
                                                 const current = normalizeLevelValue(formData[i] || '');
@@ -1756,6 +1763,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                                 <option key={k} value={k}>{k}</option>
                                                                             ))}
                                                                         </select>
+                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => openTab('bibliografia')}>Crear nueva cita</Button>
                                                                     </div>
 
                                                                     <div className="flex items-center gap-2">
@@ -2071,6 +2079,27 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                 <p className="text-xs text-gray-500 mt-1">Selecciona una sección primero.</p>
                                                             )}
                                                         </div>
+                                                    </div>
+                                                );
+                                            }
+
+                                            if (isTipoBiblio) {
+                                                const tipos = ['article', 'book', 'inbook', 'inproceedings', 'report', 'thesis', 'online', 'manual', 'dataset', 'misc'];
+                                                const current = (formData[i] || '').toString() || 'article';
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                        <select
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                            value={current}
+                                                            onChange={(e) => {
+                                                                const next = [...formData];
+                                                                next[i] = e.target.value;
+                                                                setFormData(next);
+                                                            }}
+                                                        >
+                                                            {tipos.map(t => (<option key={t} value={t}>{t}</option>))}
+                                                        </select>
                                                     </div>
                                                 );
                                             }
