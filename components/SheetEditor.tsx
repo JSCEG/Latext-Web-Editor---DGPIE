@@ -1999,6 +1999,135 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 );
                                             }
 
+                                            // Orden de Secciones: seleccionar números disponibles y soportar jerarquía según Nivel
+                                            if (activeTab === 'secciones' && isOrden) {
+                                                const nivelIdx = findColumnIndex(formHeaders, NIVEL_VARIANTS);
+                                                const nivelVal = nivelIdx !== -1 ? normalizeLevelValue((formData[nivelIdx] || '').toString()) : 'seccion';
+                                                const docColIdx = findColumnIndex(formHeaders, DOC_ID_VARIANTS);
+                                                const currentDoc = (docColIdx !== -1 ? formData[docColIdx] : currentDocId) || currentDocId;
+                                                const gridDocIdx = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+                                                const gridOrdIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+                                                const gridNivelIdx = findColumnIndex(gridHeaders, NIVEL_VARIANTS);
+                                                const rowsDoc = gridData.filter(r => gridDocIdx !== -1 ? r[gridDocIdx] === currentDoc : true);
+                                                const topOrders = new Set<string>();
+                                                const subOrders = new Map<string, Set<string>>();
+                                                const subSubOrders = new Map<string, Set<string>>();
+                                                rowsDoc.forEach((row, idx) => {
+                                                    if (idx === editingRowIndex) return;
+                                                    const ord = (gridOrdIdx !== -1 ? row[gridOrdIdx] : '').toString();
+                                                    if (!ord) return;
+                                                    const parts = ord.split('.');
+                                                    if (parts.length === 1) {
+                                                        topOrders.add(parts[0]);
+                                                    } else if (parts.length === 2) {
+                                                        const parent = parts[0];
+                                                        if (!subOrders.has(parent)) subOrders.set(parent, new Set<string>());
+                                                        subOrders.get(parent)!.add(parts[1]);
+                                                    } else if (parts.length >= 3) {
+                                                        const parent = `${parts[0]}.${parts[1]}`;
+                                                        if (!subSubOrders.has(parent)) subSubOrders.set(parent, new Set<string>());
+                                                        subSubOrders.get(parent)!.add(parts[2]);
+                                                    }
+                                                });
+                                                const currentValue = (formData[i] || '').toString();
+                                                const currentParts = currentValue ? currentValue.split('.') : [];
+                                                if (nivelVal === 'seccion') {
+                                                    const used = Array.from(topOrders).map(x => parseInt(x)).filter(x => !isNaN(x)).sort((a, b) => a - b);
+                                                    const max = used.length ? used[used.length - 1] : 0;
+                                                    const options: string[] = [];
+                                                    for (let k = 1; k <= Math.max(max + 10, 10); k++) {
+                                                        const kStr = String(k);
+                                                        if (!topOrders.has(kStr) || currentValue === kStr) options.push(kStr);
+                                                    }
+                                                    if (currentValue && !options.includes(currentValue)) options.push(currentValue);
+                                                    options.sort((a, b) => parseInt(a) - parseInt(b));
+                                                    return (
+                                                        <div key={i} className={colSpan + " space-y-1"}>
+                                                            <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                            <select className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                                value={currentValue}
+                                                                onChange={(e) => { const nd = [...formData]; nd[i] = e.target.value; setFormData(nd); }}
+                                                            >
+                                                                <option value="">Selecciona Orden…</option>
+                                                                {options.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
+                                                            </select>
+                                                        </div>
+                                                    );
+                                                } else if (nivelVal === 'subseccion') {
+                                                    const parent = currentParts[0] || Array.from(topOrders).sort((a, b) => parseInt(a) - parseInt(b))[0] || '';
+                                                    const usedChildren = subOrders.get(parent) || new Set<string>();
+                                                    const nums = Array.from(usedChildren).map(x => parseInt(x)).filter(x => !isNaN(x)).sort((a, b) => a - b);
+                                                    const max = nums.length ? nums[nums.length - 1] : 0;
+                                                    const childOptions: string[] = [];
+                                                    for (let k = 1; k <= Math.max(max + 10, 10); k++) {
+                                                        const kStr = String(k);
+                                                        if (!usedChildren.has(kStr) || currentParts[1] === kStr) childOptions.push(kStr);
+                                                    }
+                                                    if (currentParts[1] && !childOptions.includes(currentParts[1])) childOptions.push(currentParts[1]);
+                                                    childOptions.sort((a, b) => parseInt(a) - parseInt(b));
+                                                    return (
+                                                        <div key={i} className={colSpan + " space-y-1"}>
+                                                            <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                            <div className="flex gap-2">
+                                                                <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
+                                                                    value={parent}
+                                                                    onChange={(e) => { const nd = [...formData]; const child = currentParts[1] || ''; nd[i] = e.target.value && child ? `${e.target.value}.${child}` : e.target.value; setFormData(nd); }}
+                                                                >
+                                                                    <option value="">Sección padre…</option>
+                                                                    {Array.from(topOrders).sort((a, b) => parseInt(a) - parseInt(b)).map(p => (<option key={p} value={p}>{p}</option>))}
+                                                                </select>
+                                                                <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
+                                                                    value={currentParts[1] || ''}
+                                                                    onChange={(e) => { const nd = [...formData]; const child = e.target.value; const p = parent; nd[i] = p && child ? `${p}.${child}` : child; setFormData(nd); }}
+                                                                >
+                                                                    <option value="">Índice…</option>
+                                                                    {childOptions.map(c => (<option key={c} value={c}>{c}</option>))}
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                } else if (nivelVal === 'subsubseccion') {
+                                                    const parentCandidates = Array.from(topOrders).flatMap(p => {
+                                                        const subs = subOrders.get(p) || new Set<string>();
+                                                        return Array.from(subs).map(s => `${p}.${s}`);
+                                                    }).sort((a, b) => {
+                                                        const [a1, a2] = a.split('.').map(n => parseInt(n)); const [b1, b2] = b.split('.').map(n => parseInt(n)); return a1 === b1 ? a2 - b2 : a1 - b1;
+                                                    });
+                                                    const parentChain = (currentParts[0] && currentParts[1]) ? `${currentParts[0]}.${currentParts[1]}` : (parentCandidates[0] || '');
+                                                    const usedChildren = parentChain ? (subSubOrders.get(parentChain) || new Set<string>()) : new Set<string>();
+                                                    const nums = Array.from(usedChildren).map(x => parseInt(x)).filter(x => !isNaN(x)).sort((a, b) => a - b);
+                                                    const max = nums.length ? nums[nums.length - 1] : 0;
+                                                    const childOptions: string[] = [];
+                                                    for (let k = 1; k <= Math.max(max + 10, 10); k++) {
+                                                        const kStr = String(k);
+                                                        if (!usedChildren.has(kStr) || currentParts[2] === kStr) childOptions.push(kStr);
+                                                    }
+                                                    if (currentParts[2] && !childOptions.includes(currentParts[2])) childOptions.push(currentParts[2]);
+                                                    childOptions.sort((a, b) => parseInt(a) - parseInt(b));
+                                                    return (
+                                                        <div key={i} className={colSpan + " space-y-1"}>
+                                                            <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                            <div className="flex gap-2">
+                                                                <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
+                                                                    value={parentChain}
+                                                                    onChange={(e) => { const nd = [...formData]; const child = currentParts[2] || ''; nd[i] = e.target.value && child ? `${e.target.value}.${child}` : e.target.value; setFormData(nd); }}
+                                                                >
+                                                                    <option value="">Subsección padre…</option>
+                                                                    {parentCandidates.map(p => (<option key={p} value={p}>{p}</option>))}
+                                                                </select>
+                                                                <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
+                                                                    value={currentParts[2] || ''}
+                                                                    onChange={(e) => { const nd = [...formData]; const child = e.target.value; const pc = parentChain; nd[i] = pc && child ? `${pc}.${child}` : child; setFormData(nd); }}
+                                                                >
+                                                                    <option value="">Índice…</option>
+                                                                    {childOptions.map(c => (<option key={c} value={c}>{c}</option>))}
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                            }
+
                                             if ((activeTab === 'tablas' || activeTab === 'figuras') && isSeccion) {
                                                 return (
                                                     <div key={i} className={colSpan + " space-y-1"}>
