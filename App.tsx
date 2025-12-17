@@ -144,13 +144,32 @@ const App: React.FC = () => {
   }
 
   const googleLogin = useGoogleLogin({
-    onSuccess: (tokenResponse) => {
+    onSuccess: async (tokenResponse) => {
       const accessToken = tokenResponse.access_token;
       if (accessToken) {
         localStorage.setItem('sheet_token', accessToken);
         setToken(accessToken);
         setIsAuthenticated(true);
         setError(null);
+
+        // Fetch user info for socket
+        try {
+          const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          });
+          const profile = await res.json();
+          const userData = {
+            name: profile.name || 'Usuario Google',
+            email: profile.email || 'google@gob.mx'
+          };
+
+          // Save profile for reload persistence
+          localStorage.setItem('user_profile', JSON.stringify(userData));
+
+          socketService.connect(userData);
+        } catch (e) {
+          socketService.connect({ name: 'Usuario Google', email: 'google@gob.mx' });
+        }
       }
     },
     onError: (errorResponse) => {
@@ -161,7 +180,9 @@ const App: React.FC = () => {
   });
 
   const handleLogout = () => {
+    socketService.disconnect();
     localStorage.removeItem('sheet_token');
+    localStorage.removeItem('user_profile');
     setIsAuthenticated(false);
     setToken('');
     setCurrentSpreadsheet(null);
