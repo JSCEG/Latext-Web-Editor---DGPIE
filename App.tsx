@@ -7,6 +7,7 @@ import { Button } from './components/Button';
 import { ShieldAlert, HelpCircle, PlayCircle, HelpCircle as HelpIcon, LogOut, X } from 'lucide-react';
 
 const MASTER_SPREADSHEET_ID = '1zKKvxR_56Gk5ku4ZZ682hSpOgQQo3gC0xXOB_nta3Zg';
+const EXTRA_SPREADSHEET_ID = '1HpvaN82xj75IhTg0ZyeGOBWluivCQdQh9OuDL-nnGgI';
 
 const App: React.FC = () => {
   const [token, setToken] = useState<string>('');
@@ -25,7 +26,7 @@ const App: React.FC = () => {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
-  const extractDocuments = (spreadsheet: Spreadsheet) => {
+    const extractDocuments = (spreadsheet: Spreadsheet) => {
     const docsSheet = spreadsheet.sheets.find(s => normalize(s.properties.title) === 'documentos') || spreadsheet.sheets[0];
     const rowData = docsSheet?.data?.[0]?.rowData;
     if (!rowData || rowData.length < 2) return [];
@@ -43,8 +44,8 @@ const App: React.FC = () => {
     const instIdx = idx(['institucion', 'institución'].map(normalize));
     const unitIdx = idx(['unidad']);
 
-    return rowData.slice(1)
-      .map((row) => {
+        return rowData.slice(1)
+          .map((row) => {
         const get = (i: number) => {
           if (i < 0) return '';
           return row.values?.[i]?.formattedValue || row.values?.[i]?.userEnteredValue?.stringValue || '';
@@ -62,7 +63,7 @@ const App: React.FC = () => {
         };
       })
       .filter((x): x is import('./components/Dashboard').DocumentCard => Boolean(x));
-  };
+    };
 
   useEffect(() => {
     const loadDashboardDocs = async () => {
@@ -75,7 +76,15 @@ const App: React.FC = () => {
       try {
         const spreadsheetIdToLoad = token === 'DEMO' ? 'demo-latex-gov' : MASTER_SPREADSHEET_ID;
         const data = await fetchSpreadsheet(spreadsheetIdToLoad, token);
-        setDashboardDocuments(extractDocuments(data));
+        let docs = extractDocuments(data).map(d => ({ ...d, sheetId: spreadsheetIdToLoad }));
+        try {
+          const extra = await fetchSpreadsheet(EXTRA_SPREADSHEET_ID, token);
+          const extraDocs = extractDocuments(extra).map(d => ({ ...d, sheetId: EXTRA_SPREADSHEET_ID }));
+          docs = [...docs, ...extraDocs];
+        } catch (e) {
+          console.warn('No se pudo cargar hoja extra:', e);
+        }
+        setDashboardDocuments(docs);
       } catch (err: any) {
         handleError(err);
       } finally {

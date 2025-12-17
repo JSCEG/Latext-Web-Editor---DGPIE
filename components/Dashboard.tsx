@@ -4,6 +4,7 @@ import { Button } from './Button';
 
 export type DocumentCard = {
     id: string;
+    sheetId?: string;
     title?: string;
     subtitle?: string;
     author?: string;
@@ -89,7 +90,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
 
                                 {/* Actions */}
                                 <div className="flex flex-wrap gap-3 pt-2">
-                                    <Button variant="burgundy" size="sm" onClick={() => onOpen(DEFAULT_SHEET_ID, doc.id)}>
+                                    <Button variant="burgundy" size="sm" onClick={() => onOpen(doc.sheetId || DEFAULT_SHEET_ID, doc.id)}>
                                         <FileText size={14} className="mr-2" /> Abrir
                                     </Button>
                                 </div>

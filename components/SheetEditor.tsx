@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Spreadsheet } from '../types';
 import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValues, updateValues, insertDimension, createNewTab } from '../services/sheetsService';
 import { Button } from './Button';
-import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, ChevronDown, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle, MoreVertical } from 'lucide-react';
 import { clsx } from 'clsx';
 import { LintPanel } from './LintPanel';
 import { applyInlineTag, insertBlockTag, lintTags, normalizeOnSave, TagIssue } from '../tagEngine';
@@ -1209,6 +1209,30 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     setFormData(next);
                 }
             }
+
+            // Normalizar Nivel y validar reglas de negocio
+            const nivelIdx = findColumnIndex(formHeaders, NIVEL_VARIANTS);
+            const docIdxF = findColumnIndex(formHeaders, DOC_ID_VARIANTS);
+            const nivelRaw = nivelIdx !== -1 ? (formData[nivelIdx] || '').toString() : '';
+            const nivelNorm = normalizeLevelValue(nivelRaw);
+            const docIdVal = docIdxF !== -1 ? (formData[docIdxF] || '').toString() : currentDocId;
+
+            if (nivelNorm === 'directorio') {
+                const gridDocIdx = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+                const gridNivelIdx = findColumnIndex(gridHeaders, NIVEL_VARIANTS);
+                let dirCount = 0;
+                gridData.forEach((row, idx) => {
+                    if (idx === 0) return;
+                    if (editingRowIndex !== null && idx === editingRowIndex) return; // excluir el registro en edición
+                    const dId = gridDocIdx !== -1 ? (row[gridDocIdx] || '') : '';
+                    const lvl = gridNivelIdx !== -1 ? normalizeLevelValue((row[gridNivelIdx] || '').toString()) : '';
+                    if (dId === docIdVal && lvl === 'directorio') dirCount++;
+                });
+                if (dirCount > 0) {
+                    showNotification('Solo puede existir un Directorio en el documento.', 'error');
+                    return;
+                }
+            }
         }
 
         // Validate Section and Order logic for both Tablas AND Figuras
@@ -1260,6 +1284,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
                     if (contentIdx !== -1) {
                         finalFormData[contentIdx] = normalizeOnSave((finalFormData[contentIdx] || '').toString());
+                    }
+                    const nivelIdx = findColumnIndex(formHeaders, NIVEL_VARIANTS);
+                    if (nivelIdx !== -1) {
+                        finalFormData[nivelIdx] = normalizeLevelValue((finalFormData[nivelIdx] || '').toString());
                     }
                 }
 
@@ -1577,23 +1605,29 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                             {activeTab === 'metadatos' ? 'Editor de Documento' : activeTab}
                         </h1>
                         {availableDocs.length > 0 ? (
-                            <select
-                                className="text-xs text-gray-600 font-mono bg-transparent border border-gray-200 rounded px-2 py-1 mt-1 max-w-[260px]"
-                                value={currentDocId}
-                                onChange={(e) => {
-                                    const nextId = e.target.value;
-                                    const selected = availableDocs.find(d => d.id === nextId);
-                                    setCurrentDocId(nextId);
-                                    if (selected) setCurrentDocRowIndex(selected.rowIndex);
-                                }}
-                                title="Seleccionar DocumentoID"
-                            >
-                                {availableDocs.map(d => (
-                                    <option key={d.id} value={d.id}>
-                                        {d.id}{d.title ? ` - ${d.title}` : ''}
-                                    </option>
-                                ))}
-                            </select>
+                            <div className="relative mt-1 w-full md:max-w-[320px]">
+                                <select
+                                    aria-label="Seleccionar DocumentoID"
+                                    className="appearance-none w-full text-sm text-gray-800 bg-white border border-gray-300 rounded-md px-3 py-2 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#691C32] focus:border-[#691C32] hover:border-[#691C32]/40 transition-colors duration-150"
+                                    value={currentDocId}
+                                    onChange={(e) => {
+                                        const nextId = e.target.value;
+                                        const selected = availableDocs.find(d => d.id === nextId);
+                                        setCurrentDocId(nextId);
+                                        if (selected) setCurrentDocRowIndex(selected.rowIndex);
+                                    }}
+                                    title="Seleccionar DocumentoID"
+                                >
+                                    {availableDocs.map(d => (
+                                        <option key={d.id} value={d.id} className="text-gray-900">
+                                            {d.id}{d.title ? ` - ${d.title}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-gray-500">
+                                    <ChevronDown size={16} />
+                                </span>
+                            </div>
                         ) : (
                             <span className="text-xs text-gray-400 font-mono">{currentDocId}</span>
                         )}
@@ -1678,7 +1712,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                         <table className="w-full text-sm text-left">
                                             <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                                                 <tr>
-                                                    <th className="px-6 py-3 text-left w-24">Acciones</th>
+                                                    <th className="px-6 py-3 text-left w-28 font-semibold" style={{ backgroundColor: '#f5f5f5', border: '1px solid #ddd' }}>
+                                                        <span className="inline-flex items-center gap-2"><MoreVertical size={14} aria-hidden="true" /> Acciones</span>
+                                                    </th>
                                                     {gridHeaders.map((h, i) => <th key={i} className="px-6 py-3 font-semibold">{h}</th>)}
                                                 </tr>
                                             </thead>
@@ -1689,7 +1725,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     const canDelete = !rowDocId || rowDocId === currentDocId;
                                                     return (
                                                         <tr key={index} className={clsx("hover:bg-gray-50", saving && "opacity-50 pointer-events-none")}>
-                                                            <td className="px-6 py-4 text-left">
+                                                            <td className="px-6 py-4 text-left" style={{ backgroundColor: '#f5f5f5', border: '1px solid #ddd' }}>
                                                                 <div className="flex justify-start gap-2">
                                                                     <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-800" title="Editar"><Edit size={16} /></button>
                                                                     <button onClick={() => canDelete ? requestDelete(index) : null} className={clsx("", canDelete ? "text-red-600 hover:text-red-800" : "text-gray-400 cursor-not-allowed")} title={canDelete ? "Eliminar" : "No puedes eliminar registros de otro DocumentoID"}><Trash2 size={16} /></button>
