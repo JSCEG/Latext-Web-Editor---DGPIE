@@ -5,7 +5,7 @@ import { SheetEditor } from './components/SheetEditor';
 import { Spreadsheet, AppView } from './types';
 import { createSpreadsheet, fetchSpreadsheet, appendRow } from './services/sheetsService';
 import { Button } from './components/Button';
-import { ShieldAlert, HelpCircle, PlayCircle, HelpCircle as HelpIcon, LogOut, X } from 'lucide-react';
+import { ShieldAlert, HelpCircle, PlayCircle, HelpCircle as HelpIcon, LogOut, X, User, ChevronDown, Settings } from 'lucide-react';
 import { GOOGLE_SCOPES } from './config';
 import type { NewDocumentData } from './components/Dashboard';
 import { socketService } from './services/socketService';
@@ -23,6 +23,8 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const normalize = (s: string) => (s || '')
     .toLowerCase()
@@ -98,10 +100,22 @@ const App: React.FC = () => {
       setToken(savedToken);
       setIsAuthenticated(true);
       // Try to connect socket if possible (would need user info, using dummy for reload)
-      socketService.connect({
+      const savedUser = localStorage.getItem('user_profile');
+      let userData = {
         name: 'Usuario (Reconectado)',
         email: 'user@gob.mx'
-      });
+      };
+
+      if (savedUser) {
+        try {
+          userData = JSON.parse(savedUser);
+          setCurrentUser(userData);
+        } catch (e) { console.error(e); }
+      } else {
+        setCurrentUser(userData);
+      }
+
+      socketService.connect(userData);
     }
   }, []);
 
@@ -186,6 +200,7 @@ const App: React.FC = () => {
     setIsAuthenticated(false);
     setToken('');
     setCurrentSpreadsheet(null);
+    setCurrentUser(null);
     setCurrentView(AppView.DASHBOARD);
     setError(null);
   };
@@ -407,10 +422,52 @@ const App: React.FC = () => {
           </div>
 
           {/* Help/Actions */}
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-700 hover:bg-red-50">
-              <LogOut size={16} className="mr-2" /> Salir
-            </Button>
+          <div className="flex items-center gap-4 relative">
+            {isAuthenticated && currentUser ? (
+              <div className="relative">
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="flex items-center gap-2 hover:bg-gray-50 p-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#691C32]/20"
+                >
+                  <div className="flex flex-col items-end hidden md:flex">
+                    <span className="text-sm font-bold text-gray-700 leading-tight">{currentUser.name}</span>
+                    <span className="text-[10px] text-gray-500">{currentUser.email}</span>
+                  </div>
+                  <div className="w-8 h-8 bg-[#691C32] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                    {currentUser.name.charAt(0).toUpperCase()}
+                  </div>
+                  <ChevronDown size={14} className="text-gray-400" />
+                </button>
+
+                {/* Dropdown Menu */}
+                {userMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-4 py-3 border-b border-gray-100 md:hidden">
+                      <p className="text-sm font-bold text-gray-900">{currentUser.name}</p>
+                      <p className="text-xs text-gray-500 truncate">{currentUser.email}</p>
+                    </div>
+
+                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                      <User size={16} /> Perfil
+                    </button>
+                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                      <Settings size={16} /> Configuración
+                    </button>
+                    <div className="border-t border-gray-100 my-1"></div>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                    >
+                      <LogOut size={16} /> Cerrar Sesión
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-700 hover:bg-red-50">
+                <LogOut size={16} className="mr-2" /> Salir
+              </Button>
+            )}
           </div>
         </div>
         {/* Gold Bar */}
