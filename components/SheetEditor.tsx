@@ -196,6 +196,39 @@ const parseRange = (rangeStr: string) => {
     };
 };
 
+// Reusable Content Preview Component
+const ContentPreview: React.FC<{ text: string; limit?: number }> = ({ text, limit = 200 }) => {
+    const [expanded, setExpanded] = useState(false);
+
+    // Normalize and clean text for display
+    const cleanText = (text || '').toString();
+    const shouldTruncate = cleanText.length > limit;
+
+    if (!shouldTruncate) {
+        return <div className="text-gray-700 whitespace-pre-wrap">{cleanText}</div>;
+    }
+
+    return (
+        <div className="relative">
+            <div className={clsx(
+                "text-gray-700 whitespace-pre-wrap transition-all duration-300",
+                expanded ? "max-h-full" : "max-h-[4.5em] overflow-hidden"
+            )}>
+                {cleanText}
+            </div>
+            {!expanded && (
+                <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent pointer-events-none" />
+            )}
+            <button
+                onClick={() => setExpanded(!expanded)}
+                className="mt-1 text-xs font-semibold text-[#691C32] hover:underline focus:outline-none"
+            >
+                {expanded ? 'Leer menos' : 'Leer más...'}
+            </button>
+        </div>
+    );
+};
+
 export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, initialDocId, onRefresh, onBack }) => {
     const [activeTab, setActiveTab] = useState('metadatos');
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -353,7 +386,18 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const [loadingGrid, setLoadingGrid] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
-    const ITEMS_PER_PAGE = 5;
+    const ITEMS_PER_PAGE = 20;
+
+    // Reset pagination when tab changes
+    useEffect(() => {
+        setCurrentPage(1);
+        setSearchTerm('');
+    }, [activeTab]);
+
+    // Reset pagination when search term changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm]);
 
     // Auto-dismiss notification
     useEffect(() => {
@@ -1626,9 +1670,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         const bv = hIdx !== -1 ? (b.row[hIdx] || '') : '';
         return compareHierarchicalOrder(av, bv);
     }) : filteredData;
-    const displayedRows = (activeTab === 'secciones' && !normalizedQuery)
-        ? sortedData
-        : sortedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+    const displayedRows = sortedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+    const totalPages = Math.ceil(sortedData.length / ITEMS_PER_PAGE);
 
     const Breadcrumbs = () => (
         <nav className="flex items-center text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
@@ -1897,7 +1941,11 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                     <button onClick={() => canDelete ? requestDelete(index) : null} className={clsx("", canDelete ? "text-red-600 hover:text-red-800" : "text-gray-400 cursor-not-allowed")} title={canDelete ? "Eliminar" : "No puedes eliminar registros de otro DocumentoID"}><Trash2 size={16} /></button>
                                                                 </div>
                                                             </td>
-                                                            {row.map((cell, i) => <td key={i} className="px-6 py-4 truncate max-w-xs text-gray-700">{cell}</td>)}
+                                                            {row.map((cell, i) => (
+                                                                <td key={i} className="px-6 py-4 min-w-[150px] max-w-[400px]">
+                                                                    <ContentPreview text={cell} limit={120} />
+                                                                </td>
+                                                            ))}
                                                         </tr>
                                                     );
                                                 }) : (
@@ -1906,6 +1954,33 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                             </tbody>
                                         </table>
                                     </div>
+
+                                    {/* Pagination Controls */}
+                                    {totalPages > 1 && (
+                                        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+                                            <div className="text-sm text-gray-700">
+                                                Mostrando <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> a <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, sortedData.length)}</span> de <span className="font-medium">{sortedData.length}</span> resultados
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                                    disabled={currentPage === 1}
+                                                >
+                                                    <ChevronLeft size={16} /> Anterior
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                                    disabled={currentPage === totalPages}
+                                                >
+                                                    Siguiente <ChevronRight size={16} />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
