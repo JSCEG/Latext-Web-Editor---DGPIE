@@ -32,7 +32,7 @@ io.on('connection', (socket) => {
       lastActivity: new Date().toISOString(),
       recentChanges: []
     });
-    
+
     // Broadcast updated user list
     io.emit('users_update', Array.from(connectedUsers.values()));
   });
@@ -45,14 +45,14 @@ io.on('connection', (socket) => {
       if (user.currentDoc) {
         socket.leave(user.currentDoc);
       }
-      
+
       user.currentDoc = docId;
       user.status = 'editing';
       user.lastActivity = new Date().toISOString();
       connectedUsers.set(socket.id, user);
-      
+
       socket.join(docId);
-      
+
       // Notify everyone
       io.emit('users_update', Array.from(connectedUsers.values()));
     }
@@ -76,20 +76,34 @@ io.on('connection', (socket) => {
     const user = connectedUsers.get(socket.id);
     if (user) {
       user.lastActivity = new Date().toISOString();
-      
+
       // Keep only last 3 changes
       const change = {
         desc: actionData.action,
         time: user.lastActivity
       };
-      
+
       user.recentChanges.unshift(change);
       if (user.recentChanges.length > 3) {
         user.recentChanges.pop();
       }
-      
+
       connectedUsers.set(socket.id, user);
       io.emit('users_update', Array.from(connectedUsers.values()));
+    }
+  });
+
+  // Data update event (e.g. image saved, row deleted)
+  socket.on('data_update', (data) => {
+    // data: { docId: string, type: 'image' | 'row' | 'cell', ... }
+    const user = connectedUsers.get(socket.id);
+    if (user && user.currentDoc) {
+      // Broadcast to everyone in the same document room
+      socket.to(user.currentDoc).emit('data_update', {
+        ...data,
+        fromUser: user.name,
+        timestamp: new Date().toISOString()
+      });
     }
   });
 

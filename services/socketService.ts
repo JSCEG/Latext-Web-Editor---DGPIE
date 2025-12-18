@@ -55,6 +55,17 @@ class SocketService {
         this.socket?.emit('user_action', { action, timestamp: new Date().toISOString() });
     }
 
+    notifyDataUpdate(data: any) {
+        this.socket?.emit('data_update', data);
+    }
+
+    onDataUpdate(callback: (data: any) => void) {
+        this.socket?.on('data_update', callback);
+        return () => {
+            this.socket?.off('data_update', callback);
+        };
+    }
+
     subscribe(callback: (users: ConnectedUser[]) => void) {
         this.subscribers.push(callback);
         return () => {

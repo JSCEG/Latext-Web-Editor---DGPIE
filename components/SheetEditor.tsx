@@ -213,6 +213,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const [formData, setFormData] = useState<string[]>([]); // For Metadata or Single Item Edit
     const [formHeaders, setFormHeaders] = useState<string[]>([]);
     const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
+    const [dataTimestamp, setDataTimestamp] = useState<number>(Date.now());
 
     // Relationship Data State (For dropdowns/validation)
     const [availableSections, setAvailableSections] = useState<{ id: string, title: string }[]>([]);
@@ -227,9 +228,11 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const [availableFigureItems, setAvailableFigureItems] = useState<{ id: string; title: string; section: string; route?: string }[]>([]);
     const [availableTableItems, setAvailableTableItems] = useState<{ id: string; title: string; section: string; range?: string }[]>([]);
     const [selectorPreview, setSelectorPreview] = useState<{ type: 'figura' | 'tabla'; id: string; title: string; image?: string; data?: string[][] } | null>(null);
-    const [equationModal, setEquationModal] = useState<{ open: boolean; mode: 'math' | 'ecuacion'; title: string; value: string }>(
-        { open: false, mode: 'math', title: 'Insertar ecuación', value: '' }
+    const [equationModal, setEquationModal] = useState<{ open: boolean; mode: 'math' | 'ecuacion'; title: string; value: string; target: 'main' | 'note' }>(
+        { open: false, mode: 'math', title: 'Insertar ecuación', value: '', target: 'main' }
     );
+    const [noteModal, setNoteModal] = useState<{ open: boolean; value: string }>({ open: false, value: '' });
+    const noteContentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
     type EquationSymbolGroup = 'Todos' | 'Griegas' | 'Operadores' | 'Relaciones' | 'Flechas' | 'Conjuntos' | 'Funciones';
     const [equationPaletteGroup, setEquationPaletteGroup] = useState<EquationSymbolGroup>('Griegas');
@@ -430,6 +433,31 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     };
 
     const commitEquationModal = () => {
+        const target = equationModal.target || 'main';
+        const tagName = equationModal.mode === 'math' ? 'math' : 'ecuacion';
+        const payload = (equationModal.value || '...').replace(EQUATION_PLACEHOLDER_RE, '...');
+
+        if (target === 'note') {
+            // Insert into note modal textarea
+            const el = noteContentTextareaRef.current;
+            const selStart = el ? el.selectionStart : (noteModal.value || '').length;
+            const selEnd = el ? el.selectionEnd : selStart;
+            const currentValue = noteModal.value || '';
+
+            const res = applyInlineTag(currentValue, selStart, selEnd, tagName, { value: payload, placeholder: '...' });
+
+            setNoteModal(prev => ({ ...prev, value: res.text }));
+            setEquationModal({ ...equationModal, open: false });
+
+            requestAnimationFrame(() => {
+                const el2 = noteContentTextareaRef.current;
+                if (!el2) return;
+                el2.focus();
+                el2.setSelectionRange(res.selectionStart, res.selectionEnd);
+            });
+            return;
+        }
+
         const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
         if (contentIdx === -1) {
             setEquationModal({ ...equationModal, open: false });
@@ -440,8 +468,6 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         const selStart = el ? el.selectionStart : 0;
         const selEnd = el ? el.selectionEnd : 0;
         const currentValue = (formData[contentIdx] || '').toString();
-        const tagName = equationModal.mode === 'math' ? 'math' : 'ecuacion';
-        const payload = (equationModal.value || '...').replace(EQUATION_PLACEHOLDER_RE, '...');
 
         const res = applyInlineTag(currentValue, selStart, selEnd, tagName, { value: payload, placeholder: '...' });
         const newData = [...formData];
@@ -461,6 +487,44 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             if (!el2) return;
             el2.focus();
             el2.setSelectionRange(res.selectionStart, res.selectionEnd);
+        });
+    };
+
+    const insertSnippetIntoContent = (snippet: string) => {
+        const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
+        if (contentIdx === -1) {
+            // Optional: showNotification("No se encontró la columna de Contenido.", "error");
+            return;
+        }
+
+        const el = sectionContentTextareaRef.current;
+        const currentContent = (formData[contentIdx] || '').toString();
+        const pos = el ? el.selectionStart : currentContent.length;
+
+        const before = currentContent.slice(0, pos);
+        const after = currentContent.slice(pos);
+        const nextText = before + snippet + after;
+
+        const newData = [...formData];
+        newData[contentIdx] = nextText;
+        setFormData(newData);
+
+        // Linting
+        const nextIssues = lintTags(nextText, {
+            bibliographyKeys: availableBibliographyKeys,
+            figureIds: availableFigureIds,
+            tableIds: availableTableIds,
+        });
+        setSectionLintIssues(nextIssues);
+
+        // Restore focus
+        requestAnimationFrame(() => {
+            const el2 = sectionContentTextareaRef.current;
+            if (el2) {
+                el2.focus();
+                // Move cursor to end of inserted snippet
+                el2.setSelectionRange(pos + snippet.length, pos + snippet.length);
+            }
         });
     };
 
@@ -500,10 +564,28 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         if (currentDocId) {
             socketService.enterDocument(currentDocId);
         }
+
+        // Listen for real-time data updates (images, rows, etc.)
+        const cleanupData = socketService.onDataUpdate((data) => {
+            if (data.docId === currentDocId) {
+                console.log('Data update received:', data);
+                if (data.type === 'image' || data.type === 'figure_update') {
+                    // Update timestamp to bust cache for images
+                    setDataTimestamp(Date.now());
+                }
+
+                // Refresh grid data
+                onRefresh();
+
+                showNotification(`Datos actualizados por ${data.fromUser}`, 'info');
+            }
+        });
+
         return () => {
             // Optional: Leave when unmounting or changing doc
             // socketService.leaveDocument(); 
             // Note: server handles 'leave' automatically on 'enter_document' of new doc
+            cleanupData();
         };
     }, [currentDocId]);
 
@@ -1174,6 +1256,15 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             );
 
             showNotification("Registro eliminado correctamente.", "success");
+
+            // Notify other users about delete
+            socketService.notifyDataUpdate({
+                docId: currentDocId,
+                type: activeTab === 'figuras' ? 'figure_update' : 'row_update',
+                action: 'delete',
+                tab: activeTab
+            });
+
             onRefresh();
             // Close modal on success
             setDeleteModal({ isOpen: false, rowIndex: null });
@@ -1433,6 +1524,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 showNotification("Guardado correctamente.", "success");
                 socketService.reportAction(`Guardó cambios en ${activeTab} (${currentDocId})`);
 
+                // Notify other users about the data update
+                socketService.notifyDataUpdate({
+                    docId: currentDocId,
+                    type: activeTab === 'figuras' ? 'figure_update' : 'row_update',
+                    tab: activeTab
+                });
+
                 // Update local state to reflect changes without full reload
                 const newGridData = [...gridData];
                 if (editingRowIndex === null) {
@@ -1493,17 +1591,40 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         if (!normalizedQuery) return true;
         return row.some(cell => cell.toLowerCase().includes(normalizedQuery));
     });
+    // Optimized hierarchical sort function
+    const compareHierarchicalOrder = (valA: string, valB: string) => {
+        // Normalize: empty/null becomes 0 equivalent
+        const cleanA = (valA || '').toString().trim();
+        const cleanB = (valB || '').toString().trim();
+
+        if (!cleanA && !cleanB) return 0;
+        if (!cleanA) return -1; // Empty values first
+        if (!cleanB) return 1;
+
+        // Split by dot for hierarchy (1.1, 1.2, 1.10)
+        const partsA = cleanA.split('.');
+        const partsB = cleanB.split('.');
+
+        const len = Math.max(partsA.length, partsB.length);
+        for (let k = 0; k < len; k++) {
+            // Parse each part as integer. Missing parts treat as 0.
+            // Example: 1 vs 1.1 -> [1] vs [1, 1] -> 1==1, 0 < 1.
+            const partA = partsA[k];
+            const partB = partsB[k];
+
+            const numA = partA === undefined ? 0 : (parseInt(partA) || 0);
+            const numB = partB === undefined ? 0 : (parseInt(partB) || 0);
+
+            if (numA !== numB) return numA - numB;
+        }
+        return 0;
+    };
+
     const sortedData = (activeTab === 'secciones') ? [...filteredData].sort((a, b) => {
         const hIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
         const av = hIdx !== -1 ? (a.row[hIdx] || '') : '';
         const bv = hIdx !== -1 ? (b.row[hIdx] || '') : '';
-        const ap = String(av).split('.').map(n => parseInt(n) || 0);
-        const bp = String(bv).split('.').map(n => parseInt(n) || 0);
-        for (let k = 0; k < Math.max(ap.length, bp.length); k++) {
-            const da = ap[k] || 0, db = bp[k] || 0;
-            if (da !== db) return da - db;
-        }
-        return 0;
+        return compareHierarchicalOrder(av, bv);
     }) : filteredData;
     const displayedRows = (activeTab === 'secciones' && !normalizedQuery)
         ? sortedData
@@ -1759,8 +1880,17 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     const docIdxLocal = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
                                                     const rowDocId = docIdxLocal !== -1 ? (row[docIdxLocal] || '') : '';
                                                     const canDelete = !rowDocId || rowDocId === currentDocId;
+
+                                                    // Get Order value for data attribute
+                                                    const ordIdxLocal = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+                                                    const orderVal = ordIdxLocal !== -1 ? (row[ordIdxLocal] || '') : '';
+
                                                     return (
-                                                        <tr key={index} className={clsx("hover:bg-gray-50", saving && "opacity-50 pointer-events-none")}>
+                                                        <tr
+                                                            key={index}
+                                                            className={clsx("hover:bg-gray-50", saving && "opacity-50 pointer-events-none")}
+                                                            data-order={orderVal}
+                                                        >
                                                             <td className="px-6 py-4 text-left" style={{ backgroundColor: '#f5f5f5', border: '1px solid #ddd' }}>
                                                                 <div className="flex justify-start gap-2">
                                                                     <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-800" title="Editar"><Edit size={16} /></button>
@@ -2122,6 +2252,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                         <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('destacado')}>
                                                                             <Lightbulb size={14} className="mr-2" /> Destacado
                                                                         </Button>
+                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => setNoteModal({ open: true, value: '' })}>
+                                                                            <FileText size={14} className="mr-2" /> Insertar Nota
+                                                                        </Button>
                                                                         <Button
                                                                             type="button"
                                                                             variant="ghost"
@@ -2129,7 +2262,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                             onClick={() => {
                                                                                 const el = sectionContentTextareaRef.current;
                                                                                 const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
-                                                                                setEquationModal({ open: true, mode: 'ecuacion', title: 'Insertar ecuación display ([[ecuacion:...]] multi-línea)', value: sel || '' });
+                                                                                setEquationModal({ open: true, mode: 'ecuacion', title: 'Insertar ecuación display ([[ecuacion:...]] multi-línea)', value: sel || '', target: 'main' });
                                                                             }}
                                                                         >
                                                                             <Grid size={14} className="mr-2" /> Ecuación
@@ -2142,7 +2275,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                         {selectorPreview.type === 'figura' ? (
                                                                             <div className="flex items-center justify-start">
                                                                                 {selectorPreview.image ? (
-                                                                                    <img src={selectorPreview.image} alt={selectorPreview.title} className="max-h-40 object-contain border rounded" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                                                                                    <img src={`${selectorPreview.image}?t=${dataTimestamp}`} alt={selectorPreview.title} className="max-h-40 object-contain border rounded" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
                                                                                 ) : (
                                                                                     <div className="text-xs text-gray-500">Sin ruta de imagen</div>
                                                                                 )}
@@ -2476,8 +2609,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
                                 {/* Equation Modal (Secciones) */}
                                 {equationModal.open && activeTab === 'secciones' && (
-                                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                                        <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                                    <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
+                                        <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 animate-in zoom-in duration-200">
                                             <div className="flex items-start justify-between gap-4 mb-3">
                                                 <div>
                                                     <h3 className="text-lg font-bold text-[#691C32]">{equationModal.title}</h3>
@@ -2598,6 +2731,80 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 >
                                                     Insertar
                                                 </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Note Modal */}
+                                {noteModal.open && (
+                                    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+                                        <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 animate-in zoom-in duration-200">
+                                            <div className="flex items-start justify-between gap-4 mb-3">
+                                                <div>
+                                                    <h3 className="text-lg font-bold text-[#691C32]">Insertar Nota</h3>
+                                                    <p className="text-xs text-gray-500">Agrega una nota explicativa o al pie.</p>
+                                                </div>
+                                                <button className="text-gray-500 hover:text-gray-700" onClick={() => setNoteModal({ ...noteModal, open: false })}>
+                                                    <X size={18} />
+                                                </button>
+                                            </div>
+
+                                            <div className="flex gap-2 mb-2">
+                                                <Button type="button" variant="outline" size="sm" onClick={() => {
+                                                    const el = noteContentTextareaRef.current;
+                                                    const start = el ? el.selectionStart : 0;
+                                                    const end = el ? el.selectionEnd : 0;
+                                                    const val = noteModal.value;
+                                                    const newVal = val.slice(0, start) + `**${val.slice(start, end)}**` + val.slice(end);
+                                                    setNoteModal({ ...noteModal, value: newVal });
+                                                }} title="Negrita">
+                                                    <b>B</b>
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => {
+                                                    const el = noteContentTextareaRef.current;
+                                                    const start = el ? el.selectionStart : 0;
+                                                    const end = el ? el.selectionEnd : 0;
+                                                    const val = noteModal.value;
+                                                    const newVal = val.slice(0, start) + `*${val.slice(start, end)}*` + val.slice(end);
+                                                    setNoteModal({ ...noteModal, value: newVal });
+                                                }} title="Cursiva">
+                                                    <i>I</i>
+                                                </Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => {
+                                                    const el = noteContentTextareaRef.current;
+                                                    const start = el ? el.selectionStart : 0;
+                                                    const end = el ? el.selectionEnd : 0;
+                                                    const val = noteModal.value;
+                                                    const sel = val.slice(start, end);
+
+                                                    // Open equation modal targeting note
+                                                    setEquationModal({
+                                                        open: true,
+                                                        mode: 'math',
+                                                        title: 'Insertar LaTeX en Nota',
+                                                        value: sel || '',
+                                                        target: 'note'
+                                                    });
+                                                }} title="Insertar LaTeX">
+                                                    LaTeX
+                                                </Button>
+                                            </div>
+
+                                            <textarea
+                                                ref={noteContentTextareaRef}
+                                                className="w-full min-h-[150px] px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900 mb-4"
+                                                value={noteModal.value}
+                                                onChange={(e) => setNoteModal({ ...noteModal, value: e.target.value })}
+                                                placeholder="Escribe el contenido de la nota..."
+                                            />
+
+                                            <div className="flex justify-end gap-3">
+                                                <Button variant="ghost" onClick={() => setNoteModal({ ...noteModal, open: false })}>Cancelar</Button>
+                                                <Button variant="burgundy" onClick={() => {
+                                                    insertSnippetIntoContent(`[[nota:${noteModal.value}]]`);
+                                                    setNoteModal({ open: false, value: '' });
+                                                }}>Insertar</Button>
                                             </div>
                                         </div>
                                     </div>
