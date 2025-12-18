@@ -181,6 +181,17 @@ export const fetchSpreadsheet = async (spreadsheetId: string, token: string): Pr
   return handleResponse(response);
 };
 
+export const fetchSpreadsheetProperties = async (spreadsheetId: string, token: string): Promise<{ title: string }> => {
+  if (token === 'DEMO') {
+    return { title: 'Demo Spreadsheet' };
+  }
+  const response = await retryOperation(() => fetch(`${BASE_URL}/${spreadsheetId}?fields=properties.title`, {
+    headers: getHeaders(token),
+  }));
+  const data = await handleResponse(response);
+  return data.properties;
+};
+
 export const createSpreadsheet = async (title: string, token: string): Promise<Spreadsheet> => {
   if (token === 'DEMO') {
     await new Promise(resolve => setTimeout(resolve, 220));

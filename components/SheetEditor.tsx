@@ -1697,6 +1697,25 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         </nav>
     );
 
+    // --- Helpers for Stats ---
+    const getSectionStats = (row: string[]) => {
+        if (activeTab !== 'secciones') return null;
+
+        const ordIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+        const sectionId = ordIdx !== -1 ? (row[ordIdx] || '').toString().trim() : '';
+
+        const contentIdx = findColumnIndex(gridHeaders, CONTENIDO_VARIANTS);
+        const content = contentIdx !== -1 ? (row[contentIdx] || '').toString() : '';
+
+        // Count items
+        const tableCount = availableTableItems.filter(t => t.section === sectionId).length;
+        const figureCount = availableFigureItems.filter(f => f.section === sectionId).length;
+        const eqCount = (content.match(/\[\[(ecuacion|math):/g) || []).length;
+        const citeCount = (content.match(/\[\[cita:/g) || []).length;
+
+        return { tableCount, figureCount, eqCount, citeCount };
+    };
+
     // Helper for Modal Text based on Tab
     const getDeleteContext = () => {
         switch (activeTab) {
@@ -1896,6 +1915,38 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                     )}
                                 </div>
 
+                                {/* Global Stats Card for Other Tabs */}
+                                {(activeTab === 'bibliografia' || activeTab === 'glosario' || activeTab === 'siglas' || activeTab === 'tablas' || activeTab === 'figuras') && (
+                                    <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm mb-4 flex items-center gap-6 animate-in fade-in slide-in-from-top-2">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 rounded-full bg-[#691C32]/10 text-[#691C32]">
+                                                {activeTab === 'bibliografia' ? <Book size={20} /> :
+                                                    activeTab === 'glosario' ? <FileText size={20} /> :
+                                                        activeTab === 'siglas' ? <Type size={20} /> :
+                                                            activeTab === 'tablas' ? <Table size={20} /> :
+                                                                <Image size={20} />}
+                                            </div>
+                                            <div>
+                                                <div className="text-2xl font-bold text-gray-900">{gridData.length}</div>
+                                                <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+                                                    {activeTab === 'bibliografia' ? 'Referencias Total' :
+                                                        activeTab === 'glosario' ? 'Términos Total' :
+                                                            activeTab === 'siglas' ? 'Siglas Total' :
+                                                                activeTab === 'tablas' ? 'Tablas Total' :
+                                                                    'Figuras Total'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="h-8 w-px bg-gray-200"></div>
+                                        <div className="text-sm text-gray-500">
+                                            {activeTab === 'bibliografia' ? 'Recuerda usar [[cita:CLAVE]] en el texto.' :
+                                                activeTab === 'glosario' ? 'Define términos técnicos aquí.' :
+                                                    activeTab === 'siglas' ? 'Define abreviaturas usadas.' :
+                                                        'Gestiona los elementos visuales del documento.'}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                                     <div className="p-4 border-b border-gray-100 flex gap-4">
                                         <div className="relative flex-1 max-w-md">
@@ -1916,6 +1967,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     <th className="px-6 py-3 text-left w-28 font-semibold" style={{ backgroundColor: '#f5f5f5', border: '1px solid #ddd' }}>
                                                         <span className="inline-flex items-center gap-2"><MoreVertical size={14} aria-hidden="true" /> Acciones</span>
                                                     </th>
+                                                    {activeTab === 'secciones' && (
+                                                        <th className="px-6 py-3 font-semibold text-center w-40">Estadísticas</th>
+                                                    )}
                                                     {gridHeaders.map((h, i) => <th key={i} className="px-6 py-3 font-semibold">{h}</th>)}
                                                 </tr>
                                             </thead>
@@ -1941,6 +1995,36 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                     <button onClick={() => canDelete ? requestDelete(index) : null} className={clsx("", canDelete ? "text-red-600 hover:text-red-800" : "text-gray-400 cursor-not-allowed")} title={canDelete ? "Eliminar" : "No puedes eliminar registros de otro DocumentoID"}><Trash2 size={16} /></button>
                                                                 </div>
                                                             </td>
+                                                            {activeTab === 'secciones' && (
+                                                                <td className="px-6 py-4">
+                                                                    {(function () {
+                                                                        const stats = getSectionStats(row);
+                                                                        if (!stats) return null;
+                                                                        return (
+                                                                            <div className="flex flex-col gap-1 min-w-[120px]">
+                                                                                <div className="flex items-center justify-between text-[10px] bg-blue-50 text-blue-800 px-2 py-0.5 rounded-full border border-blue-100" title="Tablas">
+                                                                                    <span className="flex items-center gap-1"><Table size={10} /> Tablas</span>
+                                                                                    <span className="font-bold">{stats.tableCount}</span>
+                                                                                </div>
+                                                                                <div className="flex items-center justify-between text-[10px] bg-purple-50 text-purple-800 px-2 py-0.5 rounded-full border border-purple-100" title="Figuras">
+                                                                                    <span className="flex items-center gap-1"><Image size={10} /> Figuras</span>
+                                                                                    <span className="font-bold">{stats.figureCount}</span>
+                                                                                </div>
+                                                                                <div className="flex items-center justify-between text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full border border-gray-200" title="Ecuaciones">
+                                                                                    <span className="flex items-center gap-1"><Grid size={10} /> Ecua.</span>
+                                                                                    <span className="font-bold">{stats.eqCount}</span>
+                                                                                </div>
+                                                                                {stats.citeCount > 0 && (
+                                                                                    <div className="flex items-center justify-between text-[10px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full border border-amber-100" title="Citas">
+                                                                                        <span className="flex items-center gap-1"><Book size={10} /> Citas</span>
+                                                                                        <span className="font-bold">{stats.citeCount}</span>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })()}
+                                                                </td>
+                                                            )}
                                                             {row.map((cell, i) => (
                                                                 <td key={i} className="px-6 py-4 min-w-[150px] max-w-[400px]">
                                                                     <ContentPreview text={cell} limit={120} />
@@ -1995,6 +2079,32 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                         <h2 className="text-xl font-bold text-[#691C32]">
                                             {activeTab === 'metadatos' ? 'Editar Metadatos' : (editingRowIndex === null ? 'Nuevo Registro' : 'Editar Registro')}
                                         </h2>
+
+                                        {/* Stats in Form Header (Secciones) */}
+                                        {activeTab === 'secciones' && editingRowIndex !== null && (
+                                            <div className="hidden md:flex gap-2 ml-4">
+                                                {(function () {
+                                                    const row = gridData[editingRowIndex];
+                                                    if (!row) return null;
+                                                    const stats = getSectionStats(row);
+                                                    if (!stats) return null;
+                                                    return (
+                                                        <>
+                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded border border-blue-100" title="Tablas en esta sección">
+                                                                <Table size={12} /> {stats.tableCount}
+                                                            </span>
+                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded border border-purple-100" title="Figuras en esta sección">
+                                                                <Image size={12} /> {stats.figureCount}
+                                                            </span>
+                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded border border-gray-200" title="Ecuaciones en el texto">
+                                                                <Grid size={12} /> {stats.eqCount}
+                                                            </span>
+                                                        </>
+                                                    )
+                                                })()}
+                                            </div>
+                                        )}
+
                                         <Button variant="ghost" onClick={() => activeTab !== 'metadatos' && setViewMode('LIST')}>
                                             Cancelar
                                         </Button>

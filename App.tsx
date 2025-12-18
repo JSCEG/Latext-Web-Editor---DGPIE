@@ -3,7 +3,7 @@ import { useGoogleLogin } from '@react-oauth/google';
 import { Dashboard } from './components/Dashboard';
 import { SheetEditor } from './components/SheetEditor';
 import { Spreadsheet, AppView } from './types';
-import { createSpreadsheet, fetchSpreadsheet, appendRow } from './services/sheetsService';
+import { createSpreadsheet, fetchSpreadsheet, fetchSpreadsheetProperties, appendRow } from './services/sheetsService';
 import { Button } from './components/Button';
 import { ShieldAlert, HelpCircle, PlayCircle, HelpCircle as HelpIcon, LogOut, X, User, ChevronDown, Settings } from 'lucide-react';
 import { GOOGLE_SCOPES } from './config';
@@ -11,13 +11,19 @@ import type { NewDocumentData } from './components/Dashboard';
 import { socketService } from './services/socketService';
 import { UserActivityTracker } from './components/UserActivityTracker';
 
-const MASTER_SPREADSHEET_ID = '1HpvaN82xj75IhTg0ZyeGOBWluivCQdQh9OuDL-nnGgI';
+const AVAILABLE_SPREADSHEETS = [
+  { id: '1HpvaN82xj75IhTg0ZyeGOBWluivCQdQh9OuDL-nnGgI', name: 'Documentos Principales', description: 'Balance Nacional de Energía y documentos centrales' },
+  { id: '1B_WUmGxy6cg-DOz_JbxX7W37VQ_vuN97pkka84V5-qg', name: 'Nuevos Documentos', description: 'Espacio para nuevos reportes y análisis' },
+  { id: '1yZtmdCe2VvV-RXtmEhbg-nFhbz-x280K1w8bp8u-fh4', name: 'Documentos Adicionales', description: 'Repositorio extra de documentos' }
+];
 
 const App: React.FC = () => {
   const [token, setToken] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
+  const [selectedSpreadsheetId, setSelectedSpreadsheetId] = useState<string | null>(null);
   const [currentSpreadsheet, setCurrentSpreadsheet] = useState<Spreadsheet | null>(null);
+  const [spreadsheetMetadata, setSpreadsheetMetadata] = useState<Record<string, string>>({});
   const [dashboardDocuments, setDashboardDocuments] = useState<import('./components/Dashboard').DocumentCard[]>([]);
   const [initialDocId, setInitialDocId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -72,15 +78,37 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    const fetchMetadata = async () => {
+      if (!isAuthenticated || token === 'DEMO') return;
+
+      const metadata: Record<string, string> = {};
+      for (const sheet of AVAILABLE_SPREADSHEETS) {
+        try {
+          const props = await fetchSpreadsheetProperties(sheet.id, token);
+          if (props && props.title) {
+            metadata[sheet.id] = props.title;
+          }
+        } catch (e) {
+          console.error(`Failed to fetch metadata for ${sheet.id}`, e);
+        }
+      }
+      setSpreadsheetMetadata(prev => ({ ...prev, ...metadata }));
+    };
+
+    fetchMetadata();
+  }, [isAuthenticated, token]);
+
+  useEffect(() => {
     const loadDashboardDocs = async () => {
       if (!isAuthenticated) return;
       if (currentView !== AppView.DASHBOARD) return;
       if (!token) return;
+      if (!selectedSpreadsheetId && token !== 'DEMO') return;
 
       setLoading(true);
       setError(null);
       try {
-        const spreadsheetIdToLoad = token === 'DEMO' ? 'demo-latex-gov' : MASTER_SPREADSHEET_ID;
+        const spreadsheetIdToLoad = token === 'DEMO' ? 'demo-latex-gov' : selectedSpreadsheetId!;
         const data = await fetchSpreadsheet(spreadsheetIdToLoad, token);
         let docs = extractDocuments(data).map(d => ({ ...d, sheetId: spreadsheetIdToLoad }));
         setDashboardDocuments(docs);
@@ -91,7 +119,7 @@ const App: React.FC = () => {
       }
     };
     loadDashboardDocs();
-  }, [isAuthenticated, currentView, token]);
+  }, [isAuthenticated, currentView, token, selectedSpreadsheetId]);
 
   // Load token from local storage on mount
   useEffect(() => {
@@ -206,6 +234,7 @@ const App: React.FC = () => {
     setIsAuthenticated(false);
     setToken('');
     setCurrentSpreadsheet(null);
+    setSelectedSpreadsheetId(null);
     setCurrentUser(null);
     setCurrentView(AppView.DASHBOARD);
     setError(null);
@@ -248,7 +277,7 @@ const App: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const spreadsheetId = token === 'DEMO' ? 'demo-latex-gov' : MASTER_SPREADSHEET_ID;
+      const spreadsheetId = token === 'DEMO' ? 'demo-latex-gov' : selectedSpreadsheetId!;
 
       // Order must match the sheet columns: 
       // ID, Titulo, Subtitulo, Autor, Fecha, Institucion, Unidad, NombreCorto, PalabrasClave, Version, 
@@ -500,27 +529,76 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main>
-        {isAuthenticated && currentView === AppView.DASHBOARD && <UserActivityTracker />}
-        {currentView === AppView.DASHBOARD ? (
-          <Dashboard
-            onCreate={handleCreate}
-            onOpen={loadSpreadsheet}
-            onLogout={handleLogout}
-            documents={dashboardDocuments}
-          />
-        ) : (
-          currentSpreadsheet && (
-            <SheetEditor
-              spreadsheet={currentSpreadsheet}
-              token={token}
-              initialDocId={initialDocId}
-              onRefresh={() => loadSpreadsheet(currentSpreadsheet.spreadsheetId)}
-              onBack={() => {
-                setInitialDocId(undefined);
-                setCurrentView(AppView.DASHBOARD);
-              }}
+        {/* Workbook Selection Screen */}
+        {isAuthenticated && !selectedSpreadsheetId && token !== 'DEMO' && (
+          <div className="max-w-5xl mx-auto p-8 animate-in fade-in duration-500">
+            <div className="text-center mb-10 mt-8">
+              <h2 className="text-3xl font-bold text-[#691C32]">Seleccionar Libro de Trabajo</h2>
+              <p className="text-gray-600 mt-3 text-lg">Elige el repositorio de documentos donde deseas trabajar</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 px-4">
+              {AVAILABLE_SPREADSHEETS.map(sheet => (
+                <button
+                  key={sheet.id}
+                  onClick={() => setSelectedSpreadsheetId(sheet.id)}
+                  className="bg-white p-8 rounded-xl shadow-sm border border-gray-200 cursor-pointer hover:shadow-xl hover:border-[#691C32]/30 hover:-translate-y-1 transition-all text-left group flex flex-col items-center text-center h-full"
+                >
+                  <div className="w-16 h-16 bg-[#691C32]/5 rounded-full flex items-center justify-center text-[#691C32] mb-6 group-hover:bg-[#691C32] group-hover:text-white transition-colors duration-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /></svg>
+                  </div>
+                  <h3 className="font-bold text-xl text-gray-900 group-hover:text-[#691C32] mb-2">
+                    {spreadsheetMetadata[sheet.id] || sheet.name}
+                  </h3>
+                  <p className="text-gray-500 mb-6 flex-1">{sheet.description}</p>
+                  <div className="w-full pt-4 border-t border-gray-100">
+                    <span className="text-xs text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded inline-block max-w-full truncate">
+                      ID: {sheet.id.substring(0, 8)}...
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Dashboard View */}
+        {isAuthenticated && (selectedSpreadsheetId || token === 'DEMO') && currentView === AppView.DASHBOARD && (
+          <>
+            <UserActivityTracker />
+            <div className="bg-gray-50 border-b border-gray-200 px-4 md:px-8 py-2 flex items-center justify-between">
+              <div className="text-xs text-gray-500 font-medium flex items-center gap-2">
+                <span className="uppercase tracking-wider">Libro Actual:</span>
+                <span className="text-[#691C32] font-bold">
+                  {spreadsheetMetadata[selectedSpreadsheetId!] || AVAILABLE_SPREADSHEETS.find(s => s.id === selectedSpreadsheetId)?.name || (token === 'DEMO' ? 'Modo Demostración' : 'Desconocido')}
+                </span>
+              </div>
+              {token !== 'DEMO' && (
+                <button onClick={() => setSelectedSpreadsheetId(null)} className="text-xs text-gray-500 hover:text-[#691C32] flex items-center gap-1 transition-colors">
+                  <Settings size={12} /> Cambiar Libro
+                </button>
+              )}
+            </div>
+            <Dashboard
+              onCreate={handleCreate}
+              onOpen={loadSpreadsheet}
+              onLogout={handleLogout}
+              documents={dashboardDocuments}
             />
-          )
+          </>
+        )}
+
+        {/* Editor View */}
+        {currentView === AppView.EDITOR && currentSpreadsheet && (
+          <SheetEditor
+            spreadsheet={currentSpreadsheet}
+            token={token}
+            initialDocId={initialDocId}
+            onRefresh={() => loadSpreadsheet(currentSpreadsheet.spreadsheetId)}
+            onBack={() => {
+              setInitialDocId(undefined);
+              setCurrentView(AppView.DASHBOARD);
+            }}
+          />
         )}
       </main>
     </div>
