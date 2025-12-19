@@ -916,26 +916,34 @@ async function fetchAndParseSheet(spreadsheetId, sheetName, token) {
 async function fetchTableContent(spreadsheetId, rangeRef, token) {
     if (!rangeRef) return [];
     try {
-        let cleanRange = rangeRef;
-        // Fix for ranges like: 'Datos Tablas'!A1:B2 -> remove the single quotes around the sheet name
-        // because encodeURIComponent will encode them and sometimes API dislikes mixed quoting?
-        // Actually, normally 'Sheet Name'!Range is valid.
-        // But let's strip them to be safe and let encodeURIComponent handle the spaces.
+        let cleanRange = rangeRef.trim();
+
+        // Fix for when the range is like "Datos Tablas'!A3:D6" (missing opening quote)
+        // or "Datos Tablas!A3:D6" (no quotes but space in name)
+
+        // 1. If it contains '!', check the sheet part
         if (cleanRange.includes('!')) {
             const parts = cleanRange.split('!');
             let sheet = parts[0];
-            const cells = parts.slice(1).join('!'); // In case cells have ! inside (rare)
+            const cells = parts.slice(1).join('!');
 
-            if (sheet.startsWith("'") && sheet.endsWith("'")) {
-                sheet = sheet.slice(1, -1);
+            // If sheet name has spaces and is NOT quoted, we must quote it.
+            // If it is partially quoted (e.g. Datos Tablas'), fix it.
+
+            // Check for unbalanced quotes or missing start quote
+            if (sheet.endsWith("'") && !sheet.startsWith("'")) {
+                sheet = "'" + sheet;
+            } else if (!sheet.startsWith("'") && sheet.includes(' ')) {
+                sheet = "'" + sheet + "'";
             }
+
             cleanRange = `${sheet}!${cells}`;
         }
 
         return await fetchSheetData(spreadsheetId, cleanRange, token);
     } catch (e) {
-        console.warn(`Error fetching table content for range ${rangeRef}:`, e.message);
-        return [];
+        console.warn(`Error fetching table content for range ${rangeRef} (cleaned: ${cleanRange}):`, e.message);
+        throw e; // Rethrow to let caller handle it
     }
 }
 
@@ -969,7 +977,18 @@ async function generateLatex(spreadsheetId, docId, token) {
     await Promise.all(docTablas.map(async (tabla) => {
         const range = tabla['Datos CSV'] || tabla['DatosCSV'];
         if (range) {
-            tabla['ParsedData'] = await fetchTableContent(spreadsheetId, range, token);
+            try {
+                tabla['ParsedData'] = await fetchTableContent(spreadsheetId, range, token);
+                if (!tabla['ParsedData'] || tabla['ParsedData'].length === 0) {
+                    console.warn(`Warning: Table ${tabla['Titulo'] || 'Unknown'} has empty data for range ${range}`);
+                }
+            } catch (err) {
+                console.error(`Error fetching table data for ${range}:`, err);
+                tabla['ParsedData'] = [];
+            }
+        } else {
+            // Try to construct range from legacy fields if needed, or log warning
+            // console.warn('Table without range:', tabla);
         }
     }));
 
