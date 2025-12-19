@@ -2836,8 +2836,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                             <Button
                                                                 type="button"
                                                                 variant="outline"
-                                                                size="icon"
-                                                                className="shrink-0 text-gray-500 hover:text-[#691C32]"
+                                                                size="sm"
+                                                                className="shrink-0 font-semibold transition-all duration-300 ease-in-out hover:shadow-md hover:bg-[#691C32] hover:text-white border-[#691C32] text-[#691C32] px-4 py-2 rounded-md h-auto gap-2"
                                                                 title="Abrir editor avanzado con formato"
                                                                 onClick={() => {
                                                                     setEditorModal({
@@ -2854,6 +2854,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                 }}
                                                             >
                                                                 <Edit size={16} />
+                                                                <span>Editar</span>
                                                             </Button>
                                                         )}
                                                         {isCsvRange && activeTab === 'tablas' && (
