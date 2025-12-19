@@ -4,10 +4,12 @@ import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValue
 import { socketService } from '../services/socketService';
 import { UserActivityTracker } from './UserActivityTracker';
 import { Button } from './Button';
-import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, ChevronDown, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle, MoreVertical, Hash, Calendar, User, Building, AlignLeft, Database, Heart } from 'lucide-react';
+import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, ChevronDown, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle, MoreVertical, Hash, Calendar, User, Building, AlignLeft, Database, Heart, Maximize2, Minimize2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { LintPanel } from './LintPanel';
 import { RichEditorToolbar } from './RichEditorToolbar';
+import { EditorAutocomplete, AutocompleteItem } from './EditorAutocomplete';
+import { getCaretCoordinates } from '../utils/caret';
 import { applyInlineTag, insertBlockTag, lintTags, normalizeOnSave, TagIssue } from '../tagEngine';
 import { computeFigureId, computeTableId } from '../utils/idUtils';
 import { API_URL } from '../config';
@@ -256,15 +258,197 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const [activeMetadataField, setActiveMetadataField] = useState<string | null>(null);
 
     // Generic Editor Modal State (For any text field)
-    const [editorModal, setEditorModal] = useState<{ open: boolean; title: string; value: string; fieldId: string | null; onSave: (val: string) => void }>({
+    const [editorModal, setEditorModal] = useState<{ open: boolean; title: string; value: string; fieldId: string | null; onSave: (val: string) => void; zenMode?: boolean }>({
         open: false,
         title: '',
         value: '',
         fieldId: null,
-        onSave: () => { }
+        onSave: () => { },
+        zenMode: false
     });
     // We need a ref for the generic editor textarea to support insertion
     const genericEditorRef = useRef<HTMLTextAreaElement | null>(null);
+
+    // Autocomplete State
+    const [autocompleteState, setAutocompleteState] = useState<{
+        open: boolean;
+        query: string;
+        position: { top: number; left: number };
+        triggerIdx: number;
+        selectedIndex: number;
+    }>({
+        open: false,
+        query: '',
+        position: { top: 0, left: 0 },
+        triggerIdx: -1,
+        selectedIndex: 0
+    });
+
+    const getAutocompleteItems = (query: string): AutocompleteItem[] => {
+        const q = query.toLowerCase();
+        const items: AutocompleteItem[] = [];
+
+        // 1. Static Tags
+        const staticTags: AutocompleteItem[] = [
+            { id: 'nota', label: 'Nota', type: 'style', desc: 'Nota al pie o comentario' },
+            { id: 'caja', label: 'Caja', type: 'block', desc: 'Bloque recuadro con título' },
+            { id: 'alerta', label: 'Alerta', type: 'block', desc: 'Bloque de advertencia' },
+            { id: 'info', label: 'Info', type: 'block', desc: 'Bloque informativo' },
+            { id: 'destacado', label: 'Destacado', type: 'block', desc: 'Texto destacado' },
+            { id: 'dorado', label: 'Texto Dorado', type: 'style' },
+            { id: 'guinda', label: 'Texto Guinda', type: 'style' },
+            { id: 'math', label: 'Math Inline', type: 'math', desc: 'Ecuación en línea' },
+            { id: 'ecuacion', label: 'Ecuación Display', type: 'math', desc: 'Ecuación centrada' },
+        ];
+        items.push(...staticTags.filter(i => i.label.toLowerCase().includes(q) || i.id.includes(q)));
+
+        // 2. Citations
+        availableBibliographyKeys.forEach(k => {
+            if (k.toLowerCase().includes(q) || 'cita'.includes(q)) {
+                items.push({ id: `cita:${k}`, label: `Cita: ${k}`, type: 'cita', value: k });
+            }
+        });
+
+        // 3. Figures
+        availableFigureItems.forEach(f => {
+            if (f.title.toLowerCase().includes(q) || f.id.toLowerCase().includes(q) || 'figura'.includes(q)) {
+                items.push({ id: `figura:${f.id}`, label: `Fig ${f.id}: ${f.title}`, type: 'figura', value: f.id });
+            }
+        });
+
+        // 4. Tables
+        availableTableItems.forEach(t => {
+            if (t.title.toLowerCase().includes(q) || t.id.toLowerCase().includes(q) || 'tabla'.includes(q)) {
+                items.push({ id: `tabla:${t.id}`, label: `Tabla ${t.id}: ${t.title}`, type: 'tabla', value: t.id });
+            }
+        });
+
+        return items.slice(0, 10); // Limit to 10 suggestions
+    };
+
+    const handleAutocompleteSelect = (item: AutocompleteItem) => {
+        const textarea = genericEditorRef.current;
+        if (!textarea) return;
+
+        const triggerIdx = autocompleteState.triggerIdx;
+        const currentVal = editorModal.value;
+        const beforeTrigger = currentVal.substring(0, triggerIdx);
+        // Remove everything from triggerIdx (which is the first '[') up to current cursor position?
+        // Actually, we want to replace `[[query` with the full tag.
+        // But wait, the user might have typed `[[cit`.
+        // The selection logic in `EditorAutocomplete` passes the item.
+
+        // We construct the tag
+        let tagText = '';
+        if (item.type === 'cita') tagText = `[[cita:${item.value}]]`;
+        else if (item.type === 'figura') tagText = `[[figura:${item.value}]]`;
+        else if (item.type === 'tabla') tagText = `[[tabla:${item.value}]]`;
+        else if (item.type === 'style' || item.type === 'math') {
+            // For inline styles that wrap content, if we are just inserting, we put placeholder
+            // But usually autocomplete happens when typing fresh.
+            if (item.id === 'nota') tagText = `[[nota:Nota...]]`;
+            else if (item.id === 'math') tagText = `[[math:x]]`;
+            else if (item.id === 'ecuacion') tagText = `[[ecuacion:E=mc^2]]`;
+            else tagText = `[[${item.id}:Texto...]]`;
+        } else if (item.type === 'block') {
+            tagText = `\n[[${item.id}:Título]]\n...\n[[/${item.id}]]\n`;
+        }
+
+        // We need to know where the cursor IS currently to replace correctly.
+        // But since we are updating state, `editorModal.value` might be slightly stale if we typed fast?
+        // No, React updates are batched but `editorModal.value` is the source of truth.
+        const cursor = textarea.selectionEnd;
+        // The text to replace is from `triggerIdx` to `cursor`.
+        // `triggerIdx` points to the first `[` of `[[`.
+
+        const newVal = beforeTrigger + tagText + currentVal.substring(cursor);
+
+        setEditorModal(prev => ({ ...prev, value: newVal }));
+        setAutocompleteState(prev => ({ ...prev, open: false }));
+
+        // Restore cursor
+        setTimeout(() => {
+            textarea.focus();
+            const newCursor = triggerIdx + tagText.length;
+            textarea.setSelectionRange(newCursor, newCursor);
+        }, 0);
+    };
+
+    const handleGenericEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (autocompleteState.open) {
+            const items = getAutocompleteItems(autocompleteState.query);
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setAutocompleteState(prev => ({
+                    ...prev,
+                    selectedIndex: (prev.selectedIndex + 1) % items.length
+                }));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setAutocompleteState(prev => ({
+                    ...prev,
+                    selectedIndex: (prev.selectedIndex - 1 + items.length) % items.length
+                }));
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                if (items[autocompleteState.selectedIndex]) {
+                    handleAutocompleteSelect(items[autocompleteState.selectedIndex]);
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setAutocompleteState(prev => ({ ...prev, open: false }));
+            }
+        }
+    };
+
+    const handleGenericEditorChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const val = e.target.value;
+        const cursor = e.target.selectionEnd;
+        setEditorModal(prev => ({ ...prev, value: val }));
+
+        // Detect `[[` pattern
+        // We look backwards from cursor to find `[[` without a closing `]]` or newline
+        const textBefore = val.substring(0, cursor);
+        const lastOpen = textBefore.lastIndexOf('[[');
+
+        if (lastOpen !== -1) {
+            // Check if there's a newline or `]]` between lastOpen and cursor
+            const segment = textBefore.substring(lastOpen);
+            if (!segment.includes(']]') && !segment.includes('\n')) {
+                const query = segment.substring(2); // remove `[[`
+                // If query is too long or has spaces, maybe close? 
+                // Let's allow spaces for now (e.g. "Texto Dorado") but usually tags don't have spaces in ID.
+                // But "cita: key" might have space?
+
+                // Calculate coordinates
+                const coords = getCaretCoordinates(e.target, lastOpen + 2);
+                // Adjust for modal position? 
+                // getCaretCoordinates returns relative to the element (if positioned) or viewport?
+                // The utility creates a mirror div appended to body.
+                // `element.getBoundingClientRect()` + coords might be needed if the textarea is in a modal.
+
+                const rect = e.target.getBoundingClientRect();
+                const top = rect.top + coords.top + window.scrollY - e.target.scrollTop;
+                const left = rect.left + coords.left + window.scrollX - e.target.scrollLeft;
+
+                // Adjust for line height (coords.top is top of line)
+                const menuTop = top + 20; // approximate line height
+
+                setAutocompleteState({
+                    open: true,
+                    query: query,
+                    position: { top: menuTop, left: left },
+                    triggerIdx: lastOpen,
+                    selectedIndex: 0
+                });
+                return;
+            }
+        }
+
+        if (autocompleteState.open) {
+            setAutocompleteState(prev => ({ ...prev, open: false }));
+        }
+    };
 
     // Reuse the logic for inserting tags into the GENERIC editor
     const insertSnippetGeneric = (textToInsert: string) => {
@@ -3164,149 +3348,108 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
                 {/* Generic Rich Editor Modal */}
                 {editorModal.open && (
-                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+                    <div className={clsx("fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in", editorModal.zenMode ? "p-0" : "p-4")}>
+                        <div className={clsx("bg-white shadow-2xl w-full flex flex-col transition-all duration-300", editorModal.zenMode ? "h-full rounded-none" : "max-w-5xl max-h-[90vh] rounded-xl")}>
                             <div className="flex items-center justify-between p-4 border-b border-gray-100">
                                 <h3 className="text-lg font-bold text-[#691C32] flex items-center gap-2">
                                     <Edit size={18} />
                                     {editorModal.title}
                                 </h3>
-                                <button onClick={() => setEditorModal(prev => ({ ...prev, open: false }))} className="text-gray-400 hover:text-gray-600">
-                                    <X size={20} />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => setEditorModal(prev => ({ ...prev, zenMode: !prev.zenMode }))} className="text-gray-400 hover:text-[#691C32] p-1 rounded hover:bg-gray-100 transition-colors" title={editorModal.zenMode ? "Salir de pantalla completa" : "Pantalla completa"}>
+                                        {editorModal.zenMode ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+                                    </button>
+                                    <button onClick={() => setEditorModal(prev => ({ ...prev, open: false }))} className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100 transition-colors">
+                                        <X size={20} />
+                                    </button>
+                                </div>
                             </div>
 
-                            <div className="p-6 overflow-y-auto flex-1 bg-gray-50/50">
-                                {/* Toolbar (Reused from Section Editor) */}
-                                <div className="mb-4 bg-white p-3 rounded-lg border border-gray-200 shadow-sm space-y-3">
-                                    <div className="flex items-center justify-between text-xs text-gray-500 mb-2 border-b border-gray-100 pb-2">
-                                        <span className="font-semibold text-[#691C32]">Herramientas de Edición</span>
-                                        <span>Editor estilo "Word" con etiquetas LaTeX</span>
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-2 items-center">
-                                        <span className="text-xs font-medium text-gray-400 mr-1">Estilo:</span>
-                                        <Button type="button" variant="outline" size="sm" onClick={() => wrapInlineGeneric('nota')} className="text-[#691C32] border-[#691C32]/20 hover:bg-[#691C32]/5">
-                                            <FileText size={14} className="mr-1" /> Nota
-                                        </Button>
-                                        <Button type="button" variant="outline" size="sm" onClick={() => wrapInlineGeneric('dorado')} className="text-amber-600 border-amber-200 hover:bg-amber-50">
-                                            <Type size={14} className="mr-1" /> T Dorado
-                                        </Button>
-                                        <Button type="button" variant="outline" size="sm" onClick={() => wrapInlineGeneric('guinda')} className="text-red-700 border-red-200 hover:bg-red-50">
-                                            <Type size={14} className="mr-1" /> T Guinda
-                                        </Button>
-                                        <Button type="button" variant="outline" size="sm" onClick={() => wrapInlineGeneric('math')} className="text-purple-700 border-purple-200 hover:bg-purple-50">
-                                            <Hash size={14} className="mr-1" /> Math
-                                        </Button>
-                                    </div>
-
-                                    <div className="w-full h-px bg-gray-100" />
-
-                                    <div className="flex flex-wrap gap-2 items-center">
-                                        <span className="text-xs font-medium text-gray-400 mr-1">Insertar:</span>
-
-                                        {/* Cita Dropdown */}
-                                        <div className="flex items-center gap-1 bg-gray-50 rounded px-2 py-1 border border-gray-200">
-                                            <Book size={12} className="text-gray-500" />
-                                            <select
-                                                className="bg-transparent text-xs border-none focus:ring-0 p-0 text-gray-700 w-24"
-                                                onChange={(e) => {
-                                                    if (e.target.value) {
-                                                        wrapInlineGeneric('cita', { value: e.target.value });
-                                                        e.target.value = '';
-                                                    }
-                                                }}
-                                            >
-                                                <option value="">Cita...</option>
-                                                {availableBibliographyKeys.map(k => <option key={k} value={k}>{k}</option>)}
-                                            </select>
-                                        </div>
-
-                                        {/* Figura Dropdown */}
-                                        <div className="flex items-center gap-1 bg-gray-50 rounded px-2 py-1 border border-gray-200">
-                                            <Image size={12} className="text-gray-500" />
-                                            <select
-                                                className="bg-transparent text-xs border-none focus:ring-0 p-0 text-gray-700 w-24"
-                                                onChange={(e) => {
-                                                    if (e.target.value) {
-                                                        wrapInlineGeneric('figura', { value: e.target.value });
-                                                        e.target.value = '';
-                                                    }
-                                                }}
-                                            >
-                                                <option value="">Figura...</option>
-                                                {availableFigureItems.map(i => <option key={i.id} value={i.id}>{i.title || i.id}</option>)}
-                                            </select>
-                                        </div>
-
-                                        {/* Tabla Dropdown */}
-                                        <div className="flex items-center gap-1 bg-gray-50 rounded px-2 py-1 border border-gray-200">
-                                            <Table size={12} className="text-gray-500" />
-                                            <select
-                                                className="bg-transparent text-xs border-none focus:ring-0 p-0 text-gray-700 w-24"
-                                                onChange={(e) => {
-                                                    if (e.target.value) {
-                                                        wrapInlineGeneric('tabla', { value: e.target.value });
-                                                        e.target.value = '';
-                                                    }
-                                                }}
-                                            >
-                                                <option value="">Tabla...</option>
-                                                {availableTableItems.map(i => <option key={i.id} value={i.id}>{i.title || i.id}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div className="w-full h-px bg-gray-100" />
-
-                                    <div className="flex flex-wrap gap-2 items-center">
-                                        <span className="text-xs font-medium text-gray-400 mr-1">Bloques:</span>
-                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlockGeneric('caja', 'Título')}>
-                                            <Grid size={14} className="mr-1" /> Caja
-                                        </Button>
-                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlockGeneric('alerta', 'Título')}>
-                                            <AlertTriangle size={14} className="mr-1" /> Alerta
-                                        </Button>
-                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlockGeneric('info', 'Título')}>
-                                            <Info size={14} className="mr-1" /> Info
-                                        </Button>
-                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlockGeneric('destacado')}>
-                                            <Lightbulb size={14} className="mr-1" /> Destacado
-                                        </Button>
-                                    </div>
-                                </div>
+                            <div className={clsx("overflow-y-auto flex-1 bg-gray-50/50", editorModal.zenMode ? "p-8 md:p-12 lg:px-24" : "p-6")}>
+                                <RichEditorToolbar
+                                    availableFigureItems={availableFigureItems}
+                                    availableTableItems={availableTableItems}
+                                    availableBibliographyKeys={availableBibliographyKeys}
+                                    onInsertSnippet={insertSnippetGeneric}
+                                    onWrapInline={wrapInlineGeneric}
+                                    onInsertBlock={insertBlockGeneric}
+                                    onOpenNote={() => setNoteModal({ open: true, value: '' })}
+                                    onOpenEquation={(mode) => {
+                                        const el = genericEditorRef.current;
+                                        const sel = el ? editorModal.value.slice(el.selectionStart, el.selectionEnd) : '';
+                                        setEquationModal({
+                                            open: true,
+                                            mode: mode,
+                                            title: mode === 'math' ? 'Insertar math inline' : 'Insertar ecuación display',
+                                            value: sel || '',
+                                            target: 'main'
+                                        });
+                                    }}
+                                    onOpenNewItem={(type) => {
+                                        if (type === 'bibliografia') openTab('bibliografia');
+                                        else if (type === 'figura' || type === 'tabla') createNewForSection(type);
+                                    }}
+                                    currentSectionOrder=""
+                                />
 
                                 <textarea
                                     ref={genericEditorRef}
-                                    className="w-full h-96 p-6 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#691C32]/20 focus:border-[#691C32] outline-none resize-none font-mono text-sm leading-relaxed shadow-inner"
+                                    className={clsx(
+                                        "w-full p-6 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#691C32]/20 focus:border-[#691C32] outline-none resize-none font-mono text-sm leading-relaxed shadow-inner transition-all",
+                                        editorModal.zenMode ? "h-[calc(100vh-280px)] text-base" : "h-96"
+                                    )}
                                     value={editorModal.value}
-                                    onChange={(e) => setEditorModal(prev => ({ ...prev, value: e.target.value }))}
+                                    onChange={handleGenericEditorChange}
+                                    onKeyDown={handleGenericEditorKeyDown}
+                                    onSelect={(e) => {
+                                        // Update cursor position or selection if needed for status bar
+                                    }}
                                     placeholder="Escribe aquí el contenido..."
                                 />
 
-                                {editorModal.fieldId === 'ResumenEjecutivo' && (
-                                    <div className={clsx("text-right text-xs mt-2 font-medium", editorModal.value.length > 500 ? "text-red-600" : "text-gray-400")}>
-                                        {editorModal.value.length} / 500 caracteres
-                                    </div>
+                                {autocompleteState.open && (
+                                    <EditorAutocomplete
+                                        items={getAutocompleteItems(autocompleteState.query)}
+                                        selectedIndex={autocompleteState.selectedIndex}
+                                        position={autocompleteState.position}
+                                        onSelect={handleAutocompleteSelect}
+                                        onClose={() => setAutocompleteState(prev => ({ ...prev, open: false }))}
+                                    />
                                 )}
-                            </div>
 
-                            <div className="p-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50 rounded-b-xl">
-                                <Button variant="outline" onClick={() => setEditorModal(prev => ({ ...prev, open: false }))}>
-                                    Cancelar
-                                </Button>
-                                <Button variant="primary" onClick={() => {
-                                    editorModal.onSave(editorModal.value);
-                                    setEditorModal(prev => ({ ...prev, open: false }));
-                                }}>
-                                    <Check size={16} className="mr-2" />
-                                    Guardar Cambios
-                                </Button>
+                                <div className="flex justify-between items-center mt-2 px-1">
+                                    <div className="text-xs text-gray-400 flex gap-3">
+                                        <span>
+                                            {editorModal.value.trim().split(/\s+/).filter(w => w.length > 0).length} palabras
+                                        </span>
+                                        <span>
+                                            {editorModal.value.length} caracteres
+                                        </span>
+                                        {editorModal.fieldId === 'ResumenEjecutivo' && (
+                                            <span className={clsx("font-medium", editorModal.value.length > 500 ? "text-red-600" : "text-gray-400")}>
+                                                (Máx 500)
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
+                        </div>
+
+                        <div className={clsx("p-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50", editorModal.zenMode ? "fixed bottom-0 left-0 right-0 z-[70] border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]" : "rounded-b-xl")}>
+                            <Button variant="outline" onClick={() => setEditorModal(prev => ({ ...prev, open: false }))}>
+                                Cancelar
+                            </Button>
+                            <Button variant="primary" onClick={() => {
+                                editorModal.onSave(editorModal.value);
+                                setEditorModal(prev => ({ ...prev, open: false }));
+                            }}>
+                                <Check size={16} className="mr-2" />
+                                Guardar Cambios
+                            </Button>
                         </div>
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 };
