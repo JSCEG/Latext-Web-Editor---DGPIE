@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Spreadsheets (examples/output)
+*.xlsx
+*.xls

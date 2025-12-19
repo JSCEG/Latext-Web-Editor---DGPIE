@@ -9,6 +9,7 @@ import { clsx } from 'clsx';
 import { LintPanel } from './LintPanel';
 import { applyInlineTag, insertBlockTag, lintTags, normalizeOnSave, TagIssue } from '../tagEngine';
 import { computeFigureId, computeTableId } from '../utils/idUtils';
+import { API_URL } from '../config';
 
 interface SheetEditorProps {
     spreadsheet: Spreadsheet;
@@ -1746,6 +1747,91 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         }
     };
 
+    const handleGenerateLatex = async () => {
+        if (activeTab !== 'metadatos') {
+            showNotification("Debes estar en la vista de 'Metadatos' (Documentos) para generar el archivo.", 'error');
+            return;
+        }
+
+        // Try to get ID from current selection or context
+        let targetDocId = currentDocId;
+
+        // If no global doc id, try to find from editing row
+        if (!targetDocId && editingRowIndex !== null) {
+            const idxDoc = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+            if (idxDoc !== -1) {
+                targetDocId = gridData[editingRowIndex][idxDoc];
+            }
+        }
+
+        if (!targetDocId) {
+            showNotification("No se ha detectado un ID de documento válido. Selecciona un documento o abre uno.", 'error');
+            return;
+        }
+
+        // Regex validation (Simple alphanumeric)
+        if (!/^[a-zA-Z0-9_-]+$/.test(targetDocId)) {
+            showNotification(`El ID del documento "${targetDocId}" no tiene un formato válido.`, 'error');
+            return;
+        }
+
+        setSaving(true); // Re-use saving state for loading
+        showNotification("Generando archivos LaTeX... Esto puede tardar unos segundos.", 'info');
+
+        try {
+            const response = await fetch(`${API_URL}/generate-latext`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    spreadsheetId: spreadsheet.spreadsheetId,
+                    docId: targetDocId,
+                    token: token
+                })
+            });
+
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || "Error desconocido en el servidor");
+            }
+
+            // Trigger Download
+            // 1. .tex file
+            const blobTex = new Blob([result.tex], { type: 'text/plain' });
+            const urlTex = window.URL.createObjectURL(blobTex);
+            const aTex = document.createElement('a');
+            aTex.href = urlTex;
+            aTex.download = `${result.filename}.tex`;
+            document.body.appendChild(aTex);
+            aTex.click();
+            document.body.removeChild(aTex);
+            window.URL.revokeObjectURL(urlTex);
+
+            // 2. .bib file (if exists)
+            if (result.bib) {
+                const blobBib = new Blob([result.bib], { type: 'text/plain' });
+                const urlBib = window.URL.createObjectURL(blobBib);
+                const aBib = document.createElement('a');
+                aBib.href = urlBib;
+                aBib.download = `referencias.bib`;
+                document.body.appendChild(aBib);
+                aBib.click();
+                document.body.removeChild(aBib);
+                window.URL.revokeObjectURL(urlBib);
+            }
+
+            showNotification("Archivos generados y descargados correctamente.", 'success');
+
+        } catch (e: any) {
+            console.error(e);
+            showNotification(`Error al generar LaTeX: ${e.message}`, 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const deleteContext = getDeleteContext();
 
     return (
@@ -1853,6 +1939,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={handleGenerateLatex} className="hidden md:flex gap-2 text-[#691C32] border-[#691C32] hover:bg-[#691C32] hover:text-white transition-colors" title="Generar archivos .tex y .bib">
+                        <FileText size={16} /> Generar .Latex
+                    </Button>
                     <Button variant="outline" size="sm" onClick={onBack} className="hidden md:flex">
                         Salir
                     </Button>

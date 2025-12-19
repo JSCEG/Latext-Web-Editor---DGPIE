@@ -2,9 +2,40 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const { generateLatex } = require('./latexGenerator');
 
 const app = express();
 app.use(cors());
+app.use(express.json());
+
+app.post('/generate-latext', async (req, res) => {
+  try {
+    const { spreadsheetId, docId, token } = req.body;
+
+    if (!spreadsheetId || !docId || !token) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    console.log(`Generating LaTeX for doc ${docId} in sheet ${spreadsheetId}...`);
+    const result = await generateLatex(spreadsheetId, docId, token);
+
+    // Return the content directly as JSON, frontend will trigger download
+    // Alternatively, we could stream it as a file download directly here
+    res.json({
+      success: true,
+      tex: result.tex,
+      bib: result.bib,
+      filename: result.filename
+    });
+
+  } catch (error) {
+    console.error('Error generating LaTeX:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -114,7 +145,7 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = 3003;
+const PORT = process.env.PORT || 3003;
 server.listen(PORT, () => {
   console.log(`Socket.IO Server running on port ${PORT}`);
 });
