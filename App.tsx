@@ -23,7 +23,11 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [selectedSpreadsheetId, setSelectedSpreadsheetId] = useState<string | null>(null);
   const [currentSpreadsheet, setCurrentSpreadsheet] = useState<Spreadsheet | null>(null);
-  const [spreadsheetMetadata, setSpreadsheetMetadata] = useState<Record<string, string>>({});
+  const [spreadsheetMetadata, setSpreadsheetMetadata] = useState<Record<string, string>>(() => {
+    // Load cached metadata on init
+    const cached = localStorage.getItem('spreadsheet_metadata_cache');
+    return cached ? JSON.parse(cached) : {};
+  });
   const [dashboardDocuments, setDashboardDocuments] = useState<import('./components/Dashboard').DocumentCard[]>([]);
   const [initialDocId, setInitialDocId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -31,6 +35,24 @@ const App: React.FC = () => {
   const [showHelp, setShowHelp] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = React.useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+
+    if (userMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [userMenuOpen]);
 
   const normalize = (s: string) => (s || '')
     .toLowerCase()
@@ -92,7 +114,11 @@ const App: React.FC = () => {
           console.error(`Failed to fetch metadata for ${sheet.id}`, e);
         }
       }
-      setSpreadsheetMetadata(prev => ({ ...prev, ...metadata }));
+      setSpreadsheetMetadata(prev => {
+        const updated = { ...prev, ...metadata };
+        localStorage.setItem('spreadsheet_metadata_cache', JSON.stringify(updated));
+        return updated;
+      });
     };
 
     fetchMetadata();
@@ -459,7 +485,7 @@ const App: React.FC = () => {
           {/* Help/Actions */}
           <div className="flex items-center gap-4 relative">
             {isAuthenticated && currentUser ? (
-              <div className="relative">
+              <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                   className="flex items-center gap-2 hover:bg-gray-50 p-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#691C32]/20"

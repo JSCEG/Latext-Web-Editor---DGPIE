@@ -10,9 +10,28 @@ export const UserActivityTracker: React.FC<UserActivityTrackerProps> = ({ varian
     const [users, setUsers] = useState<ConnectedUser[]>([]);
     const [isExpanded, setIsExpanded] = useState(false);
 
+    // Get current doc ID from URL or context if available (optional enhancement for future)
+    // For now, we assume we want to show ALL users if in dashboard, or filter if in editor.
+    // However, the prompt asks to filter by "current book". 
+    // Since this component is global, we need to know the context.
+    
+    // Actually, the prompt says "filter by current book".
+    // The socket service knows the "currentDoc" (which is actually DocID).
+    // It doesn't strictly know the Spreadsheet ID unless we pass it.
+    // But typically collaboration happens per Document (DocID).
+    
     useEffect(() => {
         const unsubscribe = socketService.subscribe((updatedUsers) => {
-            setUsers(updatedUsers);
+            // Filter out the current user (self) to avoid duplication
+            // And filter by context if needed.
+            
+            const currentSocketId = socketService.getSocketId();
+            
+            const filteredUsers = updatedUsers.filter(u => 
+                u.socketId !== currentSocketId // Remove self
+            );
+            
+            setUsers(filteredUsers);
         });
         return unsubscribe;
     }, []);

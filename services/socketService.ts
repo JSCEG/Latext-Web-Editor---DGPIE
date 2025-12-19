@@ -1,7 +1,8 @@
 import { io, Socket } from 'socket.io-client';
+import { API_URL } from '../config';
 
 // Change this URL if deployed elsewhere
-const SERVER_URL = 'https://latext-web-editor-dgpie.onrender.com';
+const SERVER_URL = API_URL;
 
 export interface ConnectedUser {
     socketId: string;
@@ -16,10 +17,12 @@ export interface ConnectedUser {
 class SocketService {
     private socket: Socket | null = null;
     private subscribers: ((users: ConnectedUser[]) => void)[] = [];
+    private currentUserEmail: string | null = null; // Store current user email to prevent self-duplication in UI
 
     connect(userData: { name: string; email: string }) {
         if (this.socket) return;
 
+        this.currentUserEmail = userData.email;
         this.socket = io(SERVER_URL);
 
         this.socket.on('connect', () => {
@@ -40,6 +43,7 @@ class SocketService {
         if (this.socket) {
             this.socket.disconnect();
             this.socket = null;
+            this.currentUserEmail = null;
         }
     }
 
@@ -71,6 +75,14 @@ class SocketService {
         return () => {
             this.subscribers = this.subscribers.filter(cb => cb !== callback);
         };
+    }
+    
+    getCurrentUserEmail() {
+        return this.currentUserEmail;
+    }
+    
+    getSocketId() {
+        return this.socket?.id;
     }
 }
 
