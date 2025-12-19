@@ -7,6 +7,7 @@ import { Button } from './Button';
 import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, ChevronDown, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle, MoreVertical, Hash, Calendar, User, Building, AlignLeft, Database, Heart } from 'lucide-react';
 import { clsx } from 'clsx';
 import { LintPanel } from './LintPanel';
+import { RichEditorToolbar } from './RichEditorToolbar';
 import { applyInlineTag, insertBlockTag, lintTags, normalizeOnSave, TagIssue } from '../tagEngine';
 import { computeFigureId, computeTableId } from '../utils/idUtils';
 import { API_URL } from '../config';
@@ -236,6 +237,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const [currentDocId, setCurrentDocId] = useState<string>('');
     const [currentDocRowIndex, setCurrentDocRowIndex] = useState<number>(1);
     const [availableDocs, setAvailableDocs] = useState<DocumentOption[]>([]);
+    const [availableSections, setAvailableSections] = useState<{ id: string; title: string }[]>([]);
     const initialSelectionAppliedForSpreadsheet = useRef<string | null>(null);
 
     // Navigation State
@@ -287,7 +289,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         }, 0);
     };
 
-    const wrapInlineGeneric = (type: 'nota' | 'dorado' | 'guinda' | 'math' | 'cita' | 'figura' | 'tabla', extra?: { value?: string }) => {
+    const wrapInlineGeneric = (type: string, extra?: { value?: string; placeholder?: string }) => {
         if (!editorModal.open) return;
         const textarea = genericEditorRef.current;
         if (!textarea) return;
@@ -295,37 +297,32 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
         const text = editorModal.value;
-        const selection = text.substring(start, end);
 
-        const res = applyInlineTag(type, selection, extra);
-        const newText = text.substring(0, start) + res.text + text.substring(end);
+        const res = applyInlineTag(text, start, end, type, extra);
 
-        setEditorModal(prev => ({ ...prev, value: newText }));
+        setEditorModal(prev => ({ ...prev, value: res.text }));
 
         setTimeout(() => {
             textarea.focus();
-            textarea.setSelectionRange(start + res.selectionStart, start + res.selectionEnd);
+            textarea.setSelectionRange(res.selectionStart, res.selectionEnd);
         }, 0);
     };
 
-    const insertBlockGeneric = (type: 'caja' | 'alerta' | 'info' | 'destacado', title?: string) => {
+    const insertBlockGeneric = (type: string, title?: string) => {
         if (!editorModal.open) return;
         const textarea = genericEditorRef.current;
         if (!textarea) return;
 
         const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
         const text = editorModal.value;
-        const selection = text.substring(start, end);
 
-        const res = insertBlockTag(type, selection, title);
-        const newText = text.substring(0, start) + res.text + text.substring(end);
+        const res = insertBlockTag(text, start, type, title);
 
-        setEditorModal(prev => ({ ...prev, value: newText }));
+        setEditorModal(prev => ({ ...prev, value: res.text }));
 
         setTimeout(() => {
             textarea.focus();
-            textarea.setSelectionRange(start + res.selectionStart, start + res.selectionEnd);
+            textarea.setSelectionRange(res.selectionStart, res.selectionEnd);
         }, 0);
     };
 
@@ -705,6 +702,11 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     };
 
     const insertSnippetIntoContent = (snippet: string) => {
+        if (editorModal.open) {
+            insertSnippetGeneric(snippet);
+            return;
+        }
+
         const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
         if (contentIdx === -1) {
             // Optional: showNotification("No se encontró la columna de Contenido.", "error");
@@ -2515,259 +2517,34 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                         </div>
 
                                                         {/* Ribbon */}
-                                                        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                                                            <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex flex-wrap items-center gap-2">
-                                                                <span className="text-xs font-semibold text-gray-700">Insertar</span>
-                                                                <span className="text-[11px] text-gray-500">(envuelve selección o inserta plantilla)</span>
-                                                            </div>
-                                                            <div className="p-3 flex flex-col gap-3">
-                                                                <div className="flex flex-wrap items-center gap-2">
-                                                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('nota', { placeholder: 'Nota...' })}>
-                                                                        <FileText size={14} className="mr-2" /> Nota
-                                                                    </Button>
-                                                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('dorado', { placeholder: 'Texto...' })}>
-                                                                        <Type size={14} className="mr-2" /> Dorado
-                                                                    </Button>
-                                                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('guinda', { placeholder: 'Texto...' })}>
-                                                                        <Type size={14} className="mr-2" /> Guinda
-                                                                    </Button>
-                                                                    <Button
-                                                                        type="button"
-                                                                        variant="outline"
-                                                                        size="sm"
-                                                                        onClick={() => {
-                                                                            const el = sectionContentTextareaRef.current;
-                                                                            const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
-                                                                            setEquationModal({ open: true, mode: 'math', title: 'Insertar math inline ([[math:...]])', value: sel || '' });
-                                                                        }}
-                                                                    >
-                                                                        <Grid size={14} className="mr-2" /> Math
-                                                                    </Button>
-
-                                                                    <div className="w-px h-6 bg-gray-300 mx-1" />
-
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
-                                                                            <Book size={12} /> Cita
-                                                                        </div>
-                                                                        <select
-                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
-                                                                            value=""
-                                                                            onChange={(e) => {
-                                                                                const v = e.target.value;
-                                                                                if (!v) return;
-                                                                                wrapInline('cita', { value: v });
-                                                                                e.currentTarget.value = '';
-                                                                            }}
-                                                                            title="Insertar cita"
-                                                                        >
-                                                                            <option value="">Selecciona…</option>
-                                                                            {availableBibliographyKeys.map(k => (
-                                                                                <option key={k} value={k}>{k}</option>
-                                                                            ))}
-                                                                        </select>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => openTab('bibliografia')}>Crear nueva cita</Button>
-                                                                    </div>
-
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
-                                                                            <Image size={12} /> Figura
-                                                                        </div>
-                                                                        <select
-                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
-                                                                            value=""
-                                                                            onChange={(e) => {
-                                                                                const v = e.target.value;
-                                                                                if (!v) return;
-                                                                                if (v === '__CREATE_FIG__') {
-                                                                                    const secIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
-                                                                                    const currentSec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
-                                                                                    if (currentSec) createNewForSection('figura', currentSec);
-                                                                                } else {
-                                                                                    const item = availableFigureItems.find(x => x.id === v);
-                                                                                    if (item) setSelectorPreview({ type: 'figura', id: item.id, title: item.title, image: item.route });
-                                                                                    wrapInline('figura', { value: v });
-                                                                                }
-                                                                                e.currentTarget.value = '';
-                                                                            }}
-                                                                            title="Insertar referencia a figura"
-                                                                        >
-                                                                            <option value="">Selecciona…</option>
-                                                                            {(function () {
-                                                                                const currentSec = getCurrentSectionOrder();
-                                                                                const list = currentSec ? availableFigureItems.filter(i => (i.section || '') === currentSec) : availableFigureItems;
-                                                                                return list.map(i => (
-                                                                                    <option key={i.id} value={i.id}>{i.title || i.id}</option>
-                                                                                ));
-                                                                            })()}
-                                                                        </select>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => createNewForSection('figura')}>Crear nueva figura</Button>
-                                                                        {selectorPreview?.type === 'figura' && (
-                                                                            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectorPreview(selectorPreview)}>Ver</Button>
-                                                                        )}
-                                                                    </div>
-
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
-                                                                            <Table size={12} /> Tabla
-                                                                        </div>
-                                                                        <select
-                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
-                                                                            value=""
-                                                                            onChange={(e) => {
-                                                                                const v = e.target.value;
-                                                                                if (!v) return;
-                                                                                if (v === '__CREATE_TBL__') {
-                                                                                    const secIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
-                                                                                    const currentSec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
-                                                                                    if (currentSec) createNewForSection('tabla', currentSec);
-                                                                                } else {
-                                                                                    const item = availableTableItems.find(x => x.id === v);
-                                                                                    if (item) setSelectorPreview({ type: 'tabla', id: item.id, title: item.title });
-                                                                                    wrapInline('tabla', { value: v });
-                                                                                }
-                                                                                e.currentTarget.value = '';
-                                                                            }}
-                                                                            title="Insertar referencia a tabla"
-                                                                        >
-                                                                            <option value="">Selecciona…</option>
-                                                                            {(function () {
-                                                                                const currentSec = getCurrentSectionOrder();
-                                                                                const list = currentSec ? availableTableItems.filter(i => (i.section || '') === currentSec) : availableTableItems;
-                                                                                return list.map(i => (
-                                                                                    <option key={i.id} value={i.id}>{i.title || i.id}</option>
-                                                                                ));
-                                                                            })()}
-                                                                        </select>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => createNewForSection('tabla')}>Crear nueva tabla</Button>
-                                                                        {selectorPreview?.type === 'tabla' && (
-                                                                            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectorPreview(selectorPreview)}>Ver</Button>
-                                                                        )}
-                                                                    </div>
-
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
-                                                                            <Lightbulb size={12} /> Ejemplos
-                                                                        </div>
-                                                                        <select
-                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
-                                                                            value=""
-                                                                            onChange={(e) => {
-                                                                                const v = e.target.value;
-                                                                                if (!v) return;
-
-                                                                                const citeKey = availableBibliographyKeys[0] || 'clave_biblio';
-                                                                                const figId = availableFigureIds[0] || '2.1';
-                                                                                const tableId = availableTableIds[0] || '3.2';
-
-                                                                                if (v === 'cita-nota') {
-                                                                                    insertSnippet(
-                                                                                        `Texto con [[cita:${citeKey}]] y una nota [[nota:Nota al pie o comentario...]].\n\n` +
-                                                                                        `Ver [[figura:${figId}]] y [[tabla:${tableId}]].\n`
-                                                                                    );
-                                                                                } else if (v === 'guinda-dorado') {
-                                                                                    insertSnippet(`Texto con énfasis: [[guinda:Guinda]] y [[dorado:Dorado]].\n\n`);
-                                                                                } else if (v === 'caja-nota') {
-                                                                                    insertSnippet(
-                                                                                        `\n\n[[caja:Título opcional]]\n` +
-                                                                                        `Contenido dentro de recuadro. Puedes agregar una [[nota:Nota al pie / comentario...]].\n` +
-                                                                                        `[[/caja]]\n\n`
-                                                                                    );
-                                                                                } else if (v === 'bloque-alerta') {
-                                                                                    insertSnippet(
-                                                                                        `\n\n[[alerta:Título]]\n` +
-                                                                                        `Escribe aquí el mensaje de alerta...\n` +
-                                                                                        `[[/alerta]]\n\n`
-                                                                                    );
-                                                                                } else if (v === 'math-basico') {
-                                                                                    insertSnippet(`\n\n[[math:\\frac{a}{b} + \\Delta x]]\n\n`);
-                                                                                } else if (v === 'ecuacion') {
-                                                                                    insertSnippet(`\n\n[[ecuacion:E = mc^2]]\n\n`);
-                                                                                }
-
-                                                                                e.currentTarget.value = '';
-                                                                            }}
-                                                                            title="Insertar ejemplos de etiquetas"
-                                                                        >
-                                                                            <option value="">Selecciona…</option>
-                                                                            <option value="cita-nota">Cita + Nota + Figura/Tabla</option>
-                                                                            <option value="guinda-dorado">Guinda + Dorado</option>
-                                                                            <option value="caja-nota">Recuadro (Caja) + Nota</option>
-                                                                            <option value="bloque-alerta">Bloque Alerta</option>
-                                                                            <option value="math-basico">Math inline (fracción + delta)</option>
-                                                                            <option value="ecuacion">Ecuación (display)</option>
-                                                                        </select>
-                                                                    </div>
-
-                                                                    <div className="w-px h-6 bg-gray-300 mx-1" />
-
-                                                                    <div className="flex flex-wrap items-center gap-2">
-                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
-                                                                            <Grid size={12} /> Bloques
-                                                                        </div>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('caja', 'Título opcional')}>
-                                                                            <Grid size={14} className="mr-2" /> Caja
-                                                                        </Button>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('alerta', 'Título')}>
-                                                                            <AlertTriangle size={14} className="mr-2" /> Alerta
-                                                                        </Button>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('info', 'Título')}>
-                                                                            <Info size={14} className="mr-2" /> Info
-                                                                        </Button>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('destacado')}>
-                                                                            <Lightbulb size={14} className="mr-2" /> Destacado
-                                                                        </Button>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => setNoteModal({ open: true, value: '' })}>
-                                                                            <FileText size={14} className="mr-2" /> Insertar Nota
-                                                                        </Button>
-                                                                        <Button
-                                                                            type="button"
-                                                                            variant="ghost"
-                                                                            size="sm"
-                                                                            onClick={() => {
-                                                                                const el = sectionContentTextareaRef.current;
-                                                                                const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
-                                                                                setEquationModal({ open: true, mode: 'ecuacion', title: 'Insertar ecuación display ([[ecuacion:...]] multi-línea)', value: sel || '', target: 'main' });
-                                                                            }}
-                                                                        >
-                                                                            <Grid size={14} className="mr-2" /> Ecuación
-                                                                        </Button>
-                                                                    </div>
-                                                                </div>
-                                                                {selectorPreview && (
-                                                                    <div className="mt-3 border border-gray-200 rounded p-3 bg-gray-50">
-                                                                        <div className="text-xs text-gray-600 mb-2">Previsualización: {selectorPreview.type === 'figura' ? 'Figura' : 'Tabla'} — {selectorPreview.title}</div>
-                                                                        {selectorPreview.type === 'figura' ? (
-                                                                            <div className="flex items-center justify-start">
-                                                                                {selectorPreview.image ? (
-                                                                                    <img src={`${selectorPreview.image}?t=${dataTimestamp}`} alt={selectorPreview.title} className="max-h-40 object-contain border rounded" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                                                                                ) : (
-                                                                                    <div className="text-xs text-gray-500">Sin ruta de imagen</div>
-                                                                                )}
-                                                                            </div>
-                                                                        ) : (
-                                                                            <div className="overflow-x-auto">
-                                                                                {selectorPreview.data && selectorPreview.data.length ? (
-                                                                                    <table className="text-xs">
-                                                                                        <tbody>
-                                                                                            {selectorPreview.data.slice(0, 6).map((row, r) => (
-                                                                                                <tr key={r}>
-                                                                                                    {row.slice(0, 6).map((cell, c) => (
-                                                                                                        <td key={c} className={clsx("px-2 py-1 border", r === 0 ? "font-semibold bg-gray-100" : "")}>{cell}</td>
-                                                                                                    ))}
-                                                                                                </tr>
-                                                                                            ))}
-                                                                                        </tbody>
-                                                                                    </table>
-                                                                                ) : (
-                                                                                    <div className="text-xs text-gray-500">Cargando rango…</div>
-                                                                                )}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
+                                                        <RichEditorToolbar
+                                                            availableFigureItems={availableFigureItems}
+                                                            availableTableItems={availableTableItems}
+                                                            availableBibliographyKeys={availableBibliographyKeys}
+                                                            onInsertSnippet={insertSnippet}
+                                                            onWrapInline={wrapInline}
+                                                            onInsertBlock={insertBlock}
+                                                            onOpenNote={() => setNoteModal({ open: true, value: '' })}
+                                                            onOpenEquation={(mode) => {
+                                                                const el = sectionContentTextareaRef.current;
+                                                                const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
+                                                                setEquationModal({
+                                                                    open: true,
+                                                                    mode: mode,
+                                                                    title: mode === 'math' ? 'Insertar math inline' : 'Insertar ecuación display',
+                                                                    value: sel || '',
+                                                                    target: 'main'
+                                                                });
+                                                            }}
+                                                            onOpenNewItem={(type) => {
+                                                                if (type === 'bibliografia') openTab('bibliografia');
+                                                                else if (type === 'figura' || type === 'tabla') createNewForSection(type);
+                                                            }}
+                                                            selectorPreview={selectorPreview}
+                                                            setSelectorPreview={setSelectorPreview}
+                                                            currentSectionOrder={getCurrentSectionOrder()}
+                                                            dataTimestamp={dataTimestamp}
+                                                        />
 
                                                         {/* Word-like page */}
                                                         <div className="bg-[#F5F5F5] border border-gray-200 rounded-lg p-4">
