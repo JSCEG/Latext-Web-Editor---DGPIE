@@ -249,2926 +249,3174 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
     const [dataTimestamp, setDataTimestamp] = useState<number>(Date.now());
 
-    // Relationship Data State (For dropdowns/validation)
-    const [availableSections, setAvailableSections] = useState<{ id: string, title: string }[]>([]);
+    // Ribbon State
+    const [ribbonOpen, setRibbonOpen] = useState(true);
+    const [activeMetadataField, setActiveMetadataField] = useState<string | null>(null);
 
-    // Secciones editor enhancements
-    const sectionContentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-    const equationModalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-    const [sectionLintIssues, setSectionLintIssues] = useState<TagIssue[]>([]);
-    const [availableBibliographyKeys, setAvailableBibliographyKeys] = useState<string[]>([]);
-    const [availableFigureIds, setAvailableFigureIds] = useState<string[]>([]);
-    const [availableTableIds, setAvailableTableIds] = useState<string[]>([]);
-    const [availableFigureItems, setAvailableFigureItems] = useState<{ id: string; title: string; section: string; route?: string }[]>([]);
-    const [availableTableItems, setAvailableTableItems] = useState<{ id: string; title: string; section: string; range?: string }[]>([]);
-    const [selectorPreview, setSelectorPreview] = useState<{ type: 'figura' | 'tabla'; id: string; title: string; image?: string; data?: string[][] } | null>(null);
-    const [equationModal, setEquationModal] = useState<{ open: boolean; mode: 'math' | 'ecuacion'; title: string; value: string; target: 'main' | 'note' }>(
-        { open: false, mode: 'math', title: 'Insertar ecuación', value: '', target: 'main' }
-    );
-    const [noteModal, setNoteModal] = useState<{ open: boolean; value: string }>({ open: false, value: '' });
-    const noteContentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+    // --- Helpers for Metadata Fields ---
+    const getMetadataValue = (field: string) => {
+        const fieldIdx = findColumnIndex(gridHeaders, [field]);
+        if (fieldIdx !== -1 && editingRowIndex !== null) {
+            // If we are in editing mode, use formData
+            // Wait, formData is only populated when handleEdit is called.
+            // But ribbon should be available when a doc is selected (viewMode=FORM or LIST with filter)
 
-    type EquationSymbolGroup = 'Todos' | 'Griegas' | 'Operadores' | 'Relaciones' | 'Flechas' | 'Conjuntos' | 'Funciones';
-    const [equationPaletteGroup, setEquationPaletteGroup] = useState<EquationSymbolGroup>('Griegas');
-    const [equationPaletteQuery, setEquationPaletteQuery] = useState<string>('');
+            // If viewMode is FORM, use formData.
+            // If viewMode is LIST, we can't easily edit metadata unless we enter FORM mode for the doc row.
+            // So Ribbon should only be active/editable when we are in FORM mode for Metadatos tab.
 
-    type EquationSymbolGroupBase = Exclude<EquationSymbolGroup, 'Todos'>;
-    type EquationSymbol = { group: EquationSymbolGroupBase; latex: string; label: string; keywords: string[] };
-
-    const EQUATION_SYMBOLS: EquationSymbol[] = [
-        // Griegas
-        { group: 'Griegas', latex: '\\alpha', label: 'α', keywords: ['alpha', 'alfa'] },
-        { group: 'Griegas', latex: '\\beta', label: 'β', keywords: ['beta'] },
-        { group: 'Griegas', latex: '\\gamma', label: 'γ', keywords: ['gamma'] },
-        { group: 'Griegas', latex: '\\Gamma', label: 'Γ', keywords: ['Gamma'] },
-        { group: 'Griegas', latex: '\\delta', label: 'δ', keywords: ['delta'] },
-        { group: 'Griegas', latex: '\\Delta', label: 'Δ', keywords: ['Delta'] },
-        { group: 'Griegas', latex: '\\epsilon', label: 'ϵ', keywords: ['epsilon', 'varepsilon'] },
-        { group: 'Griegas', latex: '\\varepsilon', label: 'ε', keywords: ['varepsilon', 'epsilon'] },
-        { group: 'Griegas', latex: '\\theta', label: 'θ', keywords: ['theta', 'teta'] },
-        { group: 'Griegas', latex: '\\vartheta', label: 'ϑ', keywords: ['vartheta'] },
-        { group: 'Griegas', latex: '\\lambda', label: 'λ', keywords: ['lambda'] },
-        { group: 'Griegas', latex: '\\mu', label: 'μ', keywords: ['mu'] },
-        { group: 'Griegas', latex: '\\pi', label: 'π', keywords: ['pi'] },
-        { group: 'Griegas', latex: '\\Pi', label: 'Π', keywords: ['Pi'] },
-        { group: 'Griegas', latex: '\\rho', label: 'ρ', keywords: ['rho'] },
-        { group: 'Griegas', latex: '\\sigma', label: 'σ', keywords: ['sigma'] },
-        { group: 'Griegas', latex: '\\Sigma', label: 'Σ', keywords: ['Sigma'] },
-        { group: 'Griegas', latex: '\\phi', label: 'ϕ', keywords: ['phi'] },
-        { group: 'Griegas', latex: '\\varphi', label: 'φ', keywords: ['varphi'] },
-        { group: 'Griegas', latex: '\\omega', label: 'ω', keywords: ['omega'] },
-        { group: 'Griegas', latex: '\\Omega', label: 'Ω', keywords: ['Omega'] },
-
-        // Operadores
-        { group: 'Operadores', latex: '+', label: '+', keywords: ['suma', 'plus'] },
-        { group: 'Operadores', latex: '-', label: '−', keywords: ['resta', 'minus'] },
-        { group: 'Operadores', latex: '\\pm', label: '±', keywords: ['pm', 'mas menos'] },
-        { group: 'Operadores', latex: '\\times', label: '×', keywords: ['multiplicacion', 'cruz'] },
-        { group: 'Operadores', latex: '\\cdot', label: '·', keywords: ['multiplicacion', 'punto'] },
-        { group: 'Operadores', latex: '\\div', label: '÷', keywords: ['division'] },
-        { group: 'Operadores', latex: '\\sum', label: '∑', keywords: ['sumatoria'] },
-        { group: 'Operadores', latex: '\\prod', label: '∏', keywords: ['productoria'] },
-        { group: 'Operadores', latex: '\\int', label: '∫', keywords: ['integral'] },
-        { group: 'Operadores', latex: '\\iint', label: '∬', keywords: ['integral doble'] },
-        { group: 'Operadores', latex: '\\iiint', label: '∭', keywords: ['integral triple'] },
-        { group: 'Operadores', latex: '\\oint', label: '∮', keywords: ['integral cerrada', 'contorno'] },
-        { group: 'Operadores', latex: '\\partial', label: '∂', keywords: ['parcial'] },
-        { group: 'Operadores', latex: '\\nabla', label: '∇', keywords: ['nabla', 'gradiente'] },
-        { group: 'Operadores', latex: '\\infty', label: '∞', keywords: ['infinito'] },
-
-        // Relaciones
-        { group: 'Relaciones', latex: '=', label: '=', keywords: ['igual'] },
-        { group: 'Relaciones', latex: '\\neq', label: '≠', keywords: ['diferente'] },
-        { group: 'Relaciones', latex: '\\approx', label: '≈', keywords: ['aprox'] },
-        { group: 'Relaciones', latex: '\\sim', label: '∼', keywords: ['similar'] },
-        { group: 'Relaciones', latex: '\\le', label: '≤', keywords: ['menor igual'] },
-        { group: 'Relaciones', latex: '\\ge', label: '≥', keywords: ['mayor igual'] },
-        { group: 'Relaciones', latex: '\\in', label: '∈', keywords: ['pertenece'] },
-        { group: 'Relaciones', latex: '\\notin', label: '∉', keywords: ['no pertenece'] },
-        { group: 'Relaciones', latex: '\\subseteq', label: '⊆', keywords: ['subset', 'subconjunto'] },
-        { group: 'Relaciones', latex: '\\supseteq', label: '⊇', keywords: ['superset', 'superconjunto'] },
-
-        // Flechas
-        { group: 'Flechas', latex: '\\leftarrow', label: '←', keywords: ['izquierda'] },
-        { group: 'Flechas', latex: '\\rightarrow', label: '→', keywords: ['derecha'] },
-        { group: 'Flechas', latex: '\\leftrightarrow', label: '↔', keywords: ['doble'] },
-        { group: 'Flechas', latex: '\\Leftarrow', label: '⇐', keywords: ['doble izquierda'] },
-        { group: 'Flechas', latex: '\\Rightarrow', label: '⇒', keywords: ['doble derecha'] },
-        { group: 'Flechas', latex: '\\Leftrightarrow', label: '⇔', keywords: ['equivalencia'] },
-        { group: 'Flechas', latex: '\\mapsto', label: '↦', keywords: ['mapea'] },
-
-        // Conjuntos
-        { group: 'Conjuntos', latex: '\\emptyset', label: '∅', keywords: ['vacio', 'empty'] },
-        { group: 'Conjuntos', latex: '\\cup', label: '∪', keywords: ['union'] },
-        { group: 'Conjuntos', latex: '\\cap', label: '∩', keywords: ['interseccion'] },
-        { group: 'Conjuntos', latex: '\\setminus', label: '∖', keywords: ['diferencia'] },
-        { group: 'Conjuntos', latex: '\\forall', label: '∀', keywords: ['para todo'] },
-        { group: 'Conjuntos', latex: '\\exists', label: '∃', keywords: ['existe'] },
-        { group: 'Conjuntos', latex: '\\mathbb{N}', label: 'ℕ', keywords: ['naturales'] },
-        { group: 'Conjuntos', latex: '\\mathbb{Z}', label: 'ℤ', keywords: ['enteros'] },
-        { group: 'Conjuntos', latex: '\\mathbb{Q}', label: 'ℚ', keywords: ['racionales'] },
-        { group: 'Conjuntos', latex: '\\mathbb{R}', label: 'ℝ', keywords: ['reales'] },
-        { group: 'Conjuntos', latex: '\\mathbb{C}', label: 'ℂ', keywords: ['complejos'] },
-
-        // Funciones
-        { group: 'Funciones', latex: '\\sin', label: 'sin', keywords: ['seno'] },
-        { group: 'Funciones', latex: '\\cos', label: 'cos', keywords: ['coseno'] },
-        { group: 'Funciones', latex: '\\tan', label: 'tan', keywords: ['tangente'] },
-        { group: 'Funciones', latex: '\\log', label: 'log', keywords: ['logaritmo'] },
-        { group: 'Funciones', latex: '\\ln', label: 'ln', keywords: ['log natural'] },
-        { group: 'Funciones', latex: '\\exp', label: 'exp', keywords: ['exponencial'] },
-        { group: 'Funciones', latex: '\\lim', label: 'lim', keywords: ['limite'] },
-        { group: 'Funciones', latex: '\\max', label: 'max', keywords: ['maximo'] },
-        { group: 'Funciones', latex: '\\min', label: 'min', keywords: ['minimo'] },
-    ];
-
-    // Nested Grid Editor State (for Table Content inside Form)
-    const [nestedGridData, setNestedGridData] = useState<string[][]>([]);
-    const [nestedGridRange, setNestedGridRange] = useState<string>('');
-    const [originalNestedGridRange, setOriginalNestedGridRange] = useState<string>('');
-    const [focusedCell, setFocusedCell] = useState<{ r: number, c: number } | null>(null);
-
-    // UI Overlays State
-    const [showTableWizard, setShowTableWizard] = useState(false);
-    const [wizardConfig, setWizardConfig] = useState({ rows: 5, cols: 4 });
-    const [calculatingRange, setCalculatingRange] = useState(false);
-
-    // Confirm Delete Modal State
-    const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean, rowIndex: number | null }>({
-        isOpen: false,
-        rowIndex: null
-    });
-
-    // Notification State (Replaces native alerts)
-    const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
-
-    // UI State
-    const [saving, setSaving] = useState(false);
-    const [loadingGrid, setLoadingGrid] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [currentPage, setCurrentPage] = useState(1);
-    const ITEMS_PER_PAGE = 20;
-
-    // Reset pagination when tab changes
-    useEffect(() => {
-        setCurrentPage(1);
-        setSearchTerm('');
-    }, [activeTab]);
-
-    // Reset pagination when search term changes
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchTerm]);
-
-    // Auto-dismiss notification
-    useEffect(() => {
-        if (notification) {
-            const timer = setTimeout(() => setNotification(null), 5000);
-            return () => clearTimeout(timer);
+            return formData[fieldIdx] || '';
         }
-    }, [notification]);
-
-    const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-        setNotification({ message, type });
+        return '';
     };
 
-    const EQUATION_PLACEHOLDER_RE = /\{\{\d+\}\}/g;
-
-    const focusNextEquationPlaceholder = (opts?: { wrap?: boolean }) => {
-        const el = equationModalTextareaRef.current;
-        if (!el) return false;
-
-        const text = el.value || '';
-        const from = el.selectionEnd ?? el.selectionStart ?? 0;
-        const wrap = opts?.wrap ?? true;
-
-        const findFrom = (startIndex: number) => {
-            const re = new RegExp(EQUATION_PLACEHOLDER_RE.source, 'g');
-            re.lastIndex = startIndex;
-            return re.exec(text);
-        };
-
-        let match = findFrom(from);
-        if (!match && wrap) match = findFrom(0);
-        if (!match) return false;
-
-        el.focus();
-        el.setSelectionRange(match.index, match.index + match[0].length);
-        return true;
-    };
-
-    const insertIntoEquationModal = (snippet: string, options?: { selectFirstPlaceholder?: boolean }) => {
-        const el = equationModalTextareaRef.current;
-
-        const start = el ? el.selectionStart : (equationModal.value || '').length;
-        const end = el ? el.selectionEnd : start;
-
-        const placeholderMatch = (options?.selectFirstPlaceholder ?? false)
-            ? new RegExp(EQUATION_PLACEHOLDER_RE.source, 'g').exec(snippet)
-            : null;
-        const placeholderOffset = placeholderMatch ? placeholderMatch.index : null;
-        const placeholderLen = placeholderMatch ? placeholderMatch[0].length : 0;
-
-        setEquationModal(prev => {
-            const current = (prev.value ?? '').toString();
-            const from = Math.max(0, Math.min(Math.min(start, end), current.length));
-            const to = Math.max(0, Math.min(Math.max(start, end), current.length));
-            return { ...prev, value: current.slice(0, from) + snippet + current.slice(to) };
-        });
-
-        requestAnimationFrame(() => {
-            const el2 = equationModalTextareaRef.current;
-            if (!el2) return;
-
-            const current = el2.value || '';
-            const from = Math.max(0, Math.min(Math.min(start, end), current.length));
-
-            if (options?.selectFirstPlaceholder && placeholderOffset !== null) {
-                const selStart = Math.max(0, Math.min(from + placeholderOffset, current.length));
-                const selEnd = Math.max(0, Math.min(selStart + placeholderLen, current.length));
-                el2.focus();
-                el2.setSelectionRange(selStart, selEnd);
-                return;
-            }
-
-            const pos = Math.max(0, Math.min(from + snippet.length, current.length));
-            el2.focus();
-            el2.setSelectionRange(pos, pos);
-        });
-    };
-
-    const commitEquationModal = () => {
-        const target = equationModal.target || 'main';
-        const tagName = equationModal.mode === 'math' ? 'math' : 'ecuacion';
-        const payload = (equationModal.value || '...').replace(EQUATION_PLACEHOLDER_RE, '...');
-
-        if (target === 'note') {
-            // Insert into note modal textarea
-            const el = noteContentTextareaRef.current;
-            const selStart = el ? el.selectionStart : (noteModal.value || '').length;
-            const selEnd = el ? el.selectionEnd : selStart;
-            const currentValue = noteModal.value || '';
-
-            const res = applyInlineTag(currentValue, selStart, selEnd, tagName, { value: payload, placeholder: '...' });
-
-            setNoteModal(prev => ({ ...prev, value: res.text }));
-            setEquationModal({ ...equationModal, open: false });
-
-            requestAnimationFrame(() => {
-                const el2 = noteContentTextareaRef.current;
-                if (!el2) return;
-                el2.focus();
-                el2.setSelectionRange(res.selectionStart, res.selectionEnd);
-            });
-            return;
-        }
-
-        const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
-        if (contentIdx === -1) {
-            setEquationModal({ ...equationModal, open: false });
-            return;
-        }
-
-        const el = sectionContentTextareaRef.current;
-        const selStart = el ? el.selectionStart : 0;
-        const selEnd = el ? el.selectionEnd : 0;
-        const currentValue = (formData[contentIdx] || '').toString();
-
-        const res = applyInlineTag(currentValue, selStart, selEnd, tagName, { value: payload, placeholder: '...' });
-        const newData = [...formData];
-        newData[contentIdx] = res.text;
-        setFormData(newData);
-        setEquationModal({ ...equationModal, open: false });
-
-        const nextIssues = lintTags(res.text, {
-            bibliographyKeys: availableBibliographyKeys,
-            figureIds: availableFigureIds,
-            tableIds: availableTableIds,
-        });
-        setSectionLintIssues(nextIssues);
-
-        requestAnimationFrame(() => {
-            const el2 = sectionContentTextareaRef.current;
-            if (!el2) return;
-            el2.focus();
-            el2.setSelectionRange(res.selectionStart, res.selectionEnd);
-        });
-    };
-
-    const insertSnippetIntoContent = (snippet: string) => {
-        const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
-        if (contentIdx === -1) {
-            // Optional: showNotification("No se encontró la columna de Contenido.", "error");
-            return;
-        }
-
-        const el = sectionContentTextareaRef.current;
-        const currentContent = (formData[contentIdx] || '').toString();
-        const pos = el ? el.selectionStart : currentContent.length;
-
-        const before = currentContent.slice(0, pos);
-        const after = currentContent.slice(pos);
-        const nextText = before + snippet + after;
-
-        const newData = [...formData];
-        newData[contentIdx] = nextText;
-        setFormData(newData);
-
-        // Linting
-        const nextIssues = lintTags(nextText, {
-            bibliographyKeys: availableBibliographyKeys,
-            figureIds: availableFigureIds,
-            tableIds: availableTableIds,
-        });
-        setSectionLintIssues(nextIssues);
-
-        // Restore focus
-        requestAnimationFrame(() => {
-            const el2 = sectionContentTextareaRef.current;
-            if (el2) {
-                el2.focus();
-                // Move cursor to end of inserted snippet
-                el2.setSelectionRange(pos + snippet.length, pos + snippet.length);
-            }
-        });
-    };
-
-    // --- Helpers ---
-    const getMetadataSheet = () => {
-        const targetTitle = 'Documentos';
-        return spreadsheet.sheets.find(s =>
-            s.properties.title.toLowerCase() === targetTitle.toLowerCase() ||
-            s.properties.title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === targetTitle.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-        ) || spreadsheet.sheets[0];
-    }
-
-    const getActiveSheet = () => {
-        const targetTitle = TAB_TO_SHEET_TITLE[activeTab] || 'Documentos';
-        let sheet = spreadsheet.sheets.find(s =>
-            s.properties.title.toLowerCase() === targetTitle.toLowerCase() ||
-            s.properties.title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === targetTitle.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-        );
-        if (!sheet && activeTab === 'metadatos') {
-            sheet = spreadsheet.sheets[0];
-        }
-        return sheet;
-    };
-
-    const getStorageSheet = () => {
-        return spreadsheet.sheets.find(s =>
-            s.properties.title === 'Datos_Tablas' ||
-            s.properties.title === 'Datos Tablas'
-        );
-    };
-
-    const activeSheet = getActiveSheet();
-
-    // --- Initialization Effects ---
-    useEffect(() => {
-        // Socket: Enter document room when docId is settled
-        if (currentDocId) {
-            socketService.enterDocument(currentDocId);
-        }
-
-        // Listen for real-time data updates (images, rows, etc.)
-        const cleanupData = socketService.onDataUpdate((data) => {
-            if (data.docId === currentDocId) {
-                console.log('Data update received:', data);
-                if (data.type === 'image' || data.type === 'figure_update') {
-                    // Update timestamp to bust cache for images
-                    setDataTimestamp(Date.now());
-                }
-
-                // Refresh grid data
-                onRefresh();
-
-                showNotification(`Datos actualizados por ${data.fromUser}`, 'info');
-            }
-        });
-
-        return () => {
-            // Optional: Leave when unmounting or changing doc
-            // socketService.leaveDocument(); 
-            // Note: server handles 'leave' automatically on 'enter_document' of new doc
-            cleanupData();
-        };
-    }, [currentDocId]);
-
-    useEffect(() => {
-        const metaSheet = getMetadataSheet();
-        const rowData = metaSheet?.data?.[0]?.rowData;
-        if (!rowData || rowData.length < 2) {
-            setAvailableDocs([]);
-            setCurrentDocId('');
-            setCurrentDocRowIndex(1);
-            return;
-        }
-
-        const headers = rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
-        const idColIndex = headers.findIndex(h => h === 'ID' || h === 'DocumentoID') ?? 0;
-        const titleColIndex = findColumnIndex(headers, TITLE_VARIANTS);
-
-        const docs: DocumentOption[] = [];
-        rowData.slice(1).forEach((row, idx) => {
-            const absoluteRowIndex = idx + 1; // because we sliced off the header
-            const id = row.values?.[idColIndex]?.userEnteredValue?.stringValue || row.values?.[idColIndex]?.formattedValue || '';
-            if (!id) return;
-            const title = titleColIndex !== -1
-                ? (row.values?.[titleColIndex]?.userEnteredValue?.stringValue || row.values?.[titleColIndex]?.formattedValue || '')
-                : '';
-            docs.push({ id, title, rowIndex: absoluteRowIndex });
-        });
-
-        setAvailableDocs(docs);
-
-        const canApplyInitial = Boolean(initialDocId) && initialSelectionAppliedForSpreadsheet.current !== spreadsheet.spreadsheetId;
-        const preferredId = canApplyInitial ? initialDocId! : currentDocId;
-
-        // Keep current selection if it still exists; otherwise pick preferred/first.
-        const selected = docs.find(d => d.id === preferredId) || docs.find(d => d.id === currentDocId) || docs.find(d => d.id === 'D01') || docs[0];
-        if (selected) {
-            if (selected.id !== currentDocId) setCurrentDocId(selected.id);
-            if (selected.rowIndex !== currentDocRowIndex) setCurrentDocRowIndex(selected.rowIndex);
-            if (canApplyInitial && selected.id === initialDocId) {
-                initialSelectionAppliedForSpreadsheet.current = spreadsheet.spreadsheetId;
-            }
-        }
-    }, [spreadsheet, initialDocId]);
-
-    useEffect(() => {
-        // Force update currentDocId if initialDocId is provided and available in docs
-        if (initialDocId && availableDocs.length > 0) {
-            const match = availableDocs.find(d => d.id === initialDocId);
-            if (match && currentDocId !== match.id) {
-                setCurrentDocId(match.id);
-                setCurrentDocRowIndex(match.rowIndex);
-            }
-        }
-    }, [availableDocs, initialDocId]);
-
-    useEffect(() => {
-        setViewMode('LIST');
-        setSearchTerm('');
-        setCurrentPage(1);
-        setFocusedCell(null);
-
-        // Load Relationship Data for Tablas AND Figuras
-        if ((activeTab === 'tablas' || activeTab === 'figuras') && currentDocId) {
-            const loadSections = () => {
-                const seccionesSheet = spreadsheet.sheets.find(s =>
-                    s.properties.title === 'Secciones' ||
-                    s.properties.title.toLowerCase().trim() === 'secciones'
-                );
-
-                if (seccionesSheet && seccionesSheet.data && seccionesSheet.data[0]?.rowData) {
-                    const headers = seccionesSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
-                    const docIdIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
-                    const idSecVariants = [...SECCION_COL_VARIANTS, 'Orden', 'Nivel', 'Clave'];
-                    const idSecIdx = findColumnIndex(headers, idSecVariants);
-                    const titleIdx = findColumnIndex(headers, TITLE_VARIANTS);
-
-                    if (docIdIdx !== -1 && idSecIdx !== -1) {
-                        const validSections: { id: string, title: string }[] = [];
-                        seccionesSheet.data[0].rowData.slice(1).forEach(row => {
-                            const dId = row.values?.[docIdIdx]?.userEnteredValue?.stringValue || row.values?.[docIdIdx]?.formattedValue;
-                            if (dId === currentDocId) {
-                                const secId = row.values?.[idSecIdx]?.userEnteredValue?.stringValue || row.values?.[idSecIdx]?.formattedValue || '';
-                                const secTitle = row.values?.[titleIdx]?.userEnteredValue?.stringValue || row.values?.[titleIdx]?.formattedValue || '';
-                                validSections.push({ id: secId, title: secTitle });
-                            }
-                        });
-                        setAvailableSections(validSections);
-                    }
-                }
-            };
-            loadSections();
-        }
-
-        if (activeTab === 'metadatos') {
-            if (!activeSheet) return;
-            const headers = activeSheet.data?.[0]?.rowData?.[0]?.values?.map(c => c.formattedValue || c.userEnteredValue?.stringValue || '') || [];
-            const rowIdx = currentDocRowIndex || 1;
-            const targetRow = activeSheet.data?.[0]?.rowData?.[rowIdx];
-            const values = targetRow?.values?.map(c => c.formattedValue || c.userEnteredValue?.stringValue || '') || [];
-            setFormHeaders(headers);
-            setFormData(values.length ? values : new Array(headers.length).fill(''));
-            setViewMode('FORM');
-        } else {
-            if (!activeSheet) {
-                setGridData([]);
-                setGridHeaders([]);
-                return;
-            }
-            const rawData: string[][] = [];
-            if (activeSheet.data && activeSheet.data[0]?.rowData) {
-                activeSheet.data[0].rowData.forEach((row) => {
-                    const rowValues = row.values?.map(cell =>
-                        cell.formattedValue ||
-                        cell.userEnteredValue?.stringValue ||
-                        (cell.userEnteredValue?.numberValue !== undefined ? String(cell.userEnteredValue.numberValue) : '') ||
-                        ''
-                    ) || [];
-                    rawData.push(rowValues);
-                });
-            }
-            if (rawData.length === 0) rawData.push([]);
-
-            const headers = rawData[0];
-            setGridHeaders(headers);
-
-            const body = rawData.slice(1).map(row => {
-                const newRow = [...row];
-                while (newRow.length < headers.length) newRow.push('');
-                return newRow;
-            });
-
-            if (currentDocId) {
-                const docIdIndex = findColumnIndex(headers, DOC_ID_VARIANTS);
-                if (docIdIndex !== -1) {
-                    setGridData(body.filter(row => row[docIdIndex] === currentDocId));
-                } else {
-                    setGridData(body);
-                }
-            } else {
-                setGridData(body);
-            }
-        }
-    }, [activeTab, spreadsheet, currentDocId, currentDocRowIndex]);
-
-    // Load IDs/keys for Secciones selectors (citas/figuras/tablas)
-    useEffect(() => {
-        if (activeTab !== 'secciones' || !currentDocId) {
-            setAvailableBibliographyKeys([]);
-            setAvailableFigureIds([]);
-            setAvailableTableIds([]);
-            return;
-        }
-
-        const norm = (s: string) => (s ?? '').toString().trim();
-        const uniqueSorted = (arr: string[]) => Array.from(new Set(arr.map(norm).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-
-        const findSheetByTitle = (title: string) =>
-            spreadsheet.sheets.find(s => normalizeSheetName(s.properties.title) === normalizeSheetName(title));
-
-
-        const extractColumnValuesByDoc = (sheetTitle: string, columnCandidates: string[]) => {
-            const sheet = findSheetByTitle(sheetTitle);
-            const rowData = sheet?.data?.[0]?.rowData;
-            if (!rowData || rowData.length < 2) return [] as string[];
-
-            const headers = rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
-            const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
-            const colIdx = findColumnIndex(headers, columnCandidates);
-            if (docIdx === -1 || colIdx === -1) return [] as string[];
-
-            const out: string[] = [];
-            rowData.slice(1).forEach(r => {
-                const dId = r.values?.[docIdx]?.userEnteredValue?.stringValue || r.values?.[docIdx]?.formattedValue || '';
-                if (dId !== currentDocId) return;
-                const v = r.values?.[colIdx]?.userEnteredValue?.stringValue || r.values?.[colIdx]?.formattedValue || '';
-                if (v) out.push(v);
-            });
-            return out;
-        };
-
-        const bibKeys = extractColumnValuesByDoc('Bibliografía', CLAVE_VARIANTS);
-        setAvailableBibliographyKeys(uniqueSorted(bibKeys));
-
-        const figurasSheet = findSheetByTitle('Figuras');
-        const tablasSheet = findSheetByTitle('Tablas');
-
-        const figurasItems: { id: string; title: string; section: string; route?: string }[] = [];
-        const tablasItems: { id: string; title: string; section: string; range?: string }[] = [];
-
-        if (figurasSheet?.data?.[0]?.rowData?.length && figurasSheet.data[0].rowData.length > 1) {
-            const headers = figurasSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
-            const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
-            const secIdx = findColumnIndex(headers, [...SECCION_COL_VARIANTS, 'SeccionOrden', 'SecciónOrden']);
-            const ordIdx = findColumnIndex(headers, [...ORDEN_COL_VARIANTS, 'OrdenFigura']);
-            const titleIdx = findColumnIndex(headers, ['Título/Descripción', 'Titulo', 'Descripción', 'Descripcion', 'Caption']);
-            const routeIdx = findColumnIndex(headers, ['Ruta de Imagen', 'RutaArchivo']);
-            figurasSheet.data[0].rowData.slice(1).forEach(r => {
-                const dId = r.values?.[docIdx]?.userEnteredValue?.stringValue || r.values?.[docIdx]?.formattedValue || '';
-                if (dId !== currentDocId) return;
-                const sec = r.values?.[secIdx]?.userEnteredValue?.stringValue || r.values?.[secIdx]?.formattedValue || '';
-                const ord = r.values?.[ordIdx]?.userEnteredValue?.stringValue || r.values?.[ordIdx]?.formattedValue || '';
-                const title = r.values?.[titleIdx]?.userEnteredValue?.stringValue || r.values?.[titleIdx]?.formattedValue || '';
-                const route = r.values?.[routeIdx]?.userEnteredValue?.stringValue || r.values?.[routeIdx]?.formattedValue || '';
-                const id = computeFigureId(sec, ord);
-                if (id) figurasItems.push({ id, title, section: sec, route });
-            });
-        }
-
-        if (tablasSheet?.data?.[0]?.rowData?.length && tablasSheet.data[0].rowData.length > 1) {
-            const headers = tablasSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
-            const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
-            const secIdx = findColumnIndex(headers, [...SECCION_COL_VARIANTS, 'SeccionOrden', 'SecciónOrden', 'ID_Seccion']);
-            const ordIdx = findColumnIndex(headers, [...ORDEN_COL_VARIANTS, 'OrdenTabla', 'Orden']);
-            const titleIdx = findColumnIndex(headers, ['Título', 'Titulo']);
-            const rangeIdx = findColumnIndex(headers, CSV_COL_VARIANTS);
-            tablasSheet.data[0].rowData.slice(1).forEach(r => {
-                const dId = r.values?.[docIdx]?.userEnteredValue?.stringValue || r.values?.[docIdx]?.formattedValue || '';
-                if (dId !== currentDocId) return;
-                const sec = r.values?.[secIdx]?.userEnteredValue?.stringValue || r.values?.[secIdx]?.formattedValue || '';
-                const ord = r.values?.[ordIdx]?.userEnteredValue?.stringValue || r.values?.[ordIdx]?.formattedValue || '';
-                const title = r.values?.[titleIdx]?.userEnteredValue?.stringValue || r.values?.[titleIdx]?.formattedValue || '';
-                const range = r.values?.[rangeIdx]?.userEnteredValue?.stringValue || r.values?.[rangeIdx]?.formattedValue || '';
-                const id = computeTableId(sec, ord);
-                if (id) tablasItems.push({ id, title, section: sec, range });
-            });
-        }
-
-        const figIds = figurasItems.map(i => i.id);
-        const tabIds = tablasItems.map(i => i.id);
-        setAvailableFigureIds(uniqueSorted(figIds));
-        setAvailableTableIds(uniqueSorted(tabIds));
-        setAvailableFigureItems(figurasItems);
-        setAvailableTableItems(tablasItems);
-    }, [activeTab, spreadsheet, currentDocId]);
-
-    // --- Logic to Calculate Next Order ---
-    const calculateNextOrder = (sectionId: string) => {
-        // Allow for both Tablas and Figuras
-        if (!sectionId || (activeTab !== 'tablas' && activeTab !== 'figuras')) return '1';
-
-        const secColIdx = findColumnIndex(gridHeaders, SECCION_COL_VARIANTS);
-        const ordColIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
-
-        if (secColIdx === -1 || ordColIdx === -1) return '1';
-
-        let maxOrder = 0;
-        gridData.forEach(row => {
-            const rowSec = (row[secColIdx] || '').toString().trim();
-            // Handle subsection matching (exact match)
-            if (rowSec === sectionId.trim()) {
-                const valStr = row[ordColIdx];
-                const ordVal = parseInt(valStr);
-                if (!isNaN(ordVal) && ordVal > maxOrder) {
-                    maxOrder = ordVal;
-                }
-            }
-        });
-        return String(maxOrder + 1);
-    };
-
-    const isOrderDuplicate = (sectionId: string, orderVal: string, ignoreRowIndex: number | null) => {
-        const secColIdx = findColumnIndex(gridHeaders, SECCION_COL_VARIANTS);
-        const ordColIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
-
-        // If we can't find columns, we can't validate duplicates properly, but we shouldn't block
-        if (ordColIdx === -1) return false;
-
-        const targetSec = (sectionId || '').toString().trim();
-        const targetOrd = (orderVal || '').toString().trim();
-
-        return gridData.some((row, idx) => {
-            if (ignoreRowIndex !== null && idx === ignoreRowIndex) return false;
-
-            const rowOrd = (row[ordColIdx] || '').toString().trim();
-
-            if (secColIdx !== -1) {
-                const rowSec = (row[secColIdx] || '').toString().trim();
-                return rowSec === targetSec && rowOrd === targetOrd;
-            } else {
-                // Fallback: if no section column, just check order (unlikely to be desired but safer than crashing)
-                return rowOrd === targetOrd;
-            }
-        });
-    };
-
-    // --- Internal Logic to fetch nested grid ---
-    const loadNestedGrid = async (range: string) => {
-        const correctedRange = sanitizeRangeString(range);
-
-        if (!correctedRange || !correctedRange.includes('!')) {
-            setNestedGridData([['', '', '', '', ''], ['', '', '', '', ''], ['', '', '', '', '']]);
-            setNestedGridRange(correctedRange);
-            return;
-        }
-
-        const parsed = parseRange(correctedRange);
-        if (!parsed) return;
-
-        const sheetExists = spreadsheet.sheets.some(s => s.properties.title === parsed.sheetName);
-        if (!sheetExists) {
-            const rows = parsed.endRow - parsed.startRow + 1;
-            const cols = parsed.endCol - parsed.startCol + 1;
-            const emptyGrid = Array.from({ length: rows }, () => Array(cols).fill(''));
-            setNestedGridData(emptyGrid);
-            setNestedGridRange(correctedRange);
-            setOriginalNestedGridRange(correctedRange);
-            return;
-        }
-
-        setLoadingGrid(true);
-        setNestedGridRange(correctedRange);
-        setOriginalNestedGridRange(correctedRange);
-        setFocusedCell(null);
-
-        try {
-            const values = await fetchValues(spreadsheet.spreadsheetId, correctedRange, token);
-            if (values && values.length > 0) {
-                setNestedGridData(values);
-            } else {
-                setNestedGridData([['', '', '', '', ''], ['', '', '', '', ''], ['', '', '', '', '']]);
-            }
-        } catch (e) {
-            console.error("Error cargando grid:", e);
-            setNestedGridData([['Error al cargar datos. Verifique el rango.']]);
-        } finally {
-            setLoadingGrid(false);
+    const updateMetadataField = (field: string, value: string) => {
+        const fieldIdx = findColumnIndex(gridHeaders, [field]);
+        if (fieldIdx !== -1) {
+            const newData = [...formData];
+            newData[fieldIdx] = value;
+            setFormData(newData);
         }
     };
 
-    const updateRangeString = (newData: string[][]) => {
-        const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
-        let currentRange = csvIndex !== -1 ? formData[csvIndex] : nestedGridRange;
-
-        if (!currentRange || !currentRange.includes('!')) return;
-        currentRange = sanitizeRangeString(currentRange);
-
-        try {
-            const lastBang = currentRange.lastIndexOf('!');
-            const sheetPart = currentRange.substring(0, lastBang);
-            const rangeRef = currentRange.substring(lastBang + 1);
-
-            const [startRef] = rangeRef.split(':');
-            const match = startRef.match(/([A-Z]+)([0-9]+)/);
-            if (!match) return;
-
-            const startColStr = match[1];
-            const startRowStr = match[2];
-            const startRow = parseInt(startRowStr);
-            const startColIdx = columnLetterToIndex(startColStr);
-
-            const numRows = newData.length;
-            const numCols = newData[0]?.length || 1;
-
-            const endRow = startRow + numRows - 1;
-            const endColIdx = startColIdx + numCols - 1;
-            const endColStr = indexToColumnLetter(endColIdx);
-
-            const newRange = `${sheetPart}!${startColStr}${startRow}:${endColStr}${endRow}`;
-            setNestedGridRange(newRange);
-
-            if (csvIndex !== -1) {
-                const newFormData = [...formData];
-                newFormData[csvIndex] = newRange;
-                setFormData(newFormData);
-            }
-        } catch (e) {
-            console.error("Error recalculating range", e);
-        }
-    };
-
-    const calculateNextAvailableRange = async (rows: number, cols: number): Promise<string> => {
-        setCalculatingRange(true);
-        try {
-            const storageSheet = getStorageSheet();
-            const sheetName = storageSheet ? storageSheet.properties.title : 'Datos_Tablas';
-            const finalSheetName = quoteSheetName(sheetName);
-
-            if (!storageSheet) {
-                const endColLetter = indexToColumnLetter(cols - 1);
-                return `${finalSheetName}!A1:${endColLetter}${rows}`;
-            }
-
-            const colData = await fetchValues(spreadsheet.spreadsheetId, `${finalSheetName}!A:A`, token);
-            let lastRowIndex = 0;
-            if (colData && colData.length > 0) {
-                lastRowIndex = colData.length;
-            }
-
-            const startRow = lastRowIndex + 3;
-            const endRow = startRow + rows - 1;
-            const endColLetter = indexToColumnLetter(cols - 1); // 0-based index
-
-            return `${finalSheetName}!A${startRow}:${endColLetter}${endRow}`;
-        } catch (e) {
-            console.error(e);
-            const randomStart = 100 + Math.floor(Math.random() * 50);
-            return `Datos_Tablas!A${randomStart}:E${randomStart + rows}`;
-        } finally {
-            setCalculatingRange(false);
-        }
-    };
-
-    // --- Actions ---
-
-    const handlePreCreate = () => {
-        if (activeTab === 'tablas') {
-            if (availableSections.length === 0) {
-                showNotification("No se encontraron Secciones. Crea una sección primero.", 'error');
-                return;
-            }
-            setWizardConfig({ rows: 5, cols: 4 });
-            setShowTableWizard(true);
-        } else if (activeTab === 'figuras') {
-            // Check sections for figures too
-            if (availableSections.length === 0) {
-                showNotification("No se encontraron Secciones. Crea una sección primero.", 'error');
-                return;
-            }
-            handleCreate([]);
-        } else {
-            handleCreate([]);
-        }
-    };
-
-    const handleWizardConfirm = async () => {
-        const newRange = await calculateNextAvailableRange(wizardConfig.rows, wizardConfig.cols);
-        const initData: string[][] = Array(wizardConfig.rows).fill('').map((_, r) =>
-            Array(wizardConfig.cols).fill('').map((__, c) =>
-                r === 0 ? 'Encabezado' : ''
-            )
-        );
-        initData[0][0] = 'Concepto';
-        handleCreate(initData, newRange);
-        setShowTableWizard(false);
-    };
-
-    const handleCreate = (initialGridData: string[][] = [], initialRangeStr: string = '') => {
-        setEditingRowIndex(null);
-        const newRow = new Array(gridHeaders.length).fill('');
-
-        const docIdIndex = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
-        if (docIdIndex !== -1) newRow[docIdIndex] = currentDocId;
-
-        if (initialRangeStr) {
-            const csvIndex = findColumnIndex(gridHeaders, CSV_COL_VARIANTS);
-            if (csvIndex !== -1) {
-                newRow[csvIndex] = initialRangeStr;
-            }
-        }
-
-        if (activeTab === 'secciones') {
-            const nivelIdx = findColumnIndex(gridHeaders, NIVEL_VARIANTS);
-            const ordenIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
-            if (nivelIdx !== -1 && !newRow[nivelIdx]) newRow[nivelIdx] = 'seccion';
-            // Pre‑calcular siguiente orden disponible (nivel seccion)
-            if (ordenIdx !== -1 && (!newRow[ordenIdx] || newRow[ordenIdx].toString().trim() === '')) {
-                const headers = gridHeaders;
-                const idxDoc = findColumnIndex(headers, DOC_ID_VARIANTS);
-                const idxOrd = findColumnIndex(headers, ORDEN_COL_VARIANTS);
-                let maxTop = 0;
-                gridData.forEach((row, idx) => {
-                    if (idx === 0) return;
-                    const dId = idxDoc !== -1 ? (row[idxDoc] || '') : '';
-                    if (dId !== currentDocId) return;
-                    const o = idxOrd !== -1 ? (row[idxOrd] || '') : '';
-                    if (!o) return;
-                    const top = parseInt(String(o).split('.')[0]);
-                    if (!isNaN(top)) maxTop = Math.max(maxTop, top);
-                });
-                newRow[ordenIdx] = String(maxTop + 1);
-            }
-        }
-
-        setFormData(newRow);
-        setFormHeaders(gridHeaders);
-        setNestedGridRange(initialRangeStr);
-        setOriginalNestedGridRange(initialRangeStr);
-
-        if (initialGridData.length > 0) {
-            setNestedGridData(initialGridData);
-        } else {
-            setNestedGridData([['Concepto', '2023', '2024', '2025', 'Notas'], ['', '', '', '', ''], ['', '', '', '', '']]);
-        }
-
-        setViewMode('FORM');
-    };
-
-    useEffect(() => {
-        const loadPreviewData = async () => {
-            if (!selectorPreview) return;
-            if (selectorPreview.type !== 'tabla') return;
-            const item = availableTableItems.find(x => x.id === selectorPreview.id);
-            const range = item?.range || '';
-            if (!range) return;
-            try {
-                const values = await fetchValues(spreadsheet.spreadsheetId, sanitizeRangeString(range), token);
-                setSelectorPreview(prev => prev ? { ...prev, data: values } : prev);
-            } catch { }
-        };
-        loadPreviewData();
-    }, [selectorPreview]);
-
-    const validateCurrentDocumentOrders = () => {
-        if (activeTab !== 'secciones') { showNotification('Esta validación aplica en Secciones.', 'error'); return; }
-        const headers = gridHeaders;
-        const idxDoc = findColumnIndex(headers, DOC_ID_VARIANTS);
-        const idxOrden = findColumnIndex(headers, ORDEN_COL_VARIANTS);
-        const idxNivel = findColumnIndex(headers, NIVEL_VARIANTS);
-        const idxTitulo = findColumnIndex(headers, TITLE_VARIANTS);
-        const idxContenido = findColumnIndex(headers, CONTENIDO_VARIANTS);
-        const idxEstado = headers.findIndex(h => h.trim().toLowerCase() === 'estado');
-        const used: Record<string, number> = {} as any;
-        let disponibles = 0, duplicados = 0, faltantes = 0;
-        gridData.forEach((row, idx) => {
-            if (idx === 0) return;
-            const dId = idxDoc !== -1 ? (row[idxDoc] || '') : '';
-            if (dId !== currentDocId) return;
-            const est = idxEstado !== -1 ? String(row[idxEstado] || '').toLowerCase().trim() : 'disponible';
-            if (est !== 'disponible' && est !== 'available') return;
-            disponibles++;
-            const ord = idxOrden !== -1 ? (row[idxOrden] || '') : '';
-            const niv = idxNivel !== -1 ? (row[idxNivel] || '') : '';
-            const tit = idxTitulo !== -1 ? (row[idxTitulo] || '') : '';
-            const cont = idxContenido !== -1 ? (row[idxContenido] || '') : '';
-            if (!ord || !niv || !tit || !cont) faltantes++;
-            if (ord) { if (used[ord]) duplicados++; else used[ord] = 1; }
-        });
-        showNotification(`Órdenes disponibles: ${disponibles}. Duplicados: ${duplicados}. Faltantes: ${faltantes}.`, (duplicados || faltantes) ? 'error' : 'success');
-    };
-
-    const createNewForSection = (kind: 'figura' | 'tabla') => {
-        if (kind === 'figura') {
-            setActiveTab('figuras');
-        } else {
-            setActiveTab('tablas');
-        }
-        setViewMode('LIST');
-        setMobileMenuOpen(false);
-    };
-
-    const openTab = (tab: 'bibliografia' | 'figuras' | 'tablas' | 'secciones') => {
-        setActiveTab(tab);
-        setViewMode('LIST');
-        setMobileMenuOpen(false);
-    };
-
-    // removed nextOrderFor; behavior simplified to respect existing create flow
-
-    const handleEdit = (rowIndex: number) => {
-        setEditingRowIndex(rowIndex);
-        const currentRow = [...gridData[rowIndex]];
-        setFormData(currentRow);
-        setFormHeaders(gridHeaders);
-
-        if (activeTab === 'tablas') {
-            const csvIndex = findColumnIndex(gridHeaders, CSV_COL_VARIANTS);
-            if (csvIndex !== -1) {
-                const r = currentRow[csvIndex];
-                setOriginalNestedGridRange(r);
-                loadNestedGrid(r);
-            } else {
-                setNestedGridData([['Concepto', 'Col1', 'Col2'], ['', '', '']]);
-            }
-        }
-
-        setViewMode('FORM');
-    };
-
-    // Trigger Modal
-    const requestDelete = (rowIndex: number) => {
-        setDeleteModal({ isOpen: true, rowIndex });
-    };
-
-    // Actual Execute Delete Logic (called by Modal)
-    const executeDelete = async () => {
-        const rowIndex = deleteModal.rowIndex;
-        if (rowIndex === null) return;
-        if (!activeSheet) return;
-
-        setSaving(true);
-
-        try {
-            if (activeTab === 'tablas') {
-                try {
-                    const csvIndex = findColumnIndex(gridHeaders, CSV_COL_VARIANTS);
-                    const rowData = gridData[rowIndex];
-                    const rangeStr = rowData[csvIndex];
-
-                    if (rangeStr) {
-                        const cleanRangeStr = sanitizeRangeString(rangeStr);
-                        const parsedRange = parseRange(cleanRangeStr);
-
-                        if (parsedRange) {
-                            const storageSheet = spreadsheet.sheets.find(s =>
-                                normalizeSheetName(s.properties.title) === normalizeSheetName(parsedRange.sheetName)
-                            );
-
-                            if (storageSheet) {
-                                const rowsToDelete = parsedRange.endRow - parsedRange.startRow + 1;
-                                const deleteStartIndex = Math.max(0, parsedRange.startRow - 1);
-                                console.log(`Borrando filas anidadas: ${deleteStartIndex}, Count: ${rowsToDelete}`);
-
-                                await deleteDimensionRange(
-                                    spreadsheet.spreadsheetId,
-                                    storageSheet.properties.sheetId,
-                                    deleteStartIndex,
-                                    rowsToDelete,
-                                    'ROWS',
-                                    token
-                                );
-
-                                // Update references below
-                                const updates: Promise<any>[] = [];
-                                gridData.forEach((row, idx) => {
-                                    if (idx === rowIndex) return;
-                                    const otherRangeStr = row[csvIndex];
-                                    if (!otherRangeStr) return;
-
-                                    const cleanOther = sanitizeRangeString(otherRangeStr);
-                                    const otherRange = parseRange(cleanOther);
-
-                                    if (otherRange &&
-                                        normalizeSheetName(otherRange.sheetName) === normalizeSheetName(parsedRange.sheetName) &&
-                                        otherRange.startRow > parsedRange.endRow) {
-
-                                        const newStart = otherRange.startRow - rowsToDelete;
-                                        const newEnd = otherRange.endRow - rowsToDelete;
-                                        const sCol = indexToColumnLetter(otherRange.startCol);
-                                        const eCol = indexToColumnLetter(otherRange.endCol);
-                                        const finalSheetName = quoteSheetName(otherRange.sheetName);
-                                        const newRangeStr = `${finalSheetName}!${sCol}${newStart}:${eCol}${newEnd}`;
-
-                                        updates.push(updateCellValue(
-                                            spreadsheet.spreadsheetId,
-                                            activeSheet.properties.title,
-                                            { row: idx + 1, col: csvIndex, value: newRangeStr },
-                                            token
-                                        ));
-                                    }
-                                });
-
-                                if (updates.length > 0) await Promise.all(updates);
-                            }
-                        }
-                    }
-                } catch (nestedError) {
-                    console.error("Error NO CRÍTICO eliminando anidados:", nestedError);
-                }
-            }
-
-            // Safeguard: do not delete row from other DocumentoID
-            const docIdx = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
-            if (docIdx !== -1) {
-                const rowDoc = (gridData[rowIndex]?.[docIdx] || '').toString();
-                if (rowDoc && rowDoc !== currentDocId) {
-                    showNotification(`No puedes eliminar registros de otro documento (${rowDoc}).`, 'error');
-                    setSaving(false);
-                    setDeleteModal({ isOpen: false, rowIndex: null });
-                    return;
-                }
-            }
-            console.log(`Borrando fila principal en ${activeTab}: ${rowIndex + 1}`);
-            await deleteRow(
-                spreadsheet.spreadsheetId,
-                activeSheet.properties.sheetId,
-                rowIndex + 1,
-                token
-            );
-
-            showNotification("Registro eliminado correctamente.", "success");
-
-            // Notify other users about delete
-            socketService.notifyDataUpdate({
-                docId: currentDocId,
-                type: activeTab === 'figuras' ? 'figure_update' : 'row_update',
-                action: 'delete',
-                tab: activeTab
-            });
-
-            onRefresh();
-            // Close modal on success
-            setDeleteModal({ isOpen: false, rowIndex: null });
-
-        } catch (e) {
-            console.error("Error CRÍTICO al eliminar:", e);
-            showNotification("Error al eliminar el registro. Intenta de nuevo.", "error");
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleSaveForm = async () => {
-        if (!activeSheet) return;
-
-        // Secciones: lint + normalize before save, and block save on errors
-        if (activeTab === 'secciones') {
-            const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
-            if (contentIdx !== -1) {
-                const raw = (formData[contentIdx] || '').toString();
-                const normalized = normalizeOnSave(raw);
-                const issues = lintTags(normalized, {
-                    bibliographyKeys: availableBibliographyKeys,
-                    figureIds: availableFigureIds,
-                    tableIds: availableTableIds,
-                });
-                setSectionLintIssues(issues);
-
-                const errors = issues.filter(i => i.type === 'error');
-                if (errors.length > 0) {
-                    showNotification(`Hay ${errors.length} error(es) en etiquetas. Corrige antes de guardar.`, 'error');
-                    return;
-                }
-
-                // Apply normalization to the value that will be saved
-                if (normalized !== raw) {
-                    const next = [...formData];
-                    next[contentIdx] = normalized;
-                    setFormData(next);
-                }
-            }
-
-            // Normalizar Nivel y validar reglas de negocio
-            const nivelIdx = findColumnIndex(formHeaders, NIVEL_VARIANTS);
-            const docIdxF = findColumnIndex(formHeaders, DOC_ID_VARIANTS);
-            const nivelRaw = nivelIdx !== -1 ? (formData[nivelIdx] || '').toString() : '';
-            const nivelNorm = normalizeLevelValue(nivelRaw);
-            const docIdVal = docIdxF !== -1 ? (formData[docIdxF] || '').toString() : currentDocId;
-
-            if (nivelNorm === 'directorio') {
-                const gridDocIdx = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
-                const gridNivelIdx = findColumnIndex(gridHeaders, NIVEL_VARIANTS);
-                let dirCount = 0;
-                gridData.forEach((row, idx) => {
-                    if (idx === 0) return;
-                    if (editingRowIndex !== null && idx === editingRowIndex) return; // excluir el registro en edición
-                    const dId = gridDocIdx !== -1 ? (row[gridDocIdx] || '') : '';
-                    const lvl = gridNivelIdx !== -1 ? normalizeLevelValue((row[gridNivelIdx] || '').toString()) : '';
-                    if (dId === docIdVal && lvl === 'directorio') dirCount++;
-                });
-                if (dirCount > 0) {
-                    showNotification('Solo puede existir un Directorio en el documento.', 'error');
-                    return;
-                }
-            }
-        }
-
-        // Validate Section and Order logic for both Tablas AND Figuras
-        if (activeTab === 'tablas' || activeTab === 'figuras') {
-            const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
-            const ordColIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
-
-            // Allow saving even if columns are missing (maybe intended?), but warn if possible
-            if (secColIdx !== -1 && ordColIdx !== -1) {
-                const section = formData[secColIdx];
-                const order = formData[ordColIdx];
-                const orderNum = parseInt(order);
-
-                if (isNaN(orderNum) || orderNum < 1) {
-                    showNotification("El Orden/Número debe ser mayor a 0.", "error");
-                    return;
-                }
-
-                if (!section) {
-                    showNotification("Selecciona una Sección.", "error");
-                    return;
-                }
-
-                if (isOrderDuplicate(section, order, editingRowIndex)) {
-                    showNotification(`El Número ${order} ya existe en la sección ${section}.`, "error");
-                    return;
-                }
-
-                // Extra check: Check for Duplicate Titles (Nombres)
-                const titleIdx = findColumnIndex(formHeaders, TITLE_VARIANTS);
-                if (titleIdx !== -1) {
-                    const title = (formData[titleIdx] || '').toString().trim();
-                    if (title) {
-                        const isTitleDup = gridData.some((row, idx) => {
-                            if (editingRowIndex !== null && idx === editingRowIndex) return false;
-                            return (row[titleIdx] || '').toString().trim().toLowerCase() === title.toLowerCase();
-                        });
-                        if (isTitleDup) {
-                            showNotification(`Advertencia: El título "${title}" ya existe en otro registro.`, 'info');
-                        }
-                    }
-                }
-            } else {
-                // If columns are missing, we should probably warn but proceed if legacy sheet
-                if (ordColIdx !== -1) {
-                    const order = formData[ordColIdx];
-                    // Fallback validation for order only
-                    if (isOrderDuplicate('', order, editingRowIndex)) {
-                        showNotification(`El Número ${order} ya existe.`, "error");
-                        return;
-                    }
-                }
-            }
-        }
-
-        setSaving(true);
-        try {
-            const sheetTitle = activeSheet.properties.title;
-
-            if (activeTab === 'metadatos') {
-                const updates = [];
-                for (let i = 0; i < formData.length; i++) {
-                    updates.push(updateCellValue(spreadsheet.spreadsheetId, sheetTitle, { row: currentDocRowIndex || 1, col: i, value: formData[i] }, token));
-                }
-                await Promise.all(updates);
-                showNotification("Metadatos guardados.", "success");
-            } else {
-                const finalFormData = [...formData];
-                if (activeTab === 'tablas') {
-                    const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
-                    if (csvIndex !== -1 && nestedGridRange) {
-                        finalFormData[csvIndex] = nestedGridRange;
-                    }
-                }
-
-                if (activeTab === 'secciones') {
-                    const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
-                    if (contentIdx !== -1) {
-                        finalFormData[contentIdx] = normalizeOnSave((finalFormData[contentIdx] || '').toString());
-                    }
-                    const nivelIdx = findColumnIndex(formHeaders, NIVEL_VARIANTS);
-                    if (nivelIdx !== -1) {
-                        finalFormData[nivelIdx] = normalizeLevelValue((finalFormData[nivelIdx] || '').toString());
-                    }
-                }
-
-                if (editingRowIndex === null) {
-                    if (activeTab === 'secciones') {
-                        const headers = gridHeaders;
-                        const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
-                        let lastDataIdx = -1;
-                        for (let i = 1; i < gridData.length; i++) {
-                            const row = gridData[i];
-                            const dId = docIdx !== -1 ? (row[docIdx] || '') : '';
-                            if (dId === currentDocId) lastDataIdx = i - 1;
-                        }
-                        const insertAtSheetRow = (lastDataIdx >= 0) ? (lastDataIdx + 2 + 1) : 2;
-                        await insertDimension(spreadsheet.spreadsheetId, activeSheet.properties.sheetId, insertAtSheetRow - 1, 1, 'ROWS', token);
-                        const endColLetter = indexToColumnLetter(finalFormData.length - 1);
-                        const targetRange = `${sheetTitle}!A${insertAtSheetRow}:${endColLetter}${insertAtSheetRow}`;
-                        await updateValues(spreadsheet.spreadsheetId, targetRange, [finalFormData], token);
-                    } else {
-                        await appendRow(spreadsheet.spreadsheetId, sheetTitle, finalFormData, token);
-                    }
-                } else {
-                    const startRow = editingRowIndex + 2;
-                    const endColLetter = indexToColumnLetter(finalFormData.length - 1);
-                    const updateRange = `${sheetTitle}!A${startRow}:${endColLetter}${startRow}`;
-                    await updateValues(spreadsheet.spreadsheetId, updateRange, [finalFormData], token);
-                }
-
-                if (activeTab === 'tablas') {
-                    const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
-                    let targetRange = finalFormData[csvIndex] || nestedGridRange;
-
-                    if (targetRange && targetRange.includes('!')) {
-                        targetRange = sanitizeRangeString(targetRange);
-                        const parsedTarget = parseRange(targetRange);
-
-                        if (parsedTarget) {
-                            const targetSheetExists = spreadsheet.sheets.some(s => s.properties.title === parsedTarget.sheetName);
-                            if (!targetSheetExists) {
-                                try {
-                                    await createNewTab(spreadsheet.spreadsheetId, parsedTarget.sheetName, token);
-                                } catch (e) { console.error(e); }
-                            }
-                        }
-
-                        if (originalNestedGridRange) {
-                            const cleanOldRangeStr = sanitizeRangeString(originalNestedGridRange);
-                            const oldRange = parseRange(cleanOldRangeStr);
-                            const newRange = parseRange(targetRange);
-
-                            if (oldRange && newRange && oldRange.sheetName === newRange.sheetName) {
-                                const nestedSheet = spreadsheet.sheets.find(s => s.properties.title === newRange.sheetName);
-                                if (nestedSheet) {
-                                    const rowsDiff = (newRange.endRow - newRange.startRow) - (oldRange.endRow - oldRange.startRow);
-                                    const colsDiff = (newRange.endCol - newRange.startCol) - (oldRange.endCol - oldRange.startCol);
-
-                                    if (rowsDiff !== 0) {
-                                        if (rowsDiff > 0) {
-                                            await insertDimension(spreadsheet.spreadsheetId, nestedSheet.properties.sheetId, oldRange.endRow, rowsDiff, 'ROWS', token);
-                                        } else {
-                                            const rowsToDelete = Math.abs(rowsDiff);
-                                            await deleteDimensionRange(spreadsheet.spreadsheetId, nestedSheet.properties.sheetId, newRange.endRow, rowsToDelete, 'ROWS', token);
-                                        }
-
-                                        const updatesToShift: Promise<any>[] = [];
-                                        gridData.forEach((row, idx) => {
-                                            if (idx === editingRowIndex) return;
-                                            const otherRangeStr = row[csvIndex];
-                                            if (!otherRangeStr) return;
-                                            const cleanOtherRangeStr = sanitizeRangeString(otherRangeStr);
-                                            const otherRange = parseRange(cleanOtherRangeStr);
-
-                                            if (otherRange &&
-                                                otherRange.sheetName === oldRange.sheetName &&
-                                                otherRange.startRow >= oldRange.endRow) {
-
-                                                const newStart = otherRange.startRow + rowsDiff;
-                                                const newEnd = otherRange.endRow + rowsDiff;
-                                                const sCol = indexToColumnLetter(otherRange.startCol);
-                                                const eCol = indexToColumnLetter(otherRange.endCol);
-                                                const finalSheetPart = quoteSheetName(otherRange.sheetName);
-                                                const newRangeStr = `${finalSheetPart}!${sCol}${newStart}:${eCol}${newEnd}`;
-
-                                                updatesToShift.push(updateCellValue(spreadsheet.spreadsheetId, activeSheet.properties.title, { row: idx + 1, col: csvIndex, value: newRangeStr }, token));
-                                            }
-                                        });
-                                        if (updatesToShift.length > 0) await Promise.all(updatesToShift);
-                                    }
-
-                                    if (colsDiff < 0) {
-                                        const colsToDelete = Math.abs(colsDiff);
-                                        const startClearColIdx = newRange.endCol + 1;
-                                        const endClearColIdx = oldRange.endCol;
-                                        const sColChar = indexToColumnLetter(startClearColIdx);
-                                        const eColChar = indexToColumnLetter(endClearColIdx);
-                                        const sheetRef = quoteSheetName(nestedSheet.properties.title);
-                                        const clearRangeStr = `${sheetRef}!${sColChar}${newRange.startRow}:${eColChar}${newRange.endRow}`;
-                                        const numRows = newRange.endRow - newRange.startRow + 1;
-                                        const emptyValues = Array(numRows).fill(Array(colsToDelete).fill(''));
-                                        await updateValues(spreadsheet.spreadsheetId, clearRangeStr, emptyValues, token);
-                                    }
-                                }
-                            }
-                        }
-                        await updateValues(spreadsheet.spreadsheetId, targetRange, nestedGridData, token);
-                    }
-                }
-
-                showNotification("Guardado correctamente.", "success");
-                socketService.reportAction(`Guardó cambios en ${activeTab} (${currentDocId})`);
-
-                // Notify other users about the data update
-                socketService.notifyDataUpdate({
-                    docId: currentDocId,
-                    type: activeTab === 'figuras' ? 'figure_update' : 'row_update',
-                    tab: activeTab
-                });
-
-                // Update local state to reflect changes without full reload
-                const newGridData = [...gridData];
-                if (editingRowIndex === null) {
-                    // New item added
-                    newGridData.push(finalFormData);
-                    setGridData(newGridData);
-                    setEditingRowIndex(newGridData.length - 1);
-                } else {
-                    // Existing item updated
-                    newGridData[editingRowIndex] = finalFormData;
-                    setGridData(newGridData);
-                }
-
-                // Do not refresh or switch view mode, to keep user context
-                // onRefresh();
-                // setSearchTerm('');
-                // setViewMode('LIST');
-            }
-        } catch (e) {
-            console.error(e);
-            showNotification("Error al guardar los cambios.", "error");
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const addGridRow = () => {
-        const cols = nestedGridData[0]?.length || 5;
-        const newData = [...nestedGridData, new Array(cols).fill('')];
-        setNestedGridData(newData);
-        updateRangeString(newData);
-    };
-    const addGridCol = () => {
-        const newData = nestedGridData.map(row => [...row, '']);
-        setNestedGridData(newData);
-        updateRangeString(newData);
-    };
-    const deleteGridRow = () => {
-        if (nestedGridData.length <= 1) return;
-        const newData = [...nestedGridData];
-        newData.pop();
-        setNestedGridData(newData);
-        updateRangeString(newData);
-    };
-    const deleteGridCol = () => {
-        if (!nestedGridData[0] || nestedGridData[0].length <= 1) return;
-        const newData = nestedGridData.map(row => {
-            const newRow = [...row];
-            newRow.pop();
-            return newRow;
-        });
-        setNestedGridData(newData);
-        updateRangeString(newData);
-    };
-
-    const normalizedQuery = (searchTerm || '').toString().trim().toLowerCase();
-    const filteredData = gridData.map((row, index) => ({ row, index })).filter(({ row }) => {
-        if (!normalizedQuery) return true;
-        return row.some(cell => cell.toLowerCase().includes(normalizedQuery));
-    });
-    // Optimized hierarchical sort function
-    const compareHierarchicalOrder = (valA: string, valB: string) => {
-        // Normalize: empty/null becomes 0 equivalent
-        const cleanA = (valA || '').toString().trim();
-        const cleanB = (valB || '').toString().trim();
-
-        if (!cleanA && !cleanB) return 0;
-        if (!cleanA) return -1; // Empty values first
-        if (!cleanB) return 1;
-
-        // Split by dot for hierarchy (1.1, 1.2, 1.10)
-        const partsA = cleanA.split('.');
-        const partsB = cleanB.split('.');
-
-        const len = Math.max(partsA.length, partsB.length);
-        for (let k = 0; k < len; k++) {
-            // Parse each part as integer. Missing parts treat as 0.
-            // Example: 1 vs 1.1 -> [1] vs [1, 1] -> 1==1, 0 < 1.
-            const partA = partsA[k];
-            const partB = partsB[k];
-
-            const numA = partA === undefined ? 0 : (parseInt(partA) || 0);
-            const numB = partB === undefined ? 0 : (parseInt(partB) || 0);
-
-            if (numA !== numB) return numA - numB;
-        }
-        return 0;
-    };
-
-    const sortedData = (activeTab === 'secciones') ? [...filteredData].sort((a, b) => {
-        const hIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
-        const av = hIdx !== -1 ? (a.row[hIdx] || '') : '';
-        const bv = hIdx !== -1 ? (b.row[hIdx] || '') : '';
-        return compareHierarchicalOrder(av, bv);
-    }) : filteredData;
-
-    const displayedRows = sortedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-    const totalPages = Math.ceil(sortedData.length / ITEMS_PER_PAGE);
-
-    const Breadcrumbs = () => (
-        <nav className="flex items-center text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
-            <button onClick={onBack} className="hover:text-[#691C32] transition-colors">Inicio</button>
-            <ChevronRight size={14} className="mx-2 flex-shrink-0" />
-            <span className="font-medium text-gray-900 truncate max-w-[150px]">{spreadsheet.properties.title}</span>
-            <ChevronRight size={14} className="mx-2 flex-shrink-0" />
-            <button
-                onClick={() => { if (activeTab !== 'metadatos') setViewMode('LIST'); }}
-                className={clsx("hover:text-[#691C32] transition-colors capitalize", viewMode === 'LIST' && activeTab !== 'metadatos' ? "font-bold text-[#691C32]" : "")}
-            >
-                {activeTab}
-            </button>
-            {viewMode === 'FORM' && (
-                <>
-                    <ChevronRight size={14} className="mx-2 flex-shrink-0" />
-                    <span className="font-bold text-[#691C32]">
-                        {activeTab === 'metadatos' ? 'Edición' : (editingRowIndex !== null ? 'Editar' : 'Nuevo')}
-                    </span>
-                </>
-            )}
-        </nav>
-    );
-
-    // --- Helpers for Stats ---
-    const getSectionStats = (row: string[]) => {
-        if (activeTab !== 'secciones') return null;
-
-        const ordIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
-        const sectionId = ordIdx !== -1 ? (row[ordIdx] || '').toString().trim() : '';
-
-        const contentIdx = findColumnIndex(gridHeaders, CONTENIDO_VARIANTS);
-        const content = contentIdx !== -1 ? (row[contentIdx] || '').toString() : '';
-
-        // Count items
-        const tableCount = availableTableItems.filter(t => t.section === sectionId).length;
-        const figureCount = availableFigureItems.filter(f => f.section === sectionId).length;
-        const eqCount = (content.match(/\[\[(ecuacion|math):/g) || []).length;
-        const citeCount = (content.match(/\[\[cita:/g) || []).length;
-
-        return { tableCount, figureCount, eqCount, citeCount };
-    };
-
-    // Helper for Modal Text based on Tab
-    const getDeleteContext = () => {
-        switch (activeTab) {
-            case 'tablas': return {
-                title: "¿Eliminar tabla?",
-                text: "Esta acción eliminará la tabla de la lista principal y también borrará sus datos internos de la hoja de cálculo. No se puede deshacer."
-            };
-            case 'figuras': return {
-                title: "¿Eliminar figura?",
-                text: "Esta acción eliminará la figura. Asegúrate de que no esté referenciada en el texto (ej. [[figura:FIG-X-Y]]) para evitar errores de compilación."
-            };
-            case 'bibliografia': return {
-                title: "¿Eliminar referencia?",
-                text: "Esta acción eliminará permanentemente la referencia bibliográfica del documento."
-            };
-            case 'siglas': return {
-                title: "¿Eliminar sigla?",
-                text: "Esta acción eliminará la sigla y su definición del catálogo del documento."
-            };
-            case 'glosario': return {
-                title: "¿Eliminar término?",
-                text: "Esta acción eliminará el término y su definición del glosario."
-            };
-            default: return {
-                title: "¿Eliminar registro?",
-                text: "Esta acción eliminará el registro de la lista principal. Esta acción no se puede deshacer."
-            };
-        }
-    };
-
-    const handleGenerateLatex = async () => {
-        if (activeTab !== 'metadatos') {
-            showNotification("Debes estar en la vista de 'Metadatos' (Documentos) para generar el archivo.", 'error');
-            return;
-        }
-
-        // Try to get ID from current selection or context
-        let targetDocId = currentDocId;
-
-        // If no global doc id, try to find from editing row
-        if (!targetDocId && editingRowIndex !== null) {
-            const idxDoc = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
-            if (idxDoc !== -1) {
-                targetDocId = gridData[editingRowIndex][idxDoc];
-            }
-        }
-
-        if (!targetDocId) {
-            showNotification("No se ha detectado un ID de documento válido. Selecciona un documento o abre uno.", 'error');
-            return;
-        }
-
-        // Regex validation (Simple alphanumeric)
-        if (!/^[a-zA-Z0-9_-]+$/.test(targetDocId)) {
-            showNotification(`El ID del documento "${targetDocId}" no tiene un formato válido.`, 'error');
-            return;
-        }
-
-        setSaving(true); // Re-use saving state for loading
-        showNotification("Generando archivos LaTeX... Esto puede tardar unos segundos.", 'info');
-
-        try {
-            const response = await fetch(`${API_URL}/generate-latext`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    spreadsheetId: spreadsheet.spreadsheetId,
-                    docId: targetDocId,
-                    token: token
-                })
-            });
-
-            const result = await response.json();
-
-            if (!result.success) {
-                throw new Error(result.error || "Error desconocido en el servidor");
-            }
-
-            // Trigger Download
-            // 1. .tex file
-            const blobTex = new Blob([result.tex], { type: 'text/plain' });
-            const urlTex = window.URL.createObjectURL(blobTex);
-            const aTex = document.createElement('a');
-            aTex.href = urlTex;
-            aTex.download = `${result.filename}.tex`;
-            document.body.appendChild(aTex);
-            aTex.click();
-            document.body.removeChild(aTex);
-            window.URL.revokeObjectURL(urlTex);
-
-            // 2. .bib file (if exists)
-            if (result.bib) {
-                const blobBib = new Blob([result.bib], { type: 'text/plain' });
-                const urlBib = window.URL.createObjectURL(blobBib);
-                const aBib = document.createElement('a');
-                aBib.href = urlBib;
-                aBib.download = `referencias.bib`;
-                document.body.appendChild(aBib);
-                aBib.click();
-                document.body.removeChild(aBib);
-                window.URL.revokeObjectURL(urlBib);
-            }
-
-            showNotification("Archivos generados y descargados correctamente.", 'success');
-
-        } catch (e: any) {
-            console.error(e);
-            showNotification(`Error al generar LaTeX: ${e.message}`, 'error');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const deleteContext = getDeleteContext();
-
-    return (
-        <div className="flex flex-col h-screen bg-[#F5F5F5] relative">
-
-            {/* Notification Banner */}
-            {notification && (
-                <div className={clsx(
-                    "fixed top-4 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-3 animate-in fade-in slide-in-from-top-2",
-                    notification.type === 'success' ? "bg-[#13322B] text-white" :
-                        notification.type === 'error' ? "bg-red-600 text-white" : "bg-blue-600 text-white"
-                )}>
-                    {notification.type === 'success' ? <Check size={18} /> :
-                        notification.type === 'error' ? <AlertCircle size={18} /> : <Info size={18} />}
-                    {notification.message}
-                    <button onClick={() => setNotification(null)} className="ml-2 opacity-80 hover:opacity-100">
-                        <X size={14} />
+    const Ribbon = () => {
+        if (activeTab !== 'metadatos' || viewMode !== 'FORM') return null;
+
+        const metadataFields = [
+            { id: 'Agradecimientos', label: 'Agradecimientos', icon: <Heart size={16} />, required: true, type: 'textarea' },
+            { id: 'Presentación', label: 'Presentación', icon: <User size={16} />, required: true, type: 'textarea' },
+            { id: 'ResumenEjecutivo', label: 'Resumen Ejecutivo', icon: <FileText size={16} />, required: true, type: 'textarea', maxLength: 500 },
+            { id: 'DatosClave', label: 'Puntos Clave', icon: <List size={16} />, required: true, type: 'list' }
+        ];
+
+        return (
+            <div className="bg-white border-b border-gray-200 shadow-sm transition-all duration-300">
+                <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-100">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Metadatos del Documento</span>
+                    <button onClick={() => setRibbonOpen(!ribbonOpen)} className="text-gray-400 hover:text-[#691C32]">
+                        {ribbonOpen ? <ChevronDown size={16} className="transform rotate-180" /> : <ChevronDown size={16} />}
                     </button>
                 </div>
-            )}
 
-            {/* Delete Confirmation Modal */}
-            {deleteModal.isOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 animate-in zoom-in duration-200">
-                        <div className="flex flex-col items-center text-center">
-                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                                <AlertTriangle className="text-red-600" size={24} />
-                            </div>
-                            <h3 className="text-lg font-bold text-gray-900 mb-2">{deleteContext.title}</h3>
-                            <p className="text-sm text-gray-500 mb-6">
-                                {deleteContext.text}
-                            </p>
-                            <div className="flex w-full gap-3">
-                                <Button variant="ghost" className="flex-1" onClick={() => setDeleteModal({ isOpen: false, rowIndex: null })}>
-                                    Cancelar
-                                </Button>
-                                <Button variant="danger" className="flex-1" onClick={executeDelete} isLoading={saving}>
-                                    Eliminar
-                                </Button>
-                            </div>
-                        </div>
+                {ribbonOpen && (
+                    <div className="p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {metadataFields.map(field => {
+                            const value = getMetadataValue(field.id);
+                            const hasValue = value && value.trim().length > 0;
+
+                            return (
+                                <button
+                                    key={field.id}
+                                    onClick={() => setActiveMetadataField(field.id)}
+                                    className={clsx(
+                                        "flex flex-col items-start p-3 rounded-lg border text-left transition-all hover:shadow-md",
+                                        hasValue ? "border-green-200 bg-green-50" : "border-red-100 bg-red-50 hover:border-red-200"
+                                    )}
+                                >
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <div className={clsx("p-1.5 rounded-full", hasValue ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>
+                                            {field.icon}
+                                        </div>
+                                        <span className={clsx("text-sm font-semibold", hasValue ? "text-green-800" : "text-red-800")}>
+                                            {field.label}
+                                        </span>
+                                    </div>
+                                    <span className="text-xs text-gray-500 line-clamp-2">
+                                        {hasValue ? value : "Campo obligatorio pendiente"}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
-                </div>
-            )}
+                )}
 
-            {/* Table Wizard Modal */}
-            {showTableWizard && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 animate-in zoom-in duration-200">
-                        <h3 className="text-lg font-bold text-[#691C32] mb-2">Nueva Tabla</h3>
-                        <p className="text-sm text-gray-600 mb-4">Define el tamaño inicial. El sistema buscará un espacio vacío en la hoja de datos.</p>
+                {/* Metadata Edit Modal */}
+                {activeMetadataField && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                                <h3 className="text-lg font-bold text-[#691C32] flex items-center gap-2">
+                                    <Edit size={18} />
+                                    Editar {metadataFields.find(f => f.id === activeMetadataField)?.label}
+                                </h3>
+                                <button onClick={() => setActiveMetadataField(null)} className="text-gray-400 hover:text-gray-600">
+                                    <X size={20} />
+                                </button>
+                            </div>
 
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Filas</label>
-                                <input
-                                    type="number"
-                                    min="2" max="100"
-                                    value={wizardConfig.rows}
-                                    onChange={(e) => setWizardConfig({ ...wizardConfig, rows: parseInt(e.target.value) })}
-                                    className="w-full border border-gray-300 rounded px-3 py-2 mt-1 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
-                                />
+                            {/* Toolbar (Reused from Section Editor) */}
+                            <div className="mb-4 bg-white p-3 rounded-lg border border-gray-200 shadow-sm space-y-3">
+                                <div className="flex items-center justify-between text-xs text-gray-500 mb-2 border-b border-gray-100 pb-2">
+                                    <span className="font-semibold text-[#691C32]">Herramientas de Edición</span>
+                                    <span>Editor estilo "Word" con etiquetas LaTeX</span>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2 items-center">
+                                    <span className="text-xs font-medium text-gray-400 mr-1">Estilo:</span>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInlineGeneric('nota')} className="text-[#691C32] border-[#691C32]/20 hover:bg-[#691C32]/5">
+                                        <FileText size={14} className="mr-1" /> Nota
+                                    </Button>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInlineGeneric('dorado')} className="text-amber-600 border-amber-200 hover:bg-amber-50">
+                                        <Type size={14} className="mr-1" /> T Dorado
+                                    </Button>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInlineGeneric('guinda')} className="text-red-700 border-red-200 hover:bg-red-50">
+                                        <Type size={14} className="mr-1" /> T Guinda
+                                    </Button>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInlineGeneric('math')} className="text-purple-700 border-purple-200 hover:bg-purple-50">
+                                        <Hash size={14} className="mr-1" /> Math
+                                    </Button>
+                                </div>
+
+                                <div className="w-full h-px bg-gray-100" />
+
+                                <div className="flex flex-wrap gap-2 items-center">
+                                    <span className="text-xs font-medium text-gray-400 mr-1">Insertar:</span>
+
+                                    {/* Cita Dropdown */}
+                                    <div className="flex items-center gap-1 bg-gray-50 rounded px-2 py-1 border border-gray-200">
+                                        <Book size={12} className="text-gray-500" />
+                                        <select
+                                            className="bg-transparent text-xs border-none focus:ring-0 p-0 text-gray-700 w-24"
+                                            onChange={(e) => {
+                                                if (e.target.value) {
+                                                    wrapInlineGeneric('cita', { value: e.target.value });
+                                                    e.target.value = '';
+                                                }
+                                            }}
+                                        >
+                                            <option value="">Cita...</option>
+                                            {availableBibliographyKeys.map(k => <option key={k} value={k}>{k}</option>)}
+                                        </select>
+                                    </div>
+
+                                    {/* Figura Dropdown */}
+                                    <div className="flex items-center gap-1 bg-gray-50 rounded px-2 py-1 border border-gray-200">
+                                        <Image size={12} className="text-gray-500" />
+                                        <select
+                                            className="bg-transparent text-xs border-none focus:ring-0 p-0 text-gray-700 w-24"
+                                            onChange={(e) => {
+                                                if (e.target.value) {
+                                                    wrapInlineGeneric('figura', { value: e.target.value });
+                                                    e.target.value = '';
+                                                }
+                                            }}
+                                        >
+                                            <option value="">Figura...</option>
+                                            {availableFigureItems.map(i => <option key={i.id} value={i.id}>{i.title || i.id}</option>)}
+                                        </select>
+                                    </div>
+
+                                    {/* Tabla Dropdown */}
+                                    <div className="flex items-center gap-1 bg-gray-50 rounded px-2 py-1 border border-gray-200">
+                                        <Table size={12} className="text-gray-500" />
+                                        <select
+                                            className="bg-transparent text-xs border-none focus:ring-0 p-0 text-gray-700 w-24"
+                                            onChange={(e) => {
+                                                if (e.target.value) {
+                                                    wrapInlineGeneric('tabla', { value: e.target.value });
+                                                    e.target.value = '';
+                                                }
+                                            }}
+                                        >
+                                            <option value="">Tabla...</option>
+                                            {availableTableItems.map(i => <option key={i.id} value={i.id}>{i.title || i.id}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="w-full h-px bg-gray-100" />
+
+                                <div className="flex flex-wrap gap-2 items-center">
+                                    <span className="text-xs font-medium text-gray-400 mr-1">Bloques:</span>
+                                    <Button type="button" variant="ghost" size="sm" onClick={() => insertBlockGeneric('caja', 'Título')}>
+                                        <Grid size={14} className="mr-1" /> Caja
+                                    </Button>
+                                    <Button type="button" variant="ghost" size="sm" onClick={() => insertBlockGeneric('alerta', 'Título')}>
+                                        <AlertTriangle size={14} className="mr-1" /> Alerta
+                                    </Button>
+                                    <Button type="button" variant="ghost" size="sm" onClick={() => insertBlockGeneric('info', 'Título')}>
+                                        <Info size={14} className="mr-1" /> Info
+                                    </Button>
+                                    <Button type="button" variant="ghost" size="sm" onClick={() => insertBlockGeneric('destacado')}>
+                                        <Lightbulb size={14} className="mr-1" /> Destacado
+                                    </Button>
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Columnas</label>
-                                <input
-                                    type="number"
-                                    min="2" max="26"
-                                    value={wizardConfig.cols}
-                                    onChange={(e) => setWizardConfig({ ...wizardConfig, cols: parseInt(e.target.value) })}
-                                    className="w-full border border-gray-300 rounded px-3 py-2 mt-1 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
-                                />
-                            </div>
+
+                            <textarea
+                                ref={genericEditorRef}
+                                className="w-full h-96 p-6 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#691C32]/20 focus:border-[#691C32] outline-none resize-none font-mono text-sm leading-relaxed shadow-inner"
+                                value={editorModal.value}
+                                onChange={(e) => setEditorModal(prev => ({ ...prev, value: e.target.value }))}
+                                placeholder="Escribe aquí el contenido..."
+                            />
+
+                            {editorModal.fieldId === 'ResumenEjecutivo' && (
+                                <div className={clsx("text-right text-xs mt-2 font-medium", editorModal.value.length > 500 ? "text-red-600" : "text-gray-400")}>
+                                    {editorModal.value.length} / 500 caracteres
+                                </div>
+                            )}
                         </div>
 
-                        <div className="flex justify-end gap-3 mt-6">
-                            <Button variant="ghost" onClick={() => setShowTableWizard(false)}>Cancelar</Button>
-                            <Button variant="burgundy" onClick={handleWizardConfirm} isLoading={calculatingRange}>
-                                Crear y Asignar Rango
+                        <div className="p-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50 rounded-b-xl">
+                            <Button variant="outline" onClick={() => setEditorModal(prev => ({ ...prev, open: false }))}>
+                                Cancelar
+                            </Button>
+                            <Button variant="primary" onClick={() => {
+                                editorModal.onSave(editorModal.value);
+                                setEditorModal(prev => ({ ...prev, open: false }));
+                            }}>
+                                <Check size={16} className="mr-2" />
+                                Guardar Cambios
                             </Button>
                         </div>
                     </div>
                 </div>
-            )}
+        )
+    }
+            </>
+        );
+    };
 
-            {/* Top Bar */}
-            <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm z-20">
-                <div className="flex items-center gap-3">
-                    <button className="md:hidden text-gray-600" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-                        <Menu size={24} />
-                    </button>
-                    <div className="flex flex-col">
-                        <h1 className="text-lg font-bold text-[#691C32] capitalize leading-tight">
-                            {activeTab === 'metadatos' ? 'Editor de Documento' : activeTab}
-                        </h1>
-                        <div className="mt-1 text-sm text-gray-700 font-medium flex items-center gap-2">
-                            <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs font-mono border border-gray-200">
-                                {currentDocId}
-                            </span>
-                            <span className="truncate max-w-[200px] md:max-w-[400px]" title={availableDocs.find(d => d.id === currentDocId)?.title || ''}>
-                                {availableDocs.find(d => d.id === currentDocId)?.title || 'Cargando título...'}
-                            </span>
+// Secciones editor enhancements
+const sectionContentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+const equationModalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+const [sectionLintIssues, setSectionLintIssues] = useState<TagIssue[]>([]);
+const [availableBibliographyKeys, setAvailableBibliographyKeys] = useState<string[]>([]);
+const [availableFigureIds, setAvailableFigureIds] = useState<string[]>([]);
+const [availableTableIds, setAvailableTableIds] = useState<string[]>([]);
+const [availableFigureItems, setAvailableFigureItems] = useState<{ id: string; title: string; section: string; route?: string }[]>([]);
+const [availableTableItems, setAvailableTableItems] = useState<{ id: string; title: string; section: string; range?: string }[]>([]);
+const [selectorPreview, setSelectorPreview] = useState<{ type: 'figura' | 'tabla'; id: string; title: string; image?: string; data?: string[][] } | null>(null);
+const [equationModal, setEquationModal] = useState<{ open: boolean; mode: 'math' | 'ecuacion'; title: string; value: string; target: 'main' | 'note' }>(
+    { open: false, mode: 'math', title: 'Insertar ecuación', value: '', target: 'main' }
+);
+const [noteModal, setNoteModal] = useState<{ open: boolean; value: string }>({ open: false, value: '' });
+const noteContentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+type EquationSymbolGroup = 'Todos' | 'Griegas' | 'Operadores' | 'Relaciones' | 'Flechas' | 'Conjuntos' | 'Funciones';
+const [equationPaletteGroup, setEquationPaletteGroup] = useState<EquationSymbolGroup>('Griegas');
+const [equationPaletteQuery, setEquationPaletteQuery] = useState<string>('');
+
+type EquationSymbolGroupBase = Exclude<EquationSymbolGroup, 'Todos'>;
+type EquationSymbol = { group: EquationSymbolGroupBase; latex: string; label: string; keywords: string[] };
+
+const EQUATION_SYMBOLS: EquationSymbol[] = [
+    // Griegas
+    { group: 'Griegas', latex: '\\alpha', label: 'α', keywords: ['alpha', 'alfa'] },
+    { group: 'Griegas', latex: '\\beta', label: 'β', keywords: ['beta'] },
+    { group: 'Griegas', latex: '\\gamma', label: 'γ', keywords: ['gamma'] },
+    { group: 'Griegas', latex: '\\Gamma', label: 'Γ', keywords: ['Gamma'] },
+    { group: 'Griegas', latex: '\\delta', label: 'δ', keywords: ['delta'] },
+    { group: 'Griegas', latex: '\\Delta', label: 'Δ', keywords: ['Delta'] },
+    { group: 'Griegas', latex: '\\epsilon', label: 'ϵ', keywords: ['epsilon', 'varepsilon'] },
+    { group: 'Griegas', latex: '\\varepsilon', label: 'ε', keywords: ['varepsilon', 'epsilon'] },
+    { group: 'Griegas', latex: '\\theta', label: 'θ', keywords: ['theta', 'teta'] },
+    { group: 'Griegas', latex: '\\vartheta', label: 'ϑ', keywords: ['vartheta'] },
+    { group: 'Griegas', latex: '\\lambda', label: 'λ', keywords: ['lambda'] },
+    { group: 'Griegas', latex: '\\mu', label: 'μ', keywords: ['mu'] },
+    { group: 'Griegas', latex: '\\pi', label: 'π', keywords: ['pi'] },
+    { group: 'Griegas', latex: '\\Pi', label: 'Π', keywords: ['Pi'] },
+    { group: 'Griegas', latex: '\\rho', label: 'ρ', keywords: ['rho'] },
+    { group: 'Griegas', latex: '\\sigma', label: 'σ', keywords: ['sigma'] },
+    { group: 'Griegas', latex: '\\Sigma', label: 'Σ', keywords: ['Sigma'] },
+    { group: 'Griegas', latex: '\\phi', label: 'ϕ', keywords: ['phi'] },
+    { group: 'Griegas', latex: '\\varphi', label: 'φ', keywords: ['varphi'] },
+    { group: 'Griegas', latex: '\\omega', label: 'ω', keywords: ['omega'] },
+    { group: 'Griegas', latex: '\\Omega', label: 'Ω', keywords: ['Omega'] },
+
+    // Operadores
+    { group: 'Operadores', latex: '+', label: '+', keywords: ['suma', 'plus'] },
+    { group: 'Operadores', latex: '-', label: '−', keywords: ['resta', 'minus'] },
+    { group: 'Operadores', latex: '\\pm', label: '±', keywords: ['pm', 'mas menos'] },
+    { group: 'Operadores', latex: '\\times', label: '×', keywords: ['multiplicacion', 'cruz'] },
+    { group: 'Operadores', latex: '\\cdot', label: '·', keywords: ['multiplicacion', 'punto'] },
+    { group: 'Operadores', latex: '\\div', label: '÷', keywords: ['division'] },
+    { group: 'Operadores', latex: '\\sum', label: '∑', keywords: ['sumatoria'] },
+    { group: 'Operadores', latex: '\\prod', label: '∏', keywords: ['productoria'] },
+    { group: 'Operadores', latex: '\\int', label: '∫', keywords: ['integral'] },
+    { group: 'Operadores', latex: '\\iint', label: '∬', keywords: ['integral doble'] },
+    { group: 'Operadores', latex: '\\iiint', label: '∭', keywords: ['integral triple'] },
+    { group: 'Operadores', latex: '\\oint', label: '∮', keywords: ['integral cerrada', 'contorno'] },
+    { group: 'Operadores', latex: '\\partial', label: '∂', keywords: ['parcial'] },
+    { group: 'Operadores', latex: '\\nabla', label: '∇', keywords: ['nabla', 'gradiente'] },
+    { group: 'Operadores', latex: '\\infty', label: '∞', keywords: ['infinito'] },
+
+    // Relaciones
+    { group: 'Relaciones', latex: '=', label: '=', keywords: ['igual'] },
+    { group: 'Relaciones', latex: '\\neq', label: '≠', keywords: ['diferente'] },
+    { group: 'Relaciones', latex: '\\approx', label: '≈', keywords: ['aprox'] },
+    { group: 'Relaciones', latex: '\\sim', label: '∼', keywords: ['similar'] },
+    { group: 'Relaciones', latex: '\\le', label: '≤', keywords: ['menor igual'] },
+    { group: 'Relaciones', latex: '\\ge', label: '≥', keywords: ['mayor igual'] },
+    { group: 'Relaciones', latex: '\\in', label: '∈', keywords: ['pertenece'] },
+    { group: 'Relaciones', latex: '\\notin', label: '∉', keywords: ['no pertenece'] },
+    { group: 'Relaciones', latex: '\\subseteq', label: '⊆', keywords: ['subset', 'subconjunto'] },
+    { group: 'Relaciones', latex: '\\supseteq', label: '⊇', keywords: ['superset', 'superconjunto'] },
+
+    // Flechas
+    { group: 'Flechas', latex: '\\leftarrow', label: '←', keywords: ['izquierda'] },
+    { group: 'Flechas', latex: '\\rightarrow', label: '→', keywords: ['derecha'] },
+    { group: 'Flechas', latex: '\\leftrightarrow', label: '↔', keywords: ['doble'] },
+    { group: 'Flechas', latex: '\\Leftarrow', label: '⇐', keywords: ['doble izquierda'] },
+    { group: 'Flechas', latex: '\\Rightarrow', label: '⇒', keywords: ['doble derecha'] },
+    { group: 'Flechas', latex: '\\Leftrightarrow', label: '⇔', keywords: ['equivalencia'] },
+    { group: 'Flechas', latex: '\\mapsto', label: '↦', keywords: ['mapea'] },
+
+    // Conjuntos
+    { group: 'Conjuntos', latex: '\\emptyset', label: '∅', keywords: ['vacio', 'empty'] },
+    { group: 'Conjuntos', latex: '\\cup', label: '∪', keywords: ['union'] },
+    { group: 'Conjuntos', latex: '\\cap', label: '∩', keywords: ['interseccion'] },
+    { group: 'Conjuntos', latex: '\\setminus', label: '∖', keywords: ['diferencia'] },
+    { group: 'Conjuntos', latex: '\\forall', label: '∀', keywords: ['para todo'] },
+    { group: 'Conjuntos', latex: '\\exists', label: '∃', keywords: ['existe'] },
+    { group: 'Conjuntos', latex: '\\mathbb{N}', label: 'ℕ', keywords: ['naturales'] },
+    { group: 'Conjuntos', latex: '\\mathbb{Z}', label: 'ℤ', keywords: ['enteros'] },
+    { group: 'Conjuntos', latex: '\\mathbb{Q}', label: 'ℚ', keywords: ['racionales'] },
+    { group: 'Conjuntos', latex: '\\mathbb{R}', label: 'ℝ', keywords: ['reales'] },
+    { group: 'Conjuntos', latex: '\\mathbb{C}', label: 'ℂ', keywords: ['complejos'] },
+
+    // Funciones
+    { group: 'Funciones', latex: '\\sin', label: 'sin', keywords: ['seno'] },
+    { group: 'Funciones', latex: '\\cos', label: 'cos', keywords: ['coseno'] },
+    { group: 'Funciones', latex: '\\tan', label: 'tan', keywords: ['tangente'] },
+    { group: 'Funciones', latex: '\\log', label: 'log', keywords: ['logaritmo'] },
+    { group: 'Funciones', latex: '\\ln', label: 'ln', keywords: ['log natural'] },
+    { group: 'Funciones', latex: '\\exp', label: 'exp', keywords: ['exponencial'] },
+    { group: 'Funciones', latex: '\\lim', label: 'lim', keywords: ['limite'] },
+    { group: 'Funciones', latex: '\\max', label: 'max', keywords: ['maximo'] },
+    { group: 'Funciones', latex: '\\min', label: 'min', keywords: ['minimo'] },
+];
+
+// Nested Grid Editor State (for Table Content inside Form)
+const [nestedGridData, setNestedGridData] = useState<string[][]>([]);
+const [nestedGridRange, setNestedGridRange] = useState<string>('');
+const [originalNestedGridRange, setOriginalNestedGridRange] = useState<string>('');
+const [focusedCell, setFocusedCell] = useState<{ r: number, c: number } | null>(null);
+
+// UI Overlays State
+const [showTableWizard, setShowTableWizard] = useState(false);
+const [wizardConfig, setWizardConfig] = useState({ rows: 5, cols: 4 });
+const [calculatingRange, setCalculatingRange] = useState(false);
+
+// Confirm Delete Modal State
+const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean, rowIndex: number | null }>({
+    isOpen: false,
+    rowIndex: null
+});
+
+// Notification State (Replaces native alerts)
+const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+
+// UI State
+const [saving, setSaving] = useState(false);
+const [loadingGrid, setLoadingGrid] = useState(false);
+const [searchTerm, setSearchTerm] = useState('');
+const [currentPage, setCurrentPage] = useState(1);
+const ITEMS_PER_PAGE = 20;
+
+// Reset pagination when tab changes
+useEffect(() => {
+    setCurrentPage(1);
+    setSearchTerm('');
+}, [activeTab]);
+
+// Reset pagination when search term changes
+useEffect(() => {
+    setCurrentPage(1);
+}, [searchTerm]);
+
+// Auto-dismiss notification
+useEffect(() => {
+    if (notification) {
+        const timer = setTimeout(() => setNotification(null), 5000);
+        return () => clearTimeout(timer);
+    }
+}, [notification]);
+
+const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setNotification({ message, type });
+};
+
+const EQUATION_PLACEHOLDER_RE = /\{\{\d+\}\}/g;
+
+const focusNextEquationPlaceholder = (opts?: { wrap?: boolean }) => {
+    const el = equationModalTextareaRef.current;
+    if (!el) return false;
+
+    const text = el.value || '';
+    const from = el.selectionEnd ?? el.selectionStart ?? 0;
+    const wrap = opts?.wrap ?? true;
+
+    const findFrom = (startIndex: number) => {
+        const re = new RegExp(EQUATION_PLACEHOLDER_RE.source, 'g');
+        re.lastIndex = startIndex;
+        return re.exec(text);
+    };
+
+    let match = findFrom(from);
+    if (!match && wrap) match = findFrom(0);
+    if (!match) return false;
+
+    el.focus();
+    el.setSelectionRange(match.index, match.index + match[0].length);
+    return true;
+};
+
+const insertIntoEquationModal = (snippet: string, options?: { selectFirstPlaceholder?: boolean }) => {
+    const el = equationModalTextareaRef.current;
+
+    const start = el ? el.selectionStart : (equationModal.value || '').length;
+    const end = el ? el.selectionEnd : start;
+
+    const placeholderMatch = (options?.selectFirstPlaceholder ?? false)
+        ? new RegExp(EQUATION_PLACEHOLDER_RE.source, 'g').exec(snippet)
+        : null;
+    const placeholderOffset = placeholderMatch ? placeholderMatch.index : null;
+    const placeholderLen = placeholderMatch ? placeholderMatch[0].length : 0;
+
+    setEquationModal(prev => {
+        const current = (prev.value ?? '').toString();
+        const from = Math.max(0, Math.min(Math.min(start, end), current.length));
+        const to = Math.max(0, Math.min(Math.max(start, end), current.length));
+        return { ...prev, value: current.slice(0, from) + snippet + current.slice(to) };
+    });
+
+    requestAnimationFrame(() => {
+        const el2 = equationModalTextareaRef.current;
+        if (!el2) return;
+
+        const current = el2.value || '';
+        const from = Math.max(0, Math.min(Math.min(start, end), current.length));
+
+        if (options?.selectFirstPlaceholder && placeholderOffset !== null) {
+            const selStart = Math.max(0, Math.min(from + placeholderOffset, current.length));
+            const selEnd = Math.max(0, Math.min(selStart + placeholderLen, current.length));
+            el2.focus();
+            el2.setSelectionRange(selStart, selEnd);
+            return;
+        }
+
+        const pos = Math.max(0, Math.min(from + snippet.length, current.length));
+        el2.focus();
+        el2.setSelectionRange(pos, pos);
+    });
+};
+
+const commitEquationModal = () => {
+    const target = equationModal.target || 'main';
+    const tagName = equationModal.mode === 'math' ? 'math' : 'ecuacion';
+    const payload = (equationModal.value || '...').replace(EQUATION_PLACEHOLDER_RE, '...');
+
+    if (target === 'note') {
+        // Insert into note modal textarea
+        const el = noteContentTextareaRef.current;
+        const selStart = el ? el.selectionStart : (noteModal.value || '').length;
+        const selEnd = el ? el.selectionEnd : selStart;
+        const currentValue = noteModal.value || '';
+
+        const res = applyInlineTag(currentValue, selStart, selEnd, tagName, { value: payload, placeholder: '...' });
+
+        setNoteModal(prev => ({ ...prev, value: res.text }));
+        setEquationModal({ ...equationModal, open: false });
+
+        requestAnimationFrame(() => {
+            const el2 = noteContentTextareaRef.current;
+            if (!el2) return;
+            el2.focus();
+            el2.setSelectionRange(res.selectionStart, res.selectionEnd);
+        });
+        return;
+    }
+
+    const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
+    if (contentIdx === -1) {
+        setEquationModal({ ...equationModal, open: false });
+        return;
+    }
+
+    const el = sectionContentTextareaRef.current;
+    const selStart = el ? el.selectionStart : 0;
+    const selEnd = el ? el.selectionEnd : 0;
+    const currentValue = (formData[contentIdx] || '').toString();
+
+    const res = applyInlineTag(currentValue, selStart, selEnd, tagName, { value: payload, placeholder: '...' });
+    const newData = [...formData];
+    newData[contentIdx] = res.text;
+    setFormData(newData);
+    setEquationModal({ ...equationModal, open: false });
+
+    const nextIssues = lintTags(res.text, {
+        bibliographyKeys: availableBibliographyKeys,
+        figureIds: availableFigureIds,
+        tableIds: availableTableIds,
+    });
+    setSectionLintIssues(nextIssues);
+
+    requestAnimationFrame(() => {
+        const el2 = sectionContentTextareaRef.current;
+        if (!el2) return;
+        el2.focus();
+        el2.setSelectionRange(res.selectionStart, res.selectionEnd);
+    });
+};
+
+const insertSnippetIntoContent = (snippet: string) => {
+    const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
+    if (contentIdx === -1) {
+        // Optional: showNotification("No se encontró la columna de Contenido.", "error");
+        return;
+    }
+
+    const el = sectionContentTextareaRef.current;
+    const currentContent = (formData[contentIdx] || '').toString();
+    const pos = el ? el.selectionStart : currentContent.length;
+
+    const before = currentContent.slice(0, pos);
+    const after = currentContent.slice(pos);
+    const nextText = before + snippet + after;
+
+    const newData = [...formData];
+    newData[contentIdx] = nextText;
+    setFormData(newData);
+
+    // Linting
+    const nextIssues = lintTags(nextText, {
+        bibliographyKeys: availableBibliographyKeys,
+        figureIds: availableFigureIds,
+        tableIds: availableTableIds,
+    });
+    setSectionLintIssues(nextIssues);
+
+    // Restore focus
+    requestAnimationFrame(() => {
+        const el2 = sectionContentTextareaRef.current;
+        if (el2) {
+            el2.focus();
+            // Move cursor to end of inserted snippet
+            el2.setSelectionRange(pos + snippet.length, pos + snippet.length);
+        }
+    });
+};
+
+// --- Helpers ---
+const getMetadataSheet = () => {
+    const targetTitle = 'Documentos';
+    return spreadsheet.sheets.find(s =>
+        s.properties.title.toLowerCase() === targetTitle.toLowerCase() ||
+        s.properties.title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === targetTitle.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    ) || spreadsheet.sheets[0];
+}
+
+const getActiveSheet = () => {
+    const targetTitle = TAB_TO_SHEET_TITLE[activeTab] || 'Documentos';
+    let sheet = spreadsheet.sheets.find(s =>
+        s.properties.title.toLowerCase() === targetTitle.toLowerCase() ||
+        s.properties.title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === targetTitle.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    );
+    if (!sheet && activeTab === 'metadatos') {
+        sheet = spreadsheet.sheets[0];
+    }
+    return sheet;
+};
+
+const getStorageSheet = () => {
+    return spreadsheet.sheets.find(s =>
+        s.properties.title === 'Datos_Tablas' ||
+        s.properties.title === 'Datos Tablas'
+    );
+};
+
+const activeSheet = getActiveSheet();
+
+// --- Initialization Effects ---
+useEffect(() => {
+    // Socket: Enter document room when docId is settled
+    if (currentDocId) {
+        socketService.enterDocument(currentDocId);
+    }
+
+    // Listen for real-time data updates (images, rows, etc.)
+    const cleanupData = socketService.onDataUpdate((data) => {
+        if (data.docId === currentDocId) {
+            console.log('Data update received:', data);
+            if (data.type === 'image' || data.type === 'figure_update') {
+                // Update timestamp to bust cache for images
+                setDataTimestamp(Date.now());
+            }
+
+            // Refresh grid data
+            onRefresh();
+
+            showNotification(`Datos actualizados por ${data.fromUser}`, 'info');
+        }
+    });
+
+    return () => {
+        // Optional: Leave when unmounting or changing doc
+        // socketService.leaveDocument(); 
+        // Note: server handles 'leave' automatically on 'enter_document' of new doc
+        cleanupData();
+    };
+}, [currentDocId]);
+
+useEffect(() => {
+    const metaSheet = getMetadataSheet();
+    const rowData = metaSheet?.data?.[0]?.rowData;
+    if (!rowData || rowData.length < 2) {
+        setAvailableDocs([]);
+        setCurrentDocId('');
+        setCurrentDocRowIndex(1);
+        return;
+    }
+
+    const headers = rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+    const idColIndex = headers.findIndex(h => h === 'ID' || h === 'DocumentoID') ?? 0;
+    const titleColIndex = findColumnIndex(headers, TITLE_VARIANTS);
+
+    const docs: DocumentOption[] = [];
+    rowData.slice(1).forEach((row, idx) => {
+        const absoluteRowIndex = idx + 1; // because we sliced off the header
+        const id = row.values?.[idColIndex]?.userEnteredValue?.stringValue || row.values?.[idColIndex]?.formattedValue || '';
+        if (!id) return;
+        const title = titleColIndex !== -1
+            ? (row.values?.[titleColIndex]?.userEnteredValue?.stringValue || row.values?.[titleColIndex]?.formattedValue || '')
+            : '';
+        docs.push({ id, title, rowIndex: absoluteRowIndex });
+    });
+
+    setAvailableDocs(docs);
+
+    const canApplyInitial = Boolean(initialDocId) && initialSelectionAppliedForSpreadsheet.current !== spreadsheet.spreadsheetId;
+    const preferredId = canApplyInitial ? initialDocId! : currentDocId;
+
+    // Keep current selection if it still exists; otherwise pick preferred/first.
+    const selected = docs.find(d => d.id === preferredId) || docs.find(d => d.id === currentDocId) || docs.find(d => d.id === 'D01') || docs[0];
+    if (selected) {
+        if (selected.id !== currentDocId) setCurrentDocId(selected.id);
+        if (selected.rowIndex !== currentDocRowIndex) setCurrentDocRowIndex(selected.rowIndex);
+        if (canApplyInitial && selected.id === initialDocId) {
+            initialSelectionAppliedForSpreadsheet.current = spreadsheet.spreadsheetId;
+        }
+    }
+}, [spreadsheet, initialDocId]);
+
+useEffect(() => {
+    // Force update currentDocId if initialDocId is provided and available in docs
+    if (initialDocId && availableDocs.length > 0) {
+        const match = availableDocs.find(d => d.id === initialDocId);
+        if (match && currentDocId !== match.id) {
+            setCurrentDocId(match.id);
+            setCurrentDocRowIndex(match.rowIndex);
+        }
+    }
+}, [availableDocs, initialDocId]);
+
+useEffect(() => {
+    setViewMode('LIST');
+    setSearchTerm('');
+    setCurrentPage(1);
+    setFocusedCell(null);
+
+    // Load Relationship Data for Tablas AND Figuras
+    if ((activeTab === 'tablas' || activeTab === 'figuras') && currentDocId) {
+        const loadSections = () => {
+            const seccionesSheet = spreadsheet.sheets.find(s =>
+                s.properties.title === 'Secciones' ||
+                s.properties.title.toLowerCase().trim() === 'secciones'
+            );
+
+            if (seccionesSheet && seccionesSheet.data && seccionesSheet.data[0]?.rowData) {
+                const headers = seccionesSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+                const docIdIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
+                const idSecVariants = [...SECCION_COL_VARIANTS, 'Orden', 'Nivel', 'Clave'];
+                const idSecIdx = findColumnIndex(headers, idSecVariants);
+                const titleIdx = findColumnIndex(headers, TITLE_VARIANTS);
+
+                if (docIdIdx !== -1 && idSecIdx !== -1) {
+                    const validSections: { id: string, title: string }[] = [];
+                    seccionesSheet.data[0].rowData.slice(1).forEach(row => {
+                        const dId = row.values?.[docIdIdx]?.userEnteredValue?.stringValue || row.values?.[docIdIdx]?.formattedValue;
+                        if (dId === currentDocId) {
+                            const secId = row.values?.[idSecIdx]?.userEnteredValue?.stringValue || row.values?.[idSecIdx]?.formattedValue || '';
+                            const secTitle = row.values?.[titleIdx]?.userEnteredValue?.stringValue || row.values?.[titleIdx]?.formattedValue || '';
+                            validSections.push({ id: secId, title: secTitle });
+                        }
+                    });
+                    setAvailableSections(validSections);
+                }
+            }
+        };
+        loadSections();
+    }
+
+    if (activeTab === 'metadatos') {
+        if (!activeSheet) return;
+        const headers = activeSheet.data?.[0]?.rowData?.[0]?.values?.map(c => c.formattedValue || c.userEnteredValue?.stringValue || '') || [];
+        const rowIdx = currentDocRowIndex || 1;
+        const targetRow = activeSheet.data?.[0]?.rowData?.[rowIdx];
+        const values = targetRow?.values?.map(c => c.formattedValue || c.userEnteredValue?.stringValue || '') || [];
+        setFormHeaders(headers);
+        setFormData(values.length ? values : new Array(headers.length).fill(''));
+        setViewMode('FORM');
+    } else {
+        if (!activeSheet) {
+            setGridData([]);
+            setGridHeaders([]);
+            return;
+        }
+        const rawData: string[][] = [];
+        if (activeSheet.data && activeSheet.data[0]?.rowData) {
+            activeSheet.data[0].rowData.forEach((row) => {
+                const rowValues = row.values?.map(cell =>
+                    cell.formattedValue ||
+                    cell.userEnteredValue?.stringValue ||
+                    (cell.userEnteredValue?.numberValue !== undefined ? String(cell.userEnteredValue.numberValue) : '') ||
+                    ''
+                ) || [];
+                rawData.push(rowValues);
+            });
+        }
+        if (rawData.length === 0) rawData.push([]);
+
+        const headers = rawData[0];
+        setGridHeaders(headers);
+
+        const body = rawData.slice(1).map(row => {
+            const newRow = [...row];
+            while (newRow.length < headers.length) newRow.push('');
+            return newRow;
+        });
+
+        if (currentDocId) {
+            const docIdIndex = findColumnIndex(headers, DOC_ID_VARIANTS);
+            if (docIdIndex !== -1) {
+                setGridData(body.filter(row => row[docIdIndex] === currentDocId));
+            } else {
+                setGridData(body);
+            }
+        } else {
+            setGridData(body);
+        }
+    }
+}, [activeTab, spreadsheet, currentDocId, currentDocRowIndex]);
+
+// Load IDs/keys for Secciones selectors (citas/figuras/tablas)
+useEffect(() => {
+    if (activeTab !== 'secciones' || !currentDocId) {
+        setAvailableBibliographyKeys([]);
+        setAvailableFigureIds([]);
+        setAvailableTableIds([]);
+        return;
+    }
+
+    const norm = (s: string) => (s ?? '').toString().trim();
+    const uniqueSorted = (arr: string[]) => Array.from(new Set(arr.map(norm).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+
+    const findSheetByTitle = (title: string) =>
+        spreadsheet.sheets.find(s => normalizeSheetName(s.properties.title) === normalizeSheetName(title));
+
+
+    const extractColumnValuesByDoc = (sheetTitle: string, columnCandidates: string[]) => {
+        const sheet = findSheetByTitle(sheetTitle);
+        const rowData = sheet?.data?.[0]?.rowData;
+        if (!rowData || rowData.length < 2) return [] as string[];
+
+        const headers = rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+        const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
+        const colIdx = findColumnIndex(headers, columnCandidates);
+        if (docIdx === -1 || colIdx === -1) return [] as string[];
+
+        const out: string[] = [];
+        rowData.slice(1).forEach(r => {
+            const dId = r.values?.[docIdx]?.userEnteredValue?.stringValue || r.values?.[docIdx]?.formattedValue || '';
+            if (dId !== currentDocId) return;
+            const v = r.values?.[colIdx]?.userEnteredValue?.stringValue || r.values?.[colIdx]?.formattedValue || '';
+            if (v) out.push(v);
+        });
+        return out;
+    };
+
+    const bibKeys = extractColumnValuesByDoc('Bibliografía', CLAVE_VARIANTS);
+    setAvailableBibliographyKeys(uniqueSorted(bibKeys));
+
+    const figurasSheet = findSheetByTitle('Figuras');
+    const tablasSheet = findSheetByTitle('Tablas');
+
+    const figurasItems: { id: string; title: string; section: string; route?: string }[] = [];
+    const tablasItems: { id: string; title: string; section: string; range?: string }[] = [];
+
+    if (figurasSheet?.data?.[0]?.rowData?.length && figurasSheet.data[0].rowData.length > 1) {
+        const headers = figurasSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+        const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
+        const secIdx = findColumnIndex(headers, [...SECCION_COL_VARIANTS, 'SeccionOrden', 'SecciónOrden']);
+        const ordIdx = findColumnIndex(headers, [...ORDEN_COL_VARIANTS, 'OrdenFigura']);
+        const titleIdx = findColumnIndex(headers, ['Título/Descripción', 'Titulo', 'Descripción', 'Descripcion', 'Caption']);
+        const routeIdx = findColumnIndex(headers, ['Ruta de Imagen', 'RutaArchivo']);
+        figurasSheet.data[0].rowData.slice(1).forEach(r => {
+            const dId = r.values?.[docIdx]?.userEnteredValue?.stringValue || r.values?.[docIdx]?.formattedValue || '';
+            if (dId !== currentDocId) return;
+            const sec = r.values?.[secIdx]?.userEnteredValue?.stringValue || r.values?.[secIdx]?.formattedValue || '';
+            const ord = r.values?.[ordIdx]?.userEnteredValue?.stringValue || r.values?.[ordIdx]?.formattedValue || '';
+            const title = r.values?.[titleIdx]?.userEnteredValue?.stringValue || r.values?.[titleIdx]?.formattedValue || '';
+            const route = r.values?.[routeIdx]?.userEnteredValue?.stringValue || r.values?.[routeIdx]?.formattedValue || '';
+            const id = computeFigureId(sec, ord);
+            if (id) figurasItems.push({ id, title, section: sec, route });
+        });
+    }
+
+    if (tablasSheet?.data?.[0]?.rowData?.length && tablasSheet.data[0].rowData.length > 1) {
+        const headers = tablasSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+        const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
+        const secIdx = findColumnIndex(headers, [...SECCION_COL_VARIANTS, 'SeccionOrden', 'SecciónOrden', 'ID_Seccion']);
+        const ordIdx = findColumnIndex(headers, [...ORDEN_COL_VARIANTS, 'OrdenTabla', 'Orden']);
+        const titleIdx = findColumnIndex(headers, ['Título', 'Titulo']);
+        const rangeIdx = findColumnIndex(headers, CSV_COL_VARIANTS);
+        tablasSheet.data[0].rowData.slice(1).forEach(r => {
+            const dId = r.values?.[docIdx]?.userEnteredValue?.stringValue || r.values?.[docIdx]?.formattedValue || '';
+            if (dId !== currentDocId) return;
+            const sec = r.values?.[secIdx]?.userEnteredValue?.stringValue || r.values?.[secIdx]?.formattedValue || '';
+            const ord = r.values?.[ordIdx]?.userEnteredValue?.stringValue || r.values?.[ordIdx]?.formattedValue || '';
+            const title = r.values?.[titleIdx]?.userEnteredValue?.stringValue || r.values?.[titleIdx]?.formattedValue || '';
+            const range = r.values?.[rangeIdx]?.userEnteredValue?.stringValue || r.values?.[rangeIdx]?.formattedValue || '';
+            const id = computeTableId(sec, ord);
+            if (id) tablasItems.push({ id, title, section: sec, range });
+        });
+    }
+
+    const figIds = figurasItems.map(i => i.id);
+    const tabIds = tablasItems.map(i => i.id);
+    setAvailableFigureIds(uniqueSorted(figIds));
+    setAvailableTableIds(uniqueSorted(tabIds));
+    setAvailableFigureItems(figurasItems);
+    setAvailableTableItems(tablasItems);
+}, [activeTab, spreadsheet, currentDocId]);
+
+// --- Logic to Calculate Next Order ---
+const calculateNextOrder = (sectionId: string) => {
+    // Allow for both Tablas and Figuras
+    if (!sectionId || (activeTab !== 'tablas' && activeTab !== 'figuras')) return '1';
+
+    const secColIdx = findColumnIndex(gridHeaders, SECCION_COL_VARIANTS);
+    const ordColIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+
+    if (secColIdx === -1 || ordColIdx === -1) return '1';
+
+    let maxOrder = 0;
+    gridData.forEach(row => {
+        const rowSec = (row[secColIdx] || '').toString().trim();
+        // Handle subsection matching (exact match)
+        if (rowSec === sectionId.trim()) {
+            const valStr = row[ordColIdx];
+            const ordVal = parseInt(valStr);
+            if (!isNaN(ordVal) && ordVal > maxOrder) {
+                maxOrder = ordVal;
+            }
+        }
+    });
+    return String(maxOrder + 1);
+};
+
+const isOrderDuplicate = (sectionId: string, orderVal: string, ignoreRowIndex: number | null) => {
+    const secColIdx = findColumnIndex(gridHeaders, SECCION_COL_VARIANTS);
+    const ordColIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+
+    // If we can't find columns, we can't validate duplicates properly, but we shouldn't block
+    if (ordColIdx === -1) return false;
+
+    const targetSec = (sectionId || '').toString().trim();
+    const targetOrd = (orderVal || '').toString().trim();
+
+    return gridData.some((row, idx) => {
+        if (ignoreRowIndex !== null && idx === ignoreRowIndex) return false;
+
+        const rowOrd = (row[ordColIdx] || '').toString().trim();
+
+        if (secColIdx !== -1) {
+            const rowSec = (row[secColIdx] || '').toString().trim();
+            return rowSec === targetSec && rowOrd === targetOrd;
+        } else {
+            // Fallback: if no section column, just check order (unlikely to be desired but safer than crashing)
+            return rowOrd === targetOrd;
+        }
+    });
+};
+
+// --- Internal Logic to fetch nested grid ---
+const loadNestedGrid = async (range: string) => {
+    const correctedRange = sanitizeRangeString(range);
+
+    if (!correctedRange || !correctedRange.includes('!')) {
+        setNestedGridData([['', '', '', '', ''], ['', '', '', '', ''], ['', '', '', '', '']]);
+        setNestedGridRange(correctedRange);
+        return;
+    }
+
+    const parsed = parseRange(correctedRange);
+    if (!parsed) return;
+
+    const sheetExists = spreadsheet.sheets.some(s => s.properties.title === parsed.sheetName);
+    if (!sheetExists) {
+        const rows = parsed.endRow - parsed.startRow + 1;
+        const cols = parsed.endCol - parsed.startCol + 1;
+        const emptyGrid = Array.from({ length: rows }, () => Array(cols).fill(''));
+        setNestedGridData(emptyGrid);
+        setNestedGridRange(correctedRange);
+        setOriginalNestedGridRange(correctedRange);
+        return;
+    }
+
+    setLoadingGrid(true);
+    setNestedGridRange(correctedRange);
+    setOriginalNestedGridRange(correctedRange);
+    setFocusedCell(null);
+
+    try {
+        const values = await fetchValues(spreadsheet.spreadsheetId, correctedRange, token);
+        if (values && values.length > 0) {
+            setNestedGridData(values);
+        } else {
+            setNestedGridData([['', '', '', '', ''], ['', '', '', '', ''], ['', '', '', '', '']]);
+        }
+    } catch (e) {
+        console.error("Error cargando grid:", e);
+        setNestedGridData([['Error al cargar datos. Verifique el rango.']]);
+    } finally {
+        setLoadingGrid(false);
+    }
+};
+
+const updateRangeString = (newData: string[][]) => {
+    const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
+    let currentRange = csvIndex !== -1 ? formData[csvIndex] : nestedGridRange;
+
+    if (!currentRange || !currentRange.includes('!')) return;
+    currentRange = sanitizeRangeString(currentRange);
+
+    try {
+        const lastBang = currentRange.lastIndexOf('!');
+        const sheetPart = currentRange.substring(0, lastBang);
+        const rangeRef = currentRange.substring(lastBang + 1);
+
+        const [startRef] = rangeRef.split(':');
+        const match = startRef.match(/([A-Z]+)([0-9]+)/);
+        if (!match) return;
+
+        const startColStr = match[1];
+        const startRowStr = match[2];
+        const startRow = parseInt(startRowStr);
+        const startColIdx = columnLetterToIndex(startColStr);
+
+        const numRows = newData.length;
+        const numCols = newData[0]?.length || 1;
+
+        const endRow = startRow + numRows - 1;
+        const endColIdx = startColIdx + numCols - 1;
+        const endColStr = indexToColumnLetter(endColIdx);
+
+        const newRange = `${sheetPart}!${startColStr}${startRow}:${endColStr}${endRow}`;
+        setNestedGridRange(newRange);
+
+        if (csvIndex !== -1) {
+            const newFormData = [...formData];
+            newFormData[csvIndex] = newRange;
+            setFormData(newFormData);
+        }
+    } catch (e) {
+        console.error("Error recalculating range", e);
+    }
+};
+
+const calculateNextAvailableRange = async (rows: number, cols: number): Promise<string> => {
+    setCalculatingRange(true);
+    try {
+        const storageSheet = getStorageSheet();
+        const sheetName = storageSheet ? storageSheet.properties.title : 'Datos_Tablas';
+        const finalSheetName = quoteSheetName(sheetName);
+
+        if (!storageSheet) {
+            const endColLetter = indexToColumnLetter(cols - 1);
+            return `${finalSheetName}!A1:${endColLetter}${rows}`;
+        }
+
+        const colData = await fetchValues(spreadsheet.spreadsheetId, `${finalSheetName}!A:A`, token);
+        let lastRowIndex = 0;
+        if (colData && colData.length > 0) {
+            lastRowIndex = colData.length;
+        }
+
+        const startRow = lastRowIndex + 3;
+        const endRow = startRow + rows - 1;
+        const endColLetter = indexToColumnLetter(cols - 1); // 0-based index
+
+        return `${finalSheetName}!A${startRow}:${endColLetter}${endRow}`;
+    } catch (e) {
+        console.error(e);
+        const randomStart = 100 + Math.floor(Math.random() * 50);
+        return `Datos_Tablas!A${randomStart}:E${randomStart + rows}`;
+    } finally {
+        setCalculatingRange(false);
+    }
+};
+
+// --- Actions ---
+
+const handlePreCreate = () => {
+    if (activeTab === 'tablas') {
+        if (availableSections.length === 0) {
+            showNotification("No se encontraron Secciones. Crea una sección primero.", 'error');
+            return;
+        }
+        setWizardConfig({ rows: 5, cols: 4 });
+        setShowTableWizard(true);
+    } else if (activeTab === 'figuras') {
+        // Check sections for figures too
+        if (availableSections.length === 0) {
+            showNotification("No se encontraron Secciones. Crea una sección primero.", 'error');
+            return;
+        }
+        handleCreate([]);
+    } else {
+        handleCreate([]);
+    }
+};
+
+const handleWizardConfirm = async () => {
+    const newRange = await calculateNextAvailableRange(wizardConfig.rows, wizardConfig.cols);
+    const initData: string[][] = Array(wizardConfig.rows).fill('').map((_, r) =>
+        Array(wizardConfig.cols).fill('').map((__, c) =>
+            r === 0 ? 'Encabezado' : ''
+        )
+    );
+    initData[0][0] = 'Concepto';
+    handleCreate(initData, newRange);
+    setShowTableWizard(false);
+};
+
+const handleCreate = (initialGridData: string[][] = [], initialRangeStr: string = '') => {
+    setEditingRowIndex(null);
+    const newRow = new Array(gridHeaders.length).fill('');
+
+    const docIdIndex = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+    if (docIdIndex !== -1) newRow[docIdIndex] = currentDocId;
+
+    if (initialRangeStr) {
+        const csvIndex = findColumnIndex(gridHeaders, CSV_COL_VARIANTS);
+        if (csvIndex !== -1) {
+            newRow[csvIndex] = initialRangeStr;
+        }
+    }
+
+    if (activeTab === 'secciones') {
+        const nivelIdx = findColumnIndex(gridHeaders, NIVEL_VARIANTS);
+        const ordenIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+        if (nivelIdx !== -1 && !newRow[nivelIdx]) newRow[nivelIdx] = 'seccion';
+        // Pre‑calcular siguiente orden disponible (nivel seccion)
+        if (ordenIdx !== -1 && (!newRow[ordenIdx] || newRow[ordenIdx].toString().trim() === '')) {
+            const headers = gridHeaders;
+            const idxDoc = findColumnIndex(headers, DOC_ID_VARIANTS);
+            const idxOrd = findColumnIndex(headers, ORDEN_COL_VARIANTS);
+            let maxTop = 0;
+            gridData.forEach((row, idx) => {
+                if (idx === 0) return;
+                const dId = idxDoc !== -1 ? (row[idxDoc] || '') : '';
+                if (dId !== currentDocId) return;
+                const o = idxOrd !== -1 ? (row[idxOrd] || '') : '';
+                if (!o) return;
+                const top = parseInt(String(o).split('.')[0]);
+                if (!isNaN(top)) maxTop = Math.max(maxTop, top);
+            });
+            newRow[ordenIdx] = String(maxTop + 1);
+        }
+    }
+
+    setFormData(newRow);
+    setFormHeaders(gridHeaders);
+    setNestedGridRange(initialRangeStr);
+    setOriginalNestedGridRange(initialRangeStr);
+
+    if (initialGridData.length > 0) {
+        setNestedGridData(initialGridData);
+    } else {
+        setNestedGridData([['Concepto', '2023', '2024', '2025', 'Notas'], ['', '', '', '', ''], ['', '', '', '', '']]);
+    }
+
+    setViewMode('FORM');
+};
+
+useEffect(() => {
+    const loadPreviewData = async () => {
+        if (!selectorPreview) return;
+        if (selectorPreview.type !== 'tabla') return;
+        const item = availableTableItems.find(x => x.id === selectorPreview.id);
+        const range = item?.range || '';
+        if (!range) return;
+        try {
+            const values = await fetchValues(spreadsheet.spreadsheetId, sanitizeRangeString(range), token);
+            setSelectorPreview(prev => prev ? { ...prev, data: values } : prev);
+        } catch { }
+    };
+    loadPreviewData();
+}, [selectorPreview]);
+
+const validateCurrentDocumentOrders = () => {
+    if (activeTab !== 'secciones') { showNotification('Esta validación aplica en Secciones.', 'error'); return; }
+    const headers = gridHeaders;
+    const idxDoc = findColumnIndex(headers, DOC_ID_VARIANTS);
+    const idxOrden = findColumnIndex(headers, ORDEN_COL_VARIANTS);
+    const idxNivel = findColumnIndex(headers, NIVEL_VARIANTS);
+    const idxTitulo = findColumnIndex(headers, TITLE_VARIANTS);
+    const idxContenido = findColumnIndex(headers, CONTENIDO_VARIANTS);
+    const idxEstado = headers.findIndex(h => h.trim().toLowerCase() === 'estado');
+    const used: Record<string, number> = {} as any;
+    let disponibles = 0, duplicados = 0, faltantes = 0;
+    gridData.forEach((row, idx) => {
+        if (idx === 0) return;
+        const dId = idxDoc !== -1 ? (row[idxDoc] || '') : '';
+        if (dId !== currentDocId) return;
+        const est = idxEstado !== -1 ? String(row[idxEstado] || '').toLowerCase().trim() : 'disponible';
+        if (est !== 'disponible' && est !== 'available') return;
+        disponibles++;
+        const ord = idxOrden !== -1 ? (row[idxOrden] || '') : '';
+        const niv = idxNivel !== -1 ? (row[idxNivel] || '') : '';
+        const tit = idxTitulo !== -1 ? (row[idxTitulo] || '') : '';
+        const cont = idxContenido !== -1 ? (row[idxContenido] || '') : '';
+        if (!ord || !niv || !tit || !cont) faltantes++;
+        if (ord) { if (used[ord]) duplicados++; else used[ord] = 1; }
+    });
+    showNotification(`Órdenes disponibles: ${disponibles}. Duplicados: ${duplicados}. Faltantes: ${faltantes}.`, (duplicados || faltantes) ? 'error' : 'success');
+};
+
+const createNewForSection = (kind: 'figura' | 'tabla') => {
+    if (kind === 'figura') {
+        setActiveTab('figuras');
+    } else {
+        setActiveTab('tablas');
+    }
+    setViewMode('LIST');
+    setMobileMenuOpen(false);
+};
+
+const openTab = (tab: 'bibliografia' | 'figuras' | 'tablas' | 'secciones') => {
+    setActiveTab(tab);
+    setViewMode('LIST');
+    setMobileMenuOpen(false);
+};
+
+// removed nextOrderFor; behavior simplified to respect existing create flow
+
+const handleEdit = (rowIndex: number) => {
+    setEditingRowIndex(rowIndex);
+    const currentRow = [...gridData[rowIndex]];
+    setFormData(currentRow);
+    setFormHeaders(gridHeaders);
+
+    if (activeTab === 'tablas') {
+        const csvIndex = findColumnIndex(gridHeaders, CSV_COL_VARIANTS);
+        if (csvIndex !== -1) {
+            const r = currentRow[csvIndex];
+            setOriginalNestedGridRange(r);
+            loadNestedGrid(r);
+        } else {
+            setNestedGridData([['Concepto', 'Col1', 'Col2'], ['', '', '']]);
+        }
+    }
+
+    setViewMode('FORM');
+};
+
+// Trigger Modal
+const requestDelete = (rowIndex: number) => {
+    setDeleteModal({ isOpen: true, rowIndex });
+};
+
+// Actual Execute Delete Logic (called by Modal)
+const executeDelete = async () => {
+    const rowIndex = deleteModal.rowIndex;
+    if (rowIndex === null) return;
+    if (!activeSheet) return;
+
+    setSaving(true);
+
+    try {
+        if (activeTab === 'tablas') {
+            try {
+                const csvIndex = findColumnIndex(gridHeaders, CSV_COL_VARIANTS);
+                const rowData = gridData[rowIndex];
+                const rangeStr = rowData[csvIndex];
+
+                if (rangeStr) {
+                    const cleanRangeStr = sanitizeRangeString(rangeStr);
+                    const parsedRange = parseRange(cleanRangeStr);
+
+                    if (parsedRange) {
+                        const storageSheet = spreadsheet.sheets.find(s =>
+                            normalizeSheetName(s.properties.title) === normalizeSheetName(parsedRange.sheetName)
+                        );
+
+                        if (storageSheet) {
+                            const rowsToDelete = parsedRange.endRow - parsedRange.startRow + 1;
+                            const deleteStartIndex = Math.max(0, parsedRange.startRow - 1);
+                            console.log(`Borrando filas anidadas: ${deleteStartIndex}, Count: ${rowsToDelete}`);
+
+                            await deleteDimensionRange(
+                                spreadsheet.spreadsheetId,
+                                storageSheet.properties.sheetId,
+                                deleteStartIndex,
+                                rowsToDelete,
+                                'ROWS',
+                                token
+                            );
+
+                            // Update references below
+                            const updates: Promise<any>[] = [];
+                            gridData.forEach((row, idx) => {
+                                if (idx === rowIndex) return;
+                                const otherRangeStr = row[csvIndex];
+                                if (!otherRangeStr) return;
+
+                                const cleanOther = sanitizeRangeString(otherRangeStr);
+                                const otherRange = parseRange(cleanOther);
+
+                                if (otherRange &&
+                                    normalizeSheetName(otherRange.sheetName) === normalizeSheetName(parsedRange.sheetName) &&
+                                    otherRange.startRow > parsedRange.endRow) {
+
+                                    const newStart = otherRange.startRow - rowsToDelete;
+                                    const newEnd = otherRange.endRow - rowsToDelete;
+                                    const sCol = indexToColumnLetter(otherRange.startCol);
+                                    const eCol = indexToColumnLetter(otherRange.endCol);
+                                    const finalSheetName = quoteSheetName(otherRange.sheetName);
+                                    const newRangeStr = `${finalSheetName}!${sCol}${newStart}:${eCol}${newEnd}`;
+
+                                    updates.push(updateCellValue(
+                                        spreadsheet.spreadsheetId,
+                                        activeSheet.properties.title,
+                                        { row: idx + 1, col: csvIndex, value: newRangeStr },
+                                        token
+                                    ));
+                                }
+                            });
+
+                            if (updates.length > 0) await Promise.all(updates);
+                        }
+                    }
+                }
+            } catch (nestedError) {
+                console.error("Error NO CRÍTICO eliminando anidados:", nestedError);
+            }
+        }
+
+        // Safeguard: do not delete row from other DocumentoID
+        const docIdx = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+        if (docIdx !== -1) {
+            const rowDoc = (gridData[rowIndex]?.[docIdx] || '').toString();
+            if (rowDoc && rowDoc !== currentDocId) {
+                showNotification(`No puedes eliminar registros de otro documento (${rowDoc}).`, 'error');
+                setSaving(false);
+                setDeleteModal({ isOpen: false, rowIndex: null });
+                return;
+            }
+        }
+        console.log(`Borrando fila principal en ${activeTab}: ${rowIndex + 1}`);
+        await deleteRow(
+            spreadsheet.spreadsheetId,
+            activeSheet.properties.sheetId,
+            rowIndex + 1,
+            token
+        );
+
+        showNotification("Registro eliminado correctamente.", "success");
+
+        // Notify other users about delete
+        socketService.notifyDataUpdate({
+            docId: currentDocId,
+            type: activeTab === 'figuras' ? 'figure_update' : 'row_update',
+            action: 'delete',
+            tab: activeTab
+        });
+
+        onRefresh();
+        // Close modal on success
+        setDeleteModal({ isOpen: false, rowIndex: null });
+
+    } catch (e) {
+        console.error("Error CRÍTICO al eliminar:", e);
+        showNotification("Error al eliminar el registro. Intenta de nuevo.", "error");
+    } finally {
+        setSaving(false);
+    }
+};
+
+const handleSaveForm = async () => {
+    if (!activeSheet) return;
+
+    // Secciones: lint + normalize before save, and block save on errors
+    if (activeTab === 'secciones') {
+        const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
+        if (contentIdx !== -1) {
+            const raw = (formData[contentIdx] || '').toString();
+            const normalized = normalizeOnSave(raw);
+            const issues = lintTags(normalized, {
+                bibliographyKeys: availableBibliographyKeys,
+                figureIds: availableFigureIds,
+                tableIds: availableTableIds,
+            });
+            setSectionLintIssues(issues);
+
+            const errors = issues.filter(i => i.type === 'error');
+            if (errors.length > 0) {
+                showNotification(`Hay ${errors.length} error(es) en etiquetas. Corrige antes de guardar.`, 'error');
+                return;
+            }
+
+            // Apply normalization to the value that will be saved
+            if (normalized !== raw) {
+                const next = [...formData];
+                next[contentIdx] = normalized;
+                setFormData(next);
+            }
+        }
+
+        // Normalizar Nivel y validar reglas de negocio
+        const nivelIdx = findColumnIndex(formHeaders, NIVEL_VARIANTS);
+        const docIdxF = findColumnIndex(formHeaders, DOC_ID_VARIANTS);
+        const nivelRaw = nivelIdx !== -1 ? (formData[nivelIdx] || '').toString() : '';
+        const nivelNorm = normalizeLevelValue(nivelRaw);
+        const docIdVal = docIdxF !== -1 ? (formData[docIdxF] || '').toString() : currentDocId;
+
+        if (nivelNorm === 'directorio') {
+            const gridDocIdx = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+            const gridNivelIdx = findColumnIndex(gridHeaders, NIVEL_VARIANTS);
+            let dirCount = 0;
+            gridData.forEach((row, idx) => {
+                if (idx === 0) return;
+                if (editingRowIndex !== null && idx === editingRowIndex) return; // excluir el registro en edición
+                const dId = gridDocIdx !== -1 ? (row[gridDocIdx] || '') : '';
+                const lvl = gridNivelIdx !== -1 ? normalizeLevelValue((row[gridNivelIdx] || '').toString()) : '';
+                if (dId === docIdVal && lvl === 'directorio') dirCount++;
+            });
+            if (dirCount > 0) {
+                showNotification('Solo puede existir un Directorio en el documento.', 'error');
+                return;
+            }
+        }
+    }
+
+    // Validate Section and Order logic for both Tablas AND Figuras
+    if (activeTab === 'tablas' || activeTab === 'figuras') {
+        const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
+        const ordColIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+
+        // Allow saving even if columns are missing (maybe intended?), but warn if possible
+        if (secColIdx !== -1 && ordColIdx !== -1) {
+            const section = formData[secColIdx];
+            const order = formData[ordColIdx];
+            const orderNum = parseInt(order);
+
+            if (isNaN(orderNum) || orderNum < 1) {
+                showNotification("El Orden/Número debe ser mayor a 0.", "error");
+                return;
+            }
+
+            if (!section) {
+                showNotification("Selecciona una Sección.", "error");
+                return;
+            }
+
+            if (isOrderDuplicate(section, order, editingRowIndex)) {
+                showNotification(`El Número ${order} ya existe en la sección ${section}.`, "error");
+                return;
+            }
+
+            // Extra check: Check for Duplicate Titles (Nombres)
+            const titleIdx = findColumnIndex(formHeaders, TITLE_VARIANTS);
+            if (titleIdx !== -1) {
+                const title = (formData[titleIdx] || '').toString().trim();
+                if (title) {
+                    const isTitleDup = gridData.some((row, idx) => {
+                        if (editingRowIndex !== null && idx === editingRowIndex) return false;
+                        return (row[titleIdx] || '').toString().trim().toLowerCase() === title.toLowerCase();
+                    });
+                    if (isTitleDup) {
+                        showNotification(`Advertencia: El título "${title}" ya existe en otro registro.`, 'info');
+                    }
+                }
+            }
+        } else {
+            // If columns are missing, we should probably warn but proceed if legacy sheet
+            if (ordColIdx !== -1) {
+                const order = formData[ordColIdx];
+                // Fallback validation for order only
+                if (isOrderDuplicate('', order, editingRowIndex)) {
+                    showNotification(`El Número ${order} ya existe.`, "error");
+                    return;
+                }
+            }
+        }
+    }
+
+    setSaving(true);
+    try {
+        const sheetTitle = activeSheet.properties.title;
+
+        if (activeTab === 'metadatos') {
+            const updates = [];
+            for (let i = 0; i < formData.length; i++) {
+                updates.push(updateCellValue(spreadsheet.spreadsheetId, sheetTitle, { row: currentDocRowIndex || 1, col: i, value: formData[i] }, token));
+            }
+            await Promise.all(updates);
+            showNotification("Metadatos guardados.", "success");
+        } else {
+            const finalFormData = [...formData];
+            if (activeTab === 'tablas') {
+                const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
+                if (csvIndex !== -1 && nestedGridRange) {
+                    finalFormData[csvIndex] = nestedGridRange;
+                }
+            }
+
+            if (activeTab === 'secciones') {
+                const contentIdx = findColumnIndex(formHeaders, CONTENIDO_VARIANTS);
+                if (contentIdx !== -1) {
+                    finalFormData[contentIdx] = normalizeOnSave((finalFormData[contentIdx] || '').toString());
+                }
+                const nivelIdx = findColumnIndex(formHeaders, NIVEL_VARIANTS);
+                if (nivelIdx !== -1) {
+                    finalFormData[nivelIdx] = normalizeLevelValue((finalFormData[nivelIdx] || '').toString());
+                }
+            }
+
+            if (editingRowIndex === null) {
+                if (activeTab === 'secciones') {
+                    const headers = gridHeaders;
+                    const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
+                    let lastDataIdx = -1;
+                    for (let i = 1; i < gridData.length; i++) {
+                        const row = gridData[i];
+                        const dId = docIdx !== -1 ? (row[docIdx] || '') : '';
+                        if (dId === currentDocId) lastDataIdx = i - 1;
+                    }
+                    const insertAtSheetRow = (lastDataIdx >= 0) ? (lastDataIdx + 2 + 1) : 2;
+                    await insertDimension(spreadsheet.spreadsheetId, activeSheet.properties.sheetId, insertAtSheetRow - 1, 1, 'ROWS', token);
+                    const endColLetter = indexToColumnLetter(finalFormData.length - 1);
+                    const targetRange = `${sheetTitle}!A${insertAtSheetRow}:${endColLetter}${insertAtSheetRow}`;
+                    await updateValues(spreadsheet.spreadsheetId, targetRange, [finalFormData], token);
+                } else {
+                    await appendRow(spreadsheet.spreadsheetId, sheetTitle, finalFormData, token);
+                }
+            } else {
+                const startRow = editingRowIndex + 2;
+                const endColLetter = indexToColumnLetter(finalFormData.length - 1);
+                const updateRange = `${sheetTitle}!A${startRow}:${endColLetter}${startRow}`;
+                await updateValues(spreadsheet.spreadsheetId, updateRange, [finalFormData], token);
+            }
+
+            if (activeTab === 'tablas') {
+                const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
+                let targetRange = finalFormData[csvIndex] || nestedGridRange;
+
+                if (targetRange && targetRange.includes('!')) {
+                    targetRange = sanitizeRangeString(targetRange);
+                    const parsedTarget = parseRange(targetRange);
+
+                    if (parsedTarget) {
+                        const targetSheetExists = spreadsheet.sheets.some(s => s.properties.title === parsedTarget.sheetName);
+                        if (!targetSheetExists) {
+                            try {
+                                await createNewTab(spreadsheet.spreadsheetId, parsedTarget.sheetName, token);
+                            } catch (e) { console.error(e); }
+                        }
+                    }
+
+                    if (originalNestedGridRange) {
+                        const cleanOldRangeStr = sanitizeRangeString(originalNestedGridRange);
+                        const oldRange = parseRange(cleanOldRangeStr);
+                        const newRange = parseRange(targetRange);
+
+                        if (oldRange && newRange && oldRange.sheetName === newRange.sheetName) {
+                            const nestedSheet = spreadsheet.sheets.find(s => s.properties.title === newRange.sheetName);
+                            if (nestedSheet) {
+                                const rowsDiff = (newRange.endRow - newRange.startRow) - (oldRange.endRow - oldRange.startRow);
+                                const colsDiff = (newRange.endCol - newRange.startCol) - (oldRange.endCol - oldRange.startCol);
+
+                                if (rowsDiff !== 0) {
+                                    if (rowsDiff > 0) {
+                                        await insertDimension(spreadsheet.spreadsheetId, nestedSheet.properties.sheetId, oldRange.endRow, rowsDiff, 'ROWS', token);
+                                    } else {
+                                        const rowsToDelete = Math.abs(rowsDiff);
+                                        await deleteDimensionRange(spreadsheet.spreadsheetId, nestedSheet.properties.sheetId, newRange.endRow, rowsToDelete, 'ROWS', token);
+                                    }
+
+                                    const updatesToShift: Promise<any>[] = [];
+                                    gridData.forEach((row, idx) => {
+                                        if (idx === editingRowIndex) return;
+                                        const otherRangeStr = row[csvIndex];
+                                        if (!otherRangeStr) return;
+                                        const cleanOtherRangeStr = sanitizeRangeString(otherRangeStr);
+                                        const otherRange = parseRange(cleanOtherRangeStr);
+
+                                        if (otherRange &&
+                                            otherRange.sheetName === oldRange.sheetName &&
+                                            otherRange.startRow >= oldRange.endRow) {
+
+                                            const newStart = otherRange.startRow + rowsDiff;
+                                            const newEnd = otherRange.endRow + rowsDiff;
+                                            const sCol = indexToColumnLetter(otherRange.startCol);
+                                            const eCol = indexToColumnLetter(otherRange.endCol);
+                                            const finalSheetPart = quoteSheetName(otherRange.sheetName);
+                                            const newRangeStr = `${finalSheetPart}!${sCol}${newStart}:${eCol}${newEnd}`;
+
+                                            updatesToShift.push(updateCellValue(spreadsheet.spreadsheetId, activeSheet.properties.title, { row: idx + 1, col: csvIndex, value: newRangeStr }, token));
+                                        }
+                                    });
+                                    if (updatesToShift.length > 0) await Promise.all(updatesToShift);
+                                }
+
+                                if (colsDiff < 0) {
+                                    const colsToDelete = Math.abs(colsDiff);
+                                    const startClearColIdx = newRange.endCol + 1;
+                                    const endClearColIdx = oldRange.endCol;
+                                    const sColChar = indexToColumnLetter(startClearColIdx);
+                                    const eColChar = indexToColumnLetter(endClearColIdx);
+                                    const sheetRef = quoteSheetName(nestedSheet.properties.title);
+                                    const clearRangeStr = `${sheetRef}!${sColChar}${newRange.startRow}:${eColChar}${newRange.endRow}`;
+                                    const numRows = newRange.endRow - newRange.startRow + 1;
+                                    const emptyValues = Array(numRows).fill(Array(colsToDelete).fill(''));
+                                    await updateValues(spreadsheet.spreadsheetId, clearRangeStr, emptyValues, token);
+                                }
+                            }
+                        }
+                    }
+                    await updateValues(spreadsheet.spreadsheetId, targetRange, nestedGridData, token);
+                }
+            }
+
+            showNotification("Guardado correctamente.", "success");
+            socketService.reportAction(`Guardó cambios en ${activeTab} (${currentDocId})`);
+
+            // Notify other users about the data update
+            socketService.notifyDataUpdate({
+                docId: currentDocId,
+                type: activeTab === 'figuras' ? 'figure_update' : 'row_update',
+                tab: activeTab
+            });
+
+            // Update local state to reflect changes without full reload
+            const newGridData = [...gridData];
+            if (editingRowIndex === null) {
+                // New item added
+                newGridData.push(finalFormData);
+                setGridData(newGridData);
+                setEditingRowIndex(newGridData.length - 1);
+            } else {
+                // Existing item updated
+                newGridData[editingRowIndex] = finalFormData;
+                setGridData(newGridData);
+            }
+
+            // Do not refresh or switch view mode, to keep user context
+            // onRefresh();
+            // setSearchTerm('');
+            // setViewMode('LIST');
+        }
+    } catch (e) {
+        console.error(e);
+        showNotification("Error al guardar los cambios.", "error");
+    } finally {
+        setSaving(false);
+    }
+};
+
+const addGridRow = () => {
+    const cols = nestedGridData[0]?.length || 5;
+    const newData = [...nestedGridData, new Array(cols).fill('')];
+    setNestedGridData(newData);
+    updateRangeString(newData);
+};
+const addGridCol = () => {
+    const newData = nestedGridData.map(row => [...row, '']);
+    setNestedGridData(newData);
+    updateRangeString(newData);
+};
+const deleteGridRow = () => {
+    if (nestedGridData.length <= 1) return;
+    const newData = [...nestedGridData];
+    newData.pop();
+    setNestedGridData(newData);
+    updateRangeString(newData);
+};
+const deleteGridCol = () => {
+    if (!nestedGridData[0] || nestedGridData[0].length <= 1) return;
+    const newData = nestedGridData.map(row => {
+        const newRow = [...row];
+        newRow.pop();
+        return newRow;
+    });
+    setNestedGridData(newData);
+    updateRangeString(newData);
+};
+
+const normalizedQuery = (searchTerm || '').toString().trim().toLowerCase();
+const filteredData = gridData.map((row, index) => ({ row, index })).filter(({ row }) => {
+    if (!normalizedQuery) return true;
+    return row.some(cell => cell.toLowerCase().includes(normalizedQuery));
+});
+// Optimized hierarchical sort function
+const compareHierarchicalOrder = (valA: string, valB: string) => {
+    // Normalize: empty/null becomes 0 equivalent
+    const cleanA = (valA || '').toString().trim();
+    const cleanB = (valB || '').toString().trim();
+
+    if (!cleanA && !cleanB) return 0;
+    if (!cleanA) return -1; // Empty values first
+    if (!cleanB) return 1;
+
+    // Split by dot for hierarchy (1.1, 1.2, 1.10)
+    const partsA = cleanA.split('.');
+    const partsB = cleanB.split('.');
+
+    const len = Math.max(partsA.length, partsB.length);
+    for (let k = 0; k < len; k++) {
+        // Parse each part as integer. Missing parts treat as 0.
+        // Example: 1 vs 1.1 -> [1] vs [1, 1] -> 1==1, 0 < 1.
+        const partA = partsA[k];
+        const partB = partsB[k];
+
+        const numA = partA === undefined ? 0 : (parseInt(partA) || 0);
+        const numB = partB === undefined ? 0 : (parseInt(partB) || 0);
+
+        if (numA !== numB) return numA - numB;
+    }
+    return 0;
+};
+
+const sortedData = (activeTab === 'secciones') ? [...filteredData].sort((a, b) => {
+    const hIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+    const av = hIdx !== -1 ? (a.row[hIdx] || '') : '';
+    const bv = hIdx !== -1 ? (b.row[hIdx] || '') : '';
+    return compareHierarchicalOrder(av, bv);
+}) : filteredData;
+
+const displayedRows = sortedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+const totalPages = Math.ceil(sortedData.length / ITEMS_PER_PAGE);
+
+const Breadcrumbs = () => (
+    <nav className="flex items-center text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
+        <button onClick={onBack} className="hover:text-[#691C32] transition-colors">Inicio</button>
+        <ChevronRight size={14} className="mx-2 flex-shrink-0" />
+        <span className="font-medium text-gray-900 truncate max-w-[150px]">{spreadsheet.properties.title}</span>
+        <ChevronRight size={14} className="mx-2 flex-shrink-0" />
+        <button
+            onClick={() => { if (activeTab !== 'metadatos') setViewMode('LIST'); }}
+            className={clsx("hover:text-[#691C32] transition-colors capitalize", viewMode === 'LIST' && activeTab !== 'metadatos' ? "font-bold text-[#691C32]" : "")}
+        >
+            {activeTab}
+        </button>
+        {viewMode === 'FORM' && (
+            <>
+                <ChevronRight size={14} className="mx-2 flex-shrink-0" />
+                <span className="font-bold text-[#691C32]">
+                    {activeTab === 'metadatos' ? 'Edición' : (editingRowIndex !== null ? 'Editar' : 'Nuevo')}
+                </span>
+            </>
+        )}
+    </nav>
+);
+
+// --- Helpers for Stats ---
+const getSectionStats = (row: string[]) => {
+    if (activeTab !== 'secciones') return null;
+
+    const ordIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+    const sectionId = ordIdx !== -1 ? (row[ordIdx] || '').toString().trim() : '';
+
+    const contentIdx = findColumnIndex(gridHeaders, CONTENIDO_VARIANTS);
+    const content = contentIdx !== -1 ? (row[contentIdx] || '').toString() : '';
+
+    // Count items
+    const tableCount = availableTableItems.filter(t => t.section === sectionId).length;
+    const figureCount = availableFigureItems.filter(f => f.section === sectionId).length;
+    const eqCount = (content.match(/\[\[(ecuacion|math):/g) || []).length;
+    const citeCount = (content.match(/\[\[cita:/g) || []).length;
+
+    return { tableCount, figureCount, eqCount, citeCount };
+};
+
+// Helper for Modal Text based on Tab
+const getDeleteContext = () => {
+    switch (activeTab) {
+        case 'tablas': return {
+            title: "¿Eliminar tabla?",
+            text: "Esta acción eliminará la tabla de la lista principal y también borrará sus datos internos de la hoja de cálculo. No se puede deshacer."
+        };
+        case 'figuras': return {
+            title: "¿Eliminar figura?",
+            text: "Esta acción eliminará la figura. Asegúrate de que no esté referenciada en el texto (ej. [[figura:FIG-X-Y]]) para evitar errores de compilación."
+        };
+        case 'bibliografia': return {
+            title: "¿Eliminar referencia?",
+            text: "Esta acción eliminará permanentemente la referencia bibliográfica del documento."
+        };
+        case 'siglas': return {
+            title: "¿Eliminar sigla?",
+            text: "Esta acción eliminará la sigla y su definición del catálogo del documento."
+        };
+        case 'glosario': return {
+            title: "¿Eliminar término?",
+            text: "Esta acción eliminará el término y su definición del glosario."
+        };
+        default: return {
+            title: "¿Eliminar registro?",
+            text: "Esta acción eliminará el registro de la lista principal. Esta acción no se puede deshacer."
+        };
+    }
+};
+
+const handleGenerateLatex = async () => {
+    if (activeTab !== 'metadatos') {
+        showNotification("Debes estar en la vista de 'Metadatos' (Documentos) para generar el archivo.", 'error');
+        return;
+    }
+
+    // Try to get ID from current selection or context
+    let targetDocId = currentDocId;
+
+    // If no global doc id, try to find from editing row
+    if (!targetDocId && editingRowIndex !== null) {
+        const idxDoc = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+        if (idxDoc !== -1) {
+            targetDocId = gridData[editingRowIndex][idxDoc];
+        }
+    }
+
+    if (!targetDocId) {
+        showNotification("No se ha detectado un ID de documento válido. Selecciona un documento o abre uno.", 'error');
+        return;
+    }
+
+    // Regex validation (Simple alphanumeric)
+    if (!/^[a-zA-Z0-9_-]+$/.test(targetDocId)) {
+        showNotification(`El ID del documento "${targetDocId}" no tiene un formato válido.`, 'error');
+        return;
+    }
+
+    setSaving(true); // Re-use saving state for loading
+    showNotification("Generando archivos LaTeX... Esto puede tardar unos segundos.", 'info');
+
+    try {
+        const response = await fetch(`${API_URL}/generate-latext`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                spreadsheetId: spreadsheet.spreadsheetId,
+                docId: targetDocId,
+                token: token
+            })
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || "Error desconocido en el servidor");
+        }
+
+        // Trigger Download
+        // 1. .tex file
+        const blobTex = new Blob([result.tex], { type: 'text/plain' });
+        const urlTex = window.URL.createObjectURL(blobTex);
+        const aTex = document.createElement('a');
+        aTex.href = urlTex;
+        aTex.download = `${result.filename}.tex`;
+        document.body.appendChild(aTex);
+        aTex.click();
+        document.body.removeChild(aTex);
+        window.URL.revokeObjectURL(urlTex);
+
+        // 2. .bib file (if exists)
+        if (result.bib) {
+            const blobBib = new Blob([result.bib], { type: 'text/plain' });
+            const urlBib = window.URL.createObjectURL(blobBib);
+            const aBib = document.createElement('a');
+            aBib.href = urlBib;
+            aBib.download = `referencias.bib`;
+            document.body.appendChild(aBib);
+            aBib.click();
+            document.body.removeChild(aBib);
+            window.URL.revokeObjectURL(urlBib);
+        }
+
+        showNotification("Archivos generados y descargados correctamente.", 'success');
+
+    } catch (e: any) {
+        console.error(e);
+        showNotification(`Error al generar LaTeX: ${e.message}`, 'error');
+    } finally {
+        setSaving(false);
+    }
+};
+
+const deleteContext = getDeleteContext();
+
+return (
+    <div className="flex flex-col h-screen bg-[#F5F5F5] relative">
+
+        {/* Notification Banner */}
+        {notification && (
+            <div className={clsx(
+                "fixed top-4 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-3 animate-in fade-in slide-in-from-top-2",
+                notification.type === 'success' ? "bg-[#13322B] text-white" :
+                    notification.type === 'error' ? "bg-red-600 text-white" : "bg-blue-600 text-white"
+            )}>
+                {notification.type === 'success' ? <Check size={18} /> :
+                    notification.type === 'error' ? <AlertCircle size={18} /> : <Info size={18} />}
+                {notification.message}
+                <button onClick={() => setNotification(null)} className="ml-2 opacity-80 hover:opacity-100">
+                    <X size={14} />
+                </button>
+            </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {deleteModal.isOpen && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 animate-in zoom-in duration-200">
+                    <div className="flex flex-col items-center text-center">
+                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                            <AlertTriangle className="text-red-600" size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">{deleteContext.title}</h3>
+                        <p className="text-sm text-gray-500 mb-6">
+                            {deleteContext.text}
+                        </p>
+                        <div className="flex w-full gap-3">
+                            <Button variant="ghost" className="flex-1" onClick={() => setDeleteModal({ isOpen: false, rowIndex: null })}>
+                                Cancelar
+                            </Button>
+                            <Button variant="danger" className="flex-1" onClick={executeDelete} isLoading={saving}>
+                                Eliminar
+                            </Button>
                         </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={handleGenerateLatex} className="hidden md:flex gap-2 text-[#691C32] border-[#691C32] hover:bg-[#691C32] hover:text-white transition-colors" title="Generar archivos .tex y .bib">
-                        <FileText size={16} /> Generar .Latex
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={onBack} className="hidden md:flex">
-                        Salir
-                    </Button>
+            </div>
+        )}
+
+        {/* Table Wizard Modal */}
+        {showTableWizard && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 animate-in zoom-in duration-200">
+                    <h3 className="text-lg font-bold text-[#691C32] mb-2">Nueva Tabla</h3>
+                    <p className="text-sm text-gray-600 mb-4">Define el tamaño inicial. El sistema buscará un espacio vacío en la hoja de datos.</p>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Filas</label>
+                            <input
+                                type="number"
+                                min="2" max="100"
+                                value={wizardConfig.rows}
+                                onChange={(e) => setWizardConfig({ ...wizardConfig, rows: parseInt(e.target.value) })}
+                                className="w-full border border-gray-300 rounded px-3 py-2 mt-1 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Columnas</label>
+                            <input
+                                type="number"
+                                min="2" max="26"
+                                value={wizardConfig.cols}
+                                onChange={(e) => setWizardConfig({ ...wizardConfig, cols: parseInt(e.target.value) })}
+                                className="w-full border border-gray-300 rounded px-3 py-2 mt-1 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 mt-6">
+                        <Button variant="ghost" onClick={() => setShowTableWizard(false)}>Cancelar</Button>
+                        <Button variant="burgundy" onClick={handleWizardConfirm} isLoading={calculatingRange}>
+                            Crear y Asignar Rango
+                        </Button>
+                    </div>
                 </div>
             </div>
+        )}
 
-            <div className="flex flex-1 overflow-hidden relative">
-
-                {/* Sidebar */}
-                <div className={clsx(
-                    "absolute inset-y-0 left-0 bg-white border-r border-gray-200 flex flex-col py-4 shadow-lg z-30 transition-transform duration-300 md:relative md:translate-x-0 w-64",
-                    mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
-                )}>
-                    <nav className="space-y-1 px-2">
-                        <button onClick={() => { setActiveTab('metadatos'); setMobileMenuOpen(false); }} className={clsx("w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md", activeTab === 'metadatos' ? "bg-red-50 text-[#691C32]" : "text-gray-600 hover:bg-gray-50")}>
-                            <Info size={18} /> Metadatos
-                        </button>
-                        <div className="my-2 border-t border-gray-100"></div>
-                        {[
-                            { id: 'secciones', icon: List, label: 'Secciones' },
-                            { id: 'tablas', icon: Table, label: 'Tablas' },
-                            { id: 'figuras', icon: Image, label: 'Figuras' },
-                            { id: 'bibliografia', icon: Book, label: 'Bibliografía' },
-                            { id: 'siglas', icon: Type, label: 'Siglas' },
-                            { id: 'glosario', icon: FileText, label: 'Glosario' }
-                        ].map(item => (
-                            <button
-                                key={item.id}
-                                onClick={() => { setActiveTab(item.id); setViewMode('LIST'); setMobileMenuOpen(false); }}
-                                className={clsx("w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md", activeTab === item.id ? "bg-red-50 text-[#691C32]" : "text-gray-600 hover:bg-gray-50")}
-                            >
-                                <item.icon size={18} /> {item.label}
-                            </button>
-                        ))}
-                    </nav>
-                    <UserActivityTracker variant="sidebar" />
+        {/* Top Bar */}
+        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm z-20">
+            <div className="flex items-center gap-3">
+                <button className="md:hidden text-gray-600" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+                    <Menu size={24} />
+                </button>
+                <div className="flex flex-col">
+                    <h1 className="text-lg font-bold text-[#691C32] capitalize leading-tight">
+                        {activeTab === 'metadatos' ? 'Editor de Documento' : activeTab}
+                    </h1>
+                    <div className="mt-1 text-sm text-gray-700 font-medium flex items-center gap-2">
+                        <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs font-mono border border-gray-200">
+                            {currentDocId}
+                        </span>
+                        <span className="truncate max-w-[200px] md:max-w-[400px]" title={availableDocs.find(d => d.id === currentDocId)?.title || ''}>
+                            {availableDocs.find(d => d.id === currentDocId)?.title || 'Cargando título...'}
+                        </span>
+                    </div>
                 </div>
+            </div>
+            <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleGenerateLatex} className="hidden md:flex gap-2 text-[#691C32] border-[#691C32] hover:bg-[#691C32] hover:text-white transition-colors" title="Generar archivos .tex y .bib">
+                    <FileText size={16} /> Generar .Latex
+                </Button>
+                <Button variant="outline" size="sm" onClick={onBack} className="hidden md:flex">
+                    Salir
+                </Button>
+            </div>
+        </div>
 
-                {/* Main Content Area */}
-                <div className="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-8">
-                    <div className="max-w-6xl mx-auto">
+        <div className="flex flex-1 overflow-hidden relative">
 
-                        <Breadcrumbs />
+            {/* Sidebar */}
+            <div className={clsx(
+                "absolute inset-y-0 left-0 bg-white border-r border-gray-200 flex flex-col py-4 shadow-lg z-30 transition-transform duration-300 md:relative md:translate-x-0 w-64",
+                mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+            )}>
+                <nav className="space-y-1 px-2">
+                    <button onClick={() => { setActiveTab('metadatos'); setMobileMenuOpen(false); }} className={clsx("w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md", activeTab === 'metadatos' ? "bg-red-50 text-[#691C32]" : "text-gray-600 hover:bg-gray-50")}>
+                        <Info size={18} /> Metadatos
+                    </button>
+                    <div className="my-2 border-t border-gray-100"></div>
+                    {[
+                        { id: 'secciones', icon: List, label: 'Secciones' },
+                        { id: 'tablas', icon: Table, label: 'Tablas' },
+                        { id: 'figuras', icon: Image, label: 'Figuras' },
+                        { id: 'bibliografia', icon: Book, label: 'Bibliografía' },
+                        { id: 'siglas', icon: Type, label: 'Siglas' },
+                        { id: 'glosario', icon: FileText, label: 'Glosario' }
+                    ].map(item => (
+                        <button
+                            key={item.id}
+                            onClick={() => { setActiveTab(item.id); setViewMode('LIST'); setMobileMenuOpen(false); }}
+                            className={clsx("w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md", activeTab === item.id ? "bg-red-50 text-[#691C32]" : "text-gray-600 hover:bg-gray-50")}
+                        >
+                            <item.icon size={18} /> {item.label}
+                        </button>
+                    ))}
+                </nav>
+                <UserActivityTracker variant="sidebar" />
+            </div>
 
-                        {/* --- LIST VIEW --- */}
-                        {viewMode === 'LIST' && activeTab !== 'metadatos' && (
-                            <div className="space-y-6 animate-in fade-in duration-300">
-                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-gray-900 capitalize">{activeTab}</h2>
-                                        <p className="text-sm text-gray-500 mt-1 max-w-2xl">{TAB_DESCRIPTIONS[activeTab]}</p>
-                                    </div>
-                                    <Button onClick={handlePreCreate}>
-                                        <Plus size={16} className="mr-2" /> Nuevo Elemento
-                                    </Button>
-                                    {activeTab === 'secciones' && (
-                                        <Button variant="secondary" onClick={() => validateCurrentDocumentOrders()}>
-                                            Validar órdenes
-                                        </Button>
-                                    )}
+            {/* Main Content Area */}
+            <div className="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-8">
+                <div className="max-w-6xl mx-auto">
+
+                    <Breadcrumbs />
+
+                    {/* --- LIST VIEW --- */}
+                    {viewMode === 'LIST' && activeTab !== 'metadatos' && (
+                        <div className="space-y-6 animate-in fade-in duration-300">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-gray-900 capitalize">{activeTab}</h2>
+                                    <p className="text-sm text-gray-500 mt-1 max-w-2xl">{TAB_DESCRIPTIONS[activeTab]}</p>
                                 </div>
+                                <Button onClick={handlePreCreate}>
+                                    <Plus size={16} className="mr-2" /> Nuevo Elemento
+                                </Button>
+                                {activeTab === 'secciones' && (
+                                    <Button variant="secondary" onClick={() => validateCurrentDocumentOrders()}>
+                                        Validar órdenes
+                                    </Button>
+                                )}
+                            </div>
 
-                                {/* Global Stats Card for Other Tabs */}
-                                {(activeTab === 'bibliografia' || activeTab === 'glosario' || activeTab === 'siglas' || activeTab === 'tablas' || activeTab === 'figuras') && (
-                                    <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm mb-4 flex items-center gap-6 animate-in fade-in slide-in-from-top-2">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 rounded-full bg-[#691C32]/10 text-[#691C32]">
-                                                {activeTab === 'bibliografia' ? <Book size={20} /> :
-                                                    activeTab === 'glosario' ? <FileText size={20} /> :
-                                                        activeTab === 'siglas' ? <Type size={20} /> :
-                                                            activeTab === 'tablas' ? <Table size={20} /> :
-                                                                <Image size={20} />}
-                                            </div>
-                                            <div>
-                                                <div className="text-2xl font-bold text-gray-900">{gridData.length}</div>
-                                                <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
-                                                    {activeTab === 'bibliografia' ? 'Referencias Total' :
-                                                        activeTab === 'glosario' ? 'Términos Total' :
-                                                            activeTab === 'siglas' ? 'Siglas Total' :
-                                                                activeTab === 'tablas' ? 'Tablas Total' :
-                                                                    'Figuras Total'}
-                                                </div>
+                            {/* Global Stats Card for Other Tabs */}
+                            {(activeTab === 'bibliografia' || activeTab === 'glosario' || activeTab === 'siglas' || activeTab === 'tablas' || activeTab === 'figuras') && (
+                                <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm mb-4 flex items-center gap-6 animate-in fade-in slide-in-from-top-2">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 rounded-full bg-[#691C32]/10 text-[#691C32]">
+                                            {activeTab === 'bibliografia' ? <Book size={20} /> :
+                                                activeTab === 'glosario' ? <FileText size={20} /> :
+                                                    activeTab === 'siglas' ? <Type size={20} /> :
+                                                        activeTab === 'tablas' ? <Table size={20} /> :
+                                                            <Image size={20} />}
+                                        </div>
+                                        <div>
+                                            <div className="text-2xl font-bold text-gray-900">{gridData.length}</div>
+                                            <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+                                                {activeTab === 'bibliografia' ? 'Referencias Total' :
+                                                    activeTab === 'glosario' ? 'Términos Total' :
+                                                        activeTab === 'siglas' ? 'Siglas Total' :
+                                                            activeTab === 'tablas' ? 'Tablas Total' :
+                                                                'Figuras Total'}
                                             </div>
                                         </div>
-                                        <div className="h-8 w-px bg-gray-200"></div>
-                                        <div className="text-sm text-gray-500">
-                                            {activeTab === 'bibliografia' ? 'Recuerda usar [[cita:CLAVE]] en el texto.' :
-                                                activeTab === 'glosario' ? 'Define términos técnicos aquí.' :
-                                                    activeTab === 'siglas' ? 'Define abreviaturas usadas.' :
-                                                        'Gestiona los elementos visuales del documento.'}
+                                    </div>
+                                    <div className="h-8 w-px bg-gray-200"></div>
+                                    <div className="text-sm text-gray-500">
+                                        {activeTab === 'bibliografia' ? 'Recuerda usar [[cita:CLAVE]] en el texto.' :
+                                            activeTab === 'glosario' ? 'Define términos técnicos aquí.' :
+                                                activeTab === 'siglas' ? 'Define abreviaturas usadas.' :
+                                                    'Gestiona los elementos visuales del documento.'}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                                <div className="p-4 border-b border-gray-100 flex gap-4">
+                                    <div className="relative flex-1 max-w-md">
+                                        <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#691C32] bg-white text-gray-900"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                            <tr>
+                                                <th className="px-6 py-3 text-left w-28 font-semibold" style={{ backgroundColor: '#f5f5f5', border: '1px solid #ddd' }}>
+                                                    <span className="inline-flex items-center gap-2"><MoreVertical size={14} aria-hidden="true" /> Acciones</span>
+                                                </th>
+                                                {activeTab === 'secciones' && (
+                                                    <th className="px-6 py-3 font-semibold text-center w-40">Estadísticas</th>
+                                                )}
+                                                {gridHeaders.map((h, i) => <th key={i} className="px-6 py-3 font-semibold">{h}</th>)}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {displayedRows.length > 0 ? displayedRows.map(({ row, index }) => {
+                                                const docIdxLocal = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+                                                const rowDocId = docIdxLocal !== -1 ? (row[docIdxLocal] || '') : '';
+                                                const canDelete = !rowDocId || rowDocId === currentDocId;
+
+                                                // Get Order value for data attribute
+                                                const ordIdxLocal = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+                                                const orderVal = ordIdxLocal !== -1 ? (row[ordIdxLocal] || '') : '';
+
+                                                return (
+                                                    <tr
+                                                        key={index}
+                                                        className={clsx("hover:bg-gray-50", saving && "opacity-50 pointer-events-none")}
+                                                        data-order={orderVal}
+                                                    >
+                                                        <td className="px-6 py-4 text-left" style={{ backgroundColor: '#f5f5f5', border: '1px solid #ddd' }}>
+                                                            <div className="flex justify-start gap-2">
+                                                                <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-800" title="Editar"><Edit size={16} /></button>
+                                                                <button onClick={() => canDelete ? requestDelete(index) : null} className={clsx("", canDelete ? "text-red-600 hover:text-red-800" : "text-gray-400 cursor-not-allowed")} title={canDelete ? "Eliminar" : "No puedes eliminar registros de otro DocumentoID"}><Trash2 size={16} /></button>
+                                                            </div>
+                                                        </td>
+                                                        {activeTab === 'secciones' && (
+                                                            <td className="px-6 py-4">
+                                                                {(function () {
+                                                                    const stats = getSectionStats(row);
+                                                                    if (!stats) return null;
+                                                                    return (
+                                                                        <div className="flex flex-col gap-1 min-w-[120px]">
+                                                                            <div className="flex items-center justify-between text-[10px] bg-blue-50 text-blue-800 px-2 py-0.5 rounded-full border border-blue-100" title="Tablas">
+                                                                                <span className="flex items-center gap-1"><Table size={10} /> Tablas</span>
+                                                                                <span className="font-bold">{stats.tableCount}</span>
+                                                                            </div>
+                                                                            <div className="flex items-center justify-between text-[10px] bg-purple-50 text-purple-800 px-2 py-0.5 rounded-full border border-purple-100" title="Figuras">
+                                                                                <span className="flex items-center gap-1"><Image size={10} /> Figuras</span>
+                                                                                <span className="font-bold">{stats.figureCount}</span>
+                                                                            </div>
+                                                                            <div className="flex items-center justify-between text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full border border-gray-200" title="Ecuaciones">
+                                                                                <span className="flex items-center gap-1"><Grid size={10} /> Ecua.</span>
+                                                                                <span className="font-bold">{stats.eqCount}</span>
+                                                                            </div>
+                                                                            {stats.citeCount > 0 && (
+                                                                                <div className="flex items-center justify-between text-[10px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full border border-amber-100" title="Citas">
+                                                                                    <span className="flex items-center gap-1"><Book size={10} /> Citas</span>
+                                                                                    <span className="font-bold">{stats.citeCount}</span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })()}
+                                                            </td>
+                                                        )}
+                                                        {row.map((cell, i) => (
+                                                            <td key={i} className="px-6 py-4 min-w-[150px] max-w-[400px]">
+                                                                <ContentPreview text={cell} limit={120} />
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                );
+                                            }) : (
+                                                <tr><td colSpan={gridHeaders.length + 1} className="px-6 py-12 text-center text-gray-500">No hay registros.</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Pagination Controls */}
+                                {totalPages > 1 && (
+                                    <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+                                        <div className="text-sm text-gray-700">
+                                            Mostrando <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> a <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, sortedData.length)}</span> de <span className="font-medium">{sortedData.length}</span> resultados
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                                disabled={currentPage === 1}
+                                            >
+                                                <ChevronLeft size={16} /> Anterior
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                                disabled={currentPage === totalPages}
+                                            >
+                                                Siguiente <ChevronRight size={16} />
+                                            </Button>
                                         </div>
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    )}
 
-                                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                                    <div className="p-4 border-b border-gray-100 flex gap-4">
-                                        <div className="relative flex-1 max-w-md">
-                                            <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-                                            <input
-                                                type="text"
-                                                placeholder="Buscar..."
-                                                value={searchTerm}
-                                                onChange={(e) => setSearchTerm(e.target.value)}
-                                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#691C32] bg-white text-gray-900"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm text-left">
-                                            <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                                                <tr>
-                                                    <th className="px-6 py-3 text-left w-28 font-semibold" style={{ backgroundColor: '#f5f5f5', border: '1px solid #ddd' }}>
-                                                        <span className="inline-flex items-center gap-2"><MoreVertical size={14} aria-hidden="true" /> Acciones</span>
-                                                    </th>
-                                                    {activeTab === 'secciones' && (
-                                                        <th className="px-6 py-3 font-semibold text-center w-40">Estadísticas</th>
-                                                    )}
-                                                    {gridHeaders.map((h, i) => <th key={i} className="px-6 py-3 font-semibold">{h}</th>)}
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {displayedRows.length > 0 ? displayedRows.map(({ row, index }) => {
-                                                    const docIdxLocal = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
-                                                    const rowDocId = docIdxLocal !== -1 ? (row[docIdxLocal] || '') : '';
-                                                    const canDelete = !rowDocId || rowDocId === currentDocId;
+                    {/* --- FORM VIEW (Unified) --- */}
+                    {viewMode === 'FORM' && (
+                        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
 
-                                                    // Get Order value for data attribute
-                                                    const ordIdxLocal = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
-                                                    const orderVal = ordIdxLocal !== -1 ? (row[ordIdxLocal] || '') : '';
+                            <Ribbon />
 
-                                                    return (
-                                                        <tr
-                                                            key={index}
-                                                            className={clsx("hover:bg-gray-50", saving && "opacity-50 pointer-events-none")}
-                                                            data-order={orderVal}
-                                                        >
-                                                            <td className="px-6 py-4 text-left" style={{ backgroundColor: '#f5f5f5', border: '1px solid #ddd' }}>
-                                                                <div className="flex justify-start gap-2">
-                                                                    <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-800" title="Editar"><Edit size={16} /></button>
-                                                                    <button onClick={() => canDelete ? requestDelete(index) : null} className={clsx("", canDelete ? "text-red-600 hover:text-red-800" : "text-gray-400 cursor-not-allowed")} title={canDelete ? "Eliminar" : "No puedes eliminar registros de otro DocumentoID"}><Trash2 size={16} /></button>
-                                                                </div>
-                                                            </td>
-                                                            {activeTab === 'secciones' && (
-                                                                <td className="px-6 py-4">
-                                                                    {(function () {
-                                                                        const stats = getSectionStats(row);
-                                                                        if (!stats) return null;
-                                                                        return (
-                                                                            <div className="flex flex-col gap-1 min-w-[120px]">
-                                                                                <div className="flex items-center justify-between text-[10px] bg-blue-50 text-blue-800 px-2 py-0.5 rounded-full border border-blue-100" title="Tablas">
-                                                                                    <span className="flex items-center gap-1"><Table size={10} /> Tablas</span>
-                                                                                    <span className="font-bold">{stats.tableCount}</span>
-                                                                                </div>
-                                                                                <div className="flex items-center justify-between text-[10px] bg-purple-50 text-purple-800 px-2 py-0.5 rounded-full border border-purple-100" title="Figuras">
-                                                                                    <span className="flex items-center gap-1"><Image size={10} /> Figuras</span>
-                                                                                    <span className="font-bold">{stats.figureCount}</span>
-                                                                                </div>
-                                                                                <div className="flex items-center justify-between text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full border border-gray-200" title="Ecuaciones">
-                                                                                    <span className="flex items-center gap-1"><Grid size={10} /> Ecua.</span>
-                                                                                    <span className="font-bold">{stats.eqCount}</span>
-                                                                                </div>
-                                                                                {stats.citeCount > 0 && (
-                                                                                    <div className="flex items-center justify-between text-[10px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full border border-amber-100" title="Citas">
-                                                                                        <span className="flex items-center gap-1"><Book size={10} /> Citas</span>
-                                                                                        <span className="font-bold">{stats.citeCount}</span>
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        );
-                                                                    })()}
-                                                                </td>
-                                                            )}
-                                                            {row.map((cell, i) => (
-                                                                <td key={i} className="px-6 py-4 min-w-[150px] max-w-[400px]">
-                                                                    <ContentPreview text={cell} limit={120} />
-                                                                </td>
-                                                            ))}
-                                                        </tr>
-                                                    );
-                                                }) : (
-                                                    <tr><td colSpan={gridHeaders.length + 1} className="px-6 py-12 text-center text-gray-500">No hay registros.</td></tr>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                            {/* Main Form Card */}
+                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 md:p-8">
+                                <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+                                    <h2 className="text-xl font-bold text-[#691C32]">
+                                        {activeTab === 'metadatos' ? 'Editar Metadatos' : (editingRowIndex === null ? 'Nuevo Registro' : 'Editar Registro')}
+                                    </h2>
 
-                                    {/* Pagination Controls */}
-                                    {totalPages > 1 && (
-                                        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
-                                            <div className="text-sm text-gray-700">
-                                                Mostrando <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> a <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, sortedData.length)}</span> de <span className="font-medium">{sortedData.length}</span> resultados
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                                    disabled={currentPage === 1}
-                                                >
-                                                    <ChevronLeft size={16} /> Anterior
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                                    disabled={currentPage === totalPages}
-                                                >
-                                                    Siguiente <ChevronRight size={16} />
-                                                </Button>
-                                            </div>
+                                    {/* Stats in Form Header (Secciones) */}
+                                    {activeTab === 'secciones' && editingRowIndex !== null && (
+                                        <div className="hidden md:flex gap-2 ml-4">
+                                            {(function () {
+                                                const row = gridData[editingRowIndex];
+                                                if (!row) return null;
+                                                const stats = getSectionStats(row);
+                                                if (!stats) return null;
+                                                return (
+                                                    <>
+                                                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded border border-blue-100" title="Tablas en esta sección">
+                                                            <Table size={12} /> {stats.tableCount}
+                                                        </span>
+                                                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded border border-purple-100" title="Figuras en esta sección">
+                                                            <Image size={12} /> {stats.figureCount}
+                                                        </span>
+                                                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded border border-gray-200" title="Ecuaciones en el texto">
+                                                            <Grid size={12} /> {stats.eqCount}
+                                                        </span>
+                                                    </>
+                                                )
+                                            })()}
                                         </div>
                                     )}
+
+                                    <Button variant="ghost" onClick={() => activeTab !== 'metadatos' && setViewMode('LIST')}>
+                                        Cancelar
+                                    </Button>
                                 </div>
-                            </div>
-                        )}
 
-                        {/* --- FORM VIEW (Unified) --- */}
-                        {viewMode === 'FORM' && (
-                            <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+                                <div className={clsx(
+                                    "grid gap-6 max-w-4xl",
+                                    (activeTab === 'tablas' || activeTab === 'figuras') ? "grid-cols-2" : "grid-cols-1"
+                                )}>
+                                    {formHeaders.map((header, i) => {
+                                        const isReadOnly = header === 'DocumentoID' || header === 'ID Documento' || header === 'ID' || DOC_ID_VARIANTS.includes(header);
+                                        const isCsvRange = CSV_COL_VARIANTS.includes(header);
+                                        const isSeccion = SECCION_COL_VARIANTS.includes(header);
+                                        const isOrden = ORDEN_COL_VARIANTS.includes(header);
+                                        const isNivel = activeTab === 'secciones' && findColumnIndex([header], NIVEL_VARIANTS) !== -1;
+                                        const isContenido = activeTab === 'secciones' && findColumnIndex([header], CONTENIDO_VARIANTS) !== -1;
+                                        const colSpan = ((activeTab === 'tablas' || activeTab === 'figuras') && !isSeccion && !isOrden) ? "col-span-2" : "col-span-1";
+                                        const isTipoBiblio = activeTab === 'bibliografia' && header.trim().toLowerCase() === 'tipo';
 
-                                {/* Main Form Card */}
-                                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 md:p-8">
-                                    <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
-                                        <h2 className="text-xl font-bold text-[#691C32]">
-                                            {activeTab === 'metadatos' ? 'Editar Metadatos' : (editingRowIndex === null ? 'Nuevo Registro' : 'Editar Registro')}
-                                        </h2>
-
-                                        {/* Stats in Form Header (Secciones) */}
-                                        {activeTab === 'secciones' && editingRowIndex !== null && (
-                                            <div className="hidden md:flex gap-2 ml-4">
-                                                {(function () {
-                                                    const row = gridData[editingRowIndex];
-                                                    if (!row) return null;
-                                                    const stats = getSectionStats(row);
-                                                    if (!stats) return null;
-                                                    return (
-                                                        <>
-                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded border border-blue-100" title="Tablas en esta sección">
-                                                                <Table size={12} /> {stats.tableCount}
-                                                            </span>
-                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded border border-purple-100" title="Figuras en esta sección">
-                                                                <Image size={12} /> {stats.figureCount}
-                                                            </span>
-                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded border border-gray-200" title="Ecuaciones en el texto">
-                                                                <Grid size={12} /> {stats.eqCount}
-                                                            </span>
-                                                        </>
-                                                    )
-                                                })()}
-                                            </div>
-                                        )}
-
-                                        <Button variant="ghost" onClick={() => activeTab !== 'metadatos' && setViewMode('LIST')}>
-                                            Cancelar
-                                        </Button>
-                                    </div>
-
-                                    <div className={clsx(
-                                        "grid gap-6 max-w-4xl",
-                                        (activeTab === 'tablas' || activeTab === 'figuras') ? "grid-cols-2" : "grid-cols-1"
-                                    )}>
-                                        {formHeaders.map((header, i) => {
-                                            const isReadOnly = header === 'DocumentoID' || header === 'ID Documento' || header === 'ID' || DOC_ID_VARIANTS.includes(header);
-                                            const isCsvRange = CSV_COL_VARIANTS.includes(header);
-                                            const isSeccion = SECCION_COL_VARIANTS.includes(header);
-                                            const isOrden = ORDEN_COL_VARIANTS.includes(header);
-                                            const isNivel = activeTab === 'secciones' && findColumnIndex([header], NIVEL_VARIANTS) !== -1;
-                                            const isContenido = activeTab === 'secciones' && findColumnIndex([header], CONTENIDO_VARIANTS) !== -1;
-                                            const colSpan = ((activeTab === 'tablas' || activeTab === 'figuras') && !isSeccion && !isOrden) ? "col-span-2" : "col-span-1";
-                                            const isTipoBiblio = activeTab === 'bibliografia' && header.trim().toLowerCase() === 'tipo';
-
-                                            if (activeTab === 'secciones' && isNivel) {
-                                                const current = normalizeLevelValue(formData[i] || '');
-                                                const selected = SECTION_LEVEL_OPTIONS.find(o => o.value === current) || SECTION_LEVEL_OPTIONS[0];
-
-                                                return (
-                                                    <div key={i} className={colSpan + " space-y-1"}>
-                                                        <label className="block text-sm font-medium text-gray-700">{header}</label>
-                                                        <select
-                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
-                                                            value={selected?.value}
-                                                            onChange={(e) => {
-                                                                const newData = [...formData];
-                                                                newData[i] = e.target.value;
-                                                                setFormData(newData);
-                                                            }}
-                                                        >
-                                                            {SECTION_LEVEL_OPTIONS.map(opt => (
-                                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                                            ))}
-                                                        </select>
-                                                        <p className="text-xs text-gray-500">{selected?.help}</p>
-                                                    </div>
-                                                );
-                                            }
-
-                                            if (activeTab === 'secciones' && isContenido) {
-                                                const currentValue = (formData[i] || '').toString();
-                                                const issues = sectionLintIssues;
-                                                const errorCount = issues.filter(x => x.type === 'error').length;
-                                                const warningCount = issues.filter(x => x.type === 'warning').length;
-
-                                                const applyEdit = (res: { text: string; selectionStart: number; selectionEnd: number }) => {
-                                                    const newData = [...formData];
-                                                    newData[i] = res.text;
-                                                    setFormData(newData);
-                                                    requestAnimationFrame(() => {
-                                                        const el = sectionContentTextareaRef.current;
-                                                        if (!el) return;
-                                                        el.focus();
-                                                        el.setSelectionRange(res.selectionStart, res.selectionEnd);
-                                                    });
-                                                };
-
-                                                const lintNow = (nextText: string) => {
-                                                    const nextIssues = lintTags(nextText, {
-                                                        bibliographyKeys: availableBibliographyKeys,
-                                                        figureIds: availableFigureIds,
-                                                        tableIds: availableTableIds,
-                                                    });
-                                                    setSectionLintIssues(nextIssues);
-                                                };
-
-                                                const getCurrentSectionOrder = (): string => {
-                                                    const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
-                                                    const val = ordIdx !== -1 ? (formData[ordIdx] || '').toString().trim() : '';
-                                                    return val;
-                                                };
-
-                                                const wrapInline = (name: string, opts?: { value?: string; placeholder?: string }) => {
-                                                    const el = sectionContentTextareaRef.current;
-                                                    const selStart = el ? el.selectionStart : 0;
-                                                    const selEnd = el ? el.selectionEnd : 0;
-                                                    const res = applyInlineTag(currentValue, selStart, selEnd, name, opts);
-                                                    applyEdit(res);
-                                                    lintNow(res.text);
-                                                };
-
-                                                const insertBlock = (name: string, title?: string) => {
-                                                    const el = sectionContentTextareaRef.current;
-                                                    const pos = el ? el.selectionStart : currentValue.length;
-                                                    const res = insertBlockTag(currentValue, pos, name, title);
-                                                    applyEdit(res);
-                                                    lintNow(res.text);
-                                                };
-
-                                                const insertSnippet = (snippet: string) => {
-                                                    const el = sectionContentTextareaRef.current;
-                                                    const pos = el ? el.selectionStart : currentValue.length;
-                                                    const before = currentValue.slice(0, pos);
-                                                    const after = currentValue.slice(pos);
-                                                    const nextText = before + snippet + after;
-                                                    applyEdit({ text: nextText, selectionStart: pos, selectionEnd: pos + snippet.length });
-                                                    lintNow(nextText);
-                                                };
-
-                                                return (
-                                                    <div key={i} className={colSpan + " space-y-4"}>
-                                                        <div className="flex items-start justify-between gap-4">
-                                                            <div className="space-y-1">
-                                                                <label className="block text-sm font-medium text-gray-700">{header}</label>
-                                                                <p className="text-xs text-gray-500">
-                                                                    Editor estilo “Word”: usa la barra para insertar etiquetas con formato. Validación en vivo (errores bloquean guardar).
-                                                                </p>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 text-[11px]">
-                                                                <span className={clsx(
-                                                                    'inline-flex items-center gap-1 rounded-full px-2 py-1 border',
-                                                                    errorCount ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                                                )}>
-                                                                    <AlertCircle size={12} /> {errorCount ? `${errorCount} error(es)` : 'Sin errores'}
-                                                                </span>
-                                                                <span className={clsx(
-                                                                    'inline-flex items-center gap-1 rounded-full px-2 py-1 border',
-                                                                    warningCount ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-gray-100 text-gray-600 border-gray-200'
-                                                                )}>
-                                                                    <AlertTriangle size={12} /> {warningCount}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Ribbon */}
-                                                        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                                                            <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex flex-wrap items-center gap-2">
-                                                                <span className="text-xs font-semibold text-gray-700">Insertar</span>
-                                                                <span className="text-[11px] text-gray-500">(envuelve selección o inserta plantilla)</span>
-                                                            </div>
-                                                            <div className="p-3 flex flex-col gap-3">
-                                                                <div className="flex flex-wrap items-center gap-2">
-                                                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('nota', { placeholder: 'Nota...' })}>
-                                                                        <FileText size={14} className="mr-2" /> Nota
-                                                                    </Button>
-                                                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('dorado', { placeholder: 'Texto...' })}>
-                                                                        <Type size={14} className="mr-2" /> Dorado
-                                                                    </Button>
-                                                                    <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('guinda', { placeholder: 'Texto...' })}>
-                                                                        <Type size={14} className="mr-2" /> Guinda
-                                                                    </Button>
-                                                                    <Button
-                                                                        type="button"
-                                                                        variant="outline"
-                                                                        size="sm"
-                                                                        onClick={() => {
-                                                                            const el = sectionContentTextareaRef.current;
-                                                                            const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
-                                                                            setEquationModal({ open: true, mode: 'math', title: 'Insertar math inline ([[math:...]])', value: sel || '' });
-                                                                        }}
-                                                                    >
-                                                                        <Grid size={14} className="mr-2" /> Math
-                                                                    </Button>
-
-                                                                    <div className="w-px h-6 bg-gray-300 mx-1" />
-
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
-                                                                            <Book size={12} /> Cita
-                                                                        </div>
-                                                                        <select
-                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
-                                                                            value=""
-                                                                            onChange={(e) => {
-                                                                                const v = e.target.value;
-                                                                                if (!v) return;
-                                                                                wrapInline('cita', { value: v });
-                                                                                e.currentTarget.value = '';
-                                                                            }}
-                                                                            title="Insertar cita"
-                                                                        >
-                                                                            <option value="">Selecciona…</option>
-                                                                            {availableBibliographyKeys.map(k => (
-                                                                                <option key={k} value={k}>{k}</option>
-                                                                            ))}
-                                                                        </select>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => openTab('bibliografia')}>Crear nueva cita</Button>
-                                                                    </div>
-
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
-                                                                            <Image size={12} /> Figura
-                                                                        </div>
-                                                                        <select
-                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
-                                                                            value=""
-                                                                            onChange={(e) => {
-                                                                                const v = e.target.value;
-                                                                                if (!v) return;
-                                                                                if (v === '__CREATE_FIG__') {
-                                                                                    const secIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
-                                                                                    const currentSec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
-                                                                                    if (currentSec) createNewForSection('figura', currentSec);
-                                                                                } else {
-                                                                                    const item = availableFigureItems.find(x => x.id === v);
-                                                                                    if (item) setSelectorPreview({ type: 'figura', id: item.id, title: item.title, image: item.route });
-                                                                                    wrapInline('figura', { value: v });
-                                                                                }
-                                                                                e.currentTarget.value = '';
-                                                                            }}
-                                                                            title="Insertar referencia a figura"
-                                                                        >
-                                                                            <option value="">Selecciona…</option>
-                                                                            {(function () {
-                                                                                const currentSec = getCurrentSectionOrder();
-                                                                                const list = currentSec ? availableFigureItems.filter(i => (i.section || '') === currentSec) : availableFigureItems;
-                                                                                return list.map(i => (
-                                                                                    <option key={i.id} value={i.id}>{i.title || i.id}</option>
-                                                                                ));
-                                                                            })()}
-                                                                        </select>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => createNewForSection('figura')}>Crear nueva figura</Button>
-                                                                        {selectorPreview?.type === 'figura' && (
-                                                                            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectorPreview(selectorPreview)}>Ver</Button>
-                                                                        )}
-                                                                    </div>
-
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
-                                                                            <Table size={12} /> Tabla
-                                                                        </div>
-                                                                        <select
-                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
-                                                                            value=""
-                                                                            onChange={(e) => {
-                                                                                const v = e.target.value;
-                                                                                if (!v) return;
-                                                                                if (v === '__CREATE_TBL__') {
-                                                                                    const secIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
-                                                                                    const currentSec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
-                                                                                    if (currentSec) createNewForSection('tabla', currentSec);
-                                                                                } else {
-                                                                                    const item = availableTableItems.find(x => x.id === v);
-                                                                                    if (item) setSelectorPreview({ type: 'tabla', id: item.id, title: item.title });
-                                                                                    wrapInline('tabla', { value: v });
-                                                                                }
-                                                                                e.currentTarget.value = '';
-                                                                            }}
-                                                                            title="Insertar referencia a tabla"
-                                                                        >
-                                                                            <option value="">Selecciona…</option>
-                                                                            {(function () {
-                                                                                const currentSec = getCurrentSectionOrder();
-                                                                                const list = currentSec ? availableTableItems.filter(i => (i.section || '') === currentSec) : availableTableItems;
-                                                                                return list.map(i => (
-                                                                                    <option key={i.id} value={i.id}>{i.title || i.id}</option>
-                                                                                ));
-                                                                            })()}
-                                                                        </select>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => createNewForSection('tabla')}>Crear nueva tabla</Button>
-                                                                        {selectorPreview?.type === 'tabla' && (
-                                                                            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectorPreview(selectorPreview)}>Ver</Button>
-                                                                        )}
-                                                                    </div>
-
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
-                                                                            <Lightbulb size={12} /> Ejemplos
-                                                                        </div>
-                                                                        <select
-                                                                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
-                                                                            value=""
-                                                                            onChange={(e) => {
-                                                                                const v = e.target.value;
-                                                                                if (!v) return;
-
-                                                                                const citeKey = availableBibliographyKeys[0] || 'clave_biblio';
-                                                                                const figId = availableFigureIds[0] || '2.1';
-                                                                                const tableId = availableTableIds[0] || '3.2';
-
-                                                                                if (v === 'cita-nota') {
-                                                                                    insertSnippet(
-                                                                                        `Texto con [[cita:${citeKey}]] y una nota [[nota:Nota al pie o comentario...]].\n\n` +
-                                                                                        `Ver [[figura:${figId}]] y [[tabla:${tableId}]].\n`
-                                                                                    );
-                                                                                } else if (v === 'guinda-dorado') {
-                                                                                    insertSnippet(`Texto con énfasis: [[guinda:Guinda]] y [[dorado:Dorado]].\n\n`);
-                                                                                } else if (v === 'caja-nota') {
-                                                                                    insertSnippet(
-                                                                                        `\n\n[[caja:Título opcional]]\n` +
-                                                                                        `Contenido dentro de recuadro. Puedes agregar una [[nota:Nota al pie / comentario...]].\n` +
-                                                                                        `[[/caja]]\n\n`
-                                                                                    );
-                                                                                } else if (v === 'bloque-alerta') {
-                                                                                    insertSnippet(
-                                                                                        `\n\n[[alerta:Título]]\n` +
-                                                                                        `Escribe aquí el mensaje de alerta...\n` +
-                                                                                        `[[/alerta]]\n\n`
-                                                                                    );
-                                                                                } else if (v === 'math-basico') {
-                                                                                    insertSnippet(`\n\n[[math:\\frac{a}{b} + \\Delta x]]\n\n`);
-                                                                                } else if (v === 'ecuacion') {
-                                                                                    insertSnippet(`\n\n[[ecuacion:E = mc^2]]\n\n`);
-                                                                                }
-
-                                                                                e.currentTarget.value = '';
-                                                                            }}
-                                                                            title="Insertar ejemplos de etiquetas"
-                                                                        >
-                                                                            <option value="">Selecciona…</option>
-                                                                            <option value="cita-nota">Cita + Nota + Figura/Tabla</option>
-                                                                            <option value="guinda-dorado">Guinda + Dorado</option>
-                                                                            <option value="caja-nota">Recuadro (Caja) + Nota</option>
-                                                                            <option value="bloque-alerta">Bloque Alerta</option>
-                                                                            <option value="math-basico">Math inline (fracción + delta)</option>
-                                                                            <option value="ecuacion">Ecuación (display)</option>
-                                                                        </select>
-                                                                    </div>
-
-                                                                    <div className="w-px h-6 bg-gray-300 mx-1" />
-
-                                                                    <div className="flex flex-wrap items-center gap-2">
-                                                                        <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
-                                                                            <Grid size={12} /> Bloques
-                                                                        </div>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('caja', 'Título opcional')}>
-                                                                            <Grid size={14} className="mr-2" /> Caja
-                                                                        </Button>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('alerta', 'Título')}>
-                                                                            <AlertTriangle size={14} className="mr-2" /> Alerta
-                                                                        </Button>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('info', 'Título')}>
-                                                                            <Info size={14} className="mr-2" /> Info
-                                                                        </Button>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('destacado')}>
-                                                                            <Lightbulb size={14} className="mr-2" /> Destacado
-                                                                        </Button>
-                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => setNoteModal({ open: true, value: '' })}>
-                                                                            <FileText size={14} className="mr-2" /> Insertar Nota
-                                                                        </Button>
-                                                                        <Button
-                                                                            type="button"
-                                                                            variant="ghost"
-                                                                            size="sm"
-                                                                            onClick={() => {
-                                                                                const el = sectionContentTextareaRef.current;
-                                                                                const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
-                                                                                setEquationModal({ open: true, mode: 'ecuacion', title: 'Insertar ecuación display ([[ecuacion:...]] multi-línea)', value: sel || '', target: 'main' });
-                                                                            }}
-                                                                        >
-                                                                            <Grid size={14} className="mr-2" /> Ecuación
-                                                                        </Button>
-                                                                    </div>
-                                                                </div>
-                                                                {selectorPreview && (
-                                                                    <div className="mt-3 border border-gray-200 rounded p-3 bg-gray-50">
-                                                                        <div className="text-xs text-gray-600 mb-2">Previsualización: {selectorPreview.type === 'figura' ? 'Figura' : 'Tabla'} — {selectorPreview.title}</div>
-                                                                        {selectorPreview.type === 'figura' ? (
-                                                                            <div className="flex items-center justify-start">
-                                                                                {selectorPreview.image ? (
-                                                                                    <img src={`${selectorPreview.image}?t=${dataTimestamp}`} alt={selectorPreview.title} className="max-h-40 object-contain border rounded" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                                                                                ) : (
-                                                                                    <div className="text-xs text-gray-500">Sin ruta de imagen</div>
-                                                                                )}
-                                                                            </div>
-                                                                        ) : (
-                                                                            <div className="overflow-x-auto">
-                                                                                {selectorPreview.data && selectorPreview.data.length ? (
-                                                                                    <table className="text-xs">
-                                                                                        <tbody>
-                                                                                            {selectorPreview.data.slice(0, 6).map((row, r) => (
-                                                                                                <tr key={r}>
-                                                                                                    {row.slice(0, 6).map((cell, c) => (
-                                                                                                        <td key={c} className={clsx("px-2 py-1 border", r === 0 ? "font-semibold bg-gray-100" : "")}>{cell}</td>
-                                                                                                    ))}
-                                                                                                </tr>
-                                                                                            ))}
-                                                                                        </tbody>
-                                                                                    </table>
-                                                                                ) : (
-                                                                                    <div className="text-xs text-gray-500">Cargando rango…</div>
-                                                                                )}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Word-like page */}
-                                                        <div className="bg-[#F5F5F5] border border-gray-200 rounded-lg p-4">
-                                                            <div className="mx-auto bg-white border border-gray-200 shadow-sm rounded-sm max-w-[860px]">
-                                                                <div className="px-10 py-10">
-                                                                    <textarea
-                                                                        ref={sectionContentTextareaRef}
-                                                                        className={clsx(
-                                                                            'w-full min-h-[520px] resize-y text-sm leading-relaxed focus:outline-none bg-transparent text-gray-900',
-                                                                            errorCount > 0 ? 'outline outline-1 outline-red-300' : 'outline outline-1 outline-transparent'
-                                                                        )}
-                                                                        value={currentValue}
-                                                                        onChange={(e) => {
-                                                                            const newData = [...formData];
-                                                                            newData[i] = e.target.value;
-                                                                            setFormData(newData);
-                                                                            lintNow(e.target.value);
-                                                                        }}
-                                                                        placeholder="Escribe el contenido aquí…"
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <LintPanel
-                                                            issues={issues}
-                                                            onSelectRange={(from, to) => {
-                                                                const el = sectionContentTextareaRef.current;
-                                                                if (!el) return;
-                                                                el.focus();
-                                                                el.setSelectionRange(from, to);
-                                                            }}
-                                                        />
-                                                    </div>
-                                                );
-                                            }
-
-                                            // Orden de Secciones: seleccionar números disponibles y soportar jerarquía según Nivel
-                                            if (activeTab === 'secciones' && isOrden) {
-                                                const nivelIdx = findColumnIndex(formHeaders, NIVEL_VARIANTS);
-                                                const nivelVal = nivelIdx !== -1 ? normalizeLevelValue((formData[nivelIdx] || '').toString()) : 'seccion';
-                                                const docColIdx = findColumnIndex(formHeaders, DOC_ID_VARIANTS);
-                                                const currentDoc = (docColIdx !== -1 ? formData[docColIdx] : currentDocId) || currentDocId;
-                                                const gridDocIdx = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
-                                                const gridOrdIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
-                                                const gridNivelIdx = findColumnIndex(gridHeaders, NIVEL_VARIANTS);
-                                                const rowsDoc = gridData.filter(r => gridDocIdx !== -1 ? r[gridDocIdx] === currentDoc : true);
-                                                const topOrders = new Set<string>();
-                                                const subOrders = new Map<string, Set<string>>();
-                                                const subSubOrders = new Map<string, Set<string>>();
-                                                rowsDoc.forEach((row, idx) => {
-                                                    if (idx === editingRowIndex) return;
-                                                    const ord = (gridOrdIdx !== -1 ? row[gridOrdIdx] : '').toString();
-                                                    if (!ord) return;
-                                                    const parts = ord.split('.');
-                                                    if (parts.length === 1) {
-                                                        topOrders.add(parts[0]);
-                                                    } else if (parts.length === 2) {
-                                                        const parent = parts[0];
-                                                        if (!subOrders.has(parent)) subOrders.set(parent, new Set<string>());
-                                                        subOrders.get(parent)!.add(parts[1]);
-                                                    } else if (parts.length >= 3) {
-                                                        const parent = `${parts[0]}.${parts[1]}`;
-                                                        if (!subSubOrders.has(parent)) subSubOrders.set(parent, new Set<string>());
-                                                        subSubOrders.get(parent)!.add(parts[2]);
-                                                    }
-                                                });
-                                                const currentValue = (formData[i] || '').toString();
-                                                const currentParts = currentValue ? currentValue.split('.') : [];
-                                                if (nivelVal === 'seccion') {
-                                                    const used = Array.from(topOrders).map(x => parseInt(x)).filter(x => !isNaN(x)).sort((a, b) => a - b);
-                                                    const max = used.length ? used[used.length - 1] : 0;
-                                                    const options: string[] = [];
-                                                    for (let k = 1; k <= Math.max(max + 10, 10); k++) {
-                                                        const kStr = String(k);
-                                                        if (!topOrders.has(kStr) || currentValue === kStr) options.push(kStr);
-                                                    }
-                                                    if (currentValue && !options.includes(currentValue)) options.push(currentValue);
-                                                    options.sort((a, b) => parseInt(a) - parseInt(b));
-                                                    return (
-                                                        <div key={i} className={colSpan + " space-y-1"}>
-                                                            <label className="block text-sm font-medium text-gray-700">{header}</label>
-                                                            <select className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
-                                                                value={currentValue}
-                                                                onChange={(e) => { const nd = [...formData]; nd[i] = e.target.value; setFormData(nd); }}
-                                                            >
-                                                                <option value="">Selecciona Orden…</option>
-                                                                {options.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
-                                                            </select>
-                                                        </div>
-                                                    );
-                                                } else if (nivelVal === 'subseccion') {
-                                                    const parent = currentParts[0] || Array.from(topOrders).sort((a, b) => parseInt(a) - parseInt(b))[0] || '';
-                                                    const usedChildren = subOrders.get(parent) || new Set<string>();
-                                                    const nums = Array.from(usedChildren).map(x => parseInt(x)).filter(x => !isNaN(x)).sort((a, b) => a - b);
-                                                    const max = nums.length ? nums[nums.length - 1] : 0;
-                                                    const childOptions: string[] = [];
-                                                    for (let k = 1; k <= Math.max(max + 10, 10); k++) {
-                                                        const kStr = String(k);
-                                                        if (!usedChildren.has(kStr) || currentParts[1] === kStr) childOptions.push(kStr);
-                                                    }
-                                                    if (currentParts[1] && !childOptions.includes(currentParts[1])) childOptions.push(currentParts[1]);
-                                                    childOptions.sort((a, b) => parseInt(a) - parseInt(b));
-                                                    return (
-                                                        <div key={i} className={colSpan + " space-y-1"}>
-                                                            <label className="block text-sm font-medium text-gray-700">{header}</label>
-                                                            <div className="flex gap-2">
-                                                                <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
-                                                                    value={parent}
-                                                                    onChange={(e) => { const nd = [...formData]; const child = currentParts[1] || ''; nd[i] = e.target.value && child ? `${e.target.value}.${child}` : e.target.value; setFormData(nd); }}
-                                                                >
-                                                                    <option value="">Sección padre…</option>
-                                                                    {Array.from(topOrders).sort((a, b) => parseInt(a) - parseInt(b)).map(p => (<option key={p} value={p}>{p}</option>))}
-                                                                </select>
-                                                                <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
-                                                                    value={currentParts[1] || ''}
-                                                                    onChange={(e) => { const nd = [...formData]; const child = e.target.value; const p = parent; nd[i] = p && child ? `${p}.${child}` : child; setFormData(nd); }}
-                                                                >
-                                                                    <option value="">Índice…</option>
-                                                                    {childOptions.map(c => (<option key={c} value={c}>{c}</option>))}
-                                                                </select>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                } else if (nivelVal === 'subsubseccion') {
-                                                    const parentCandidates = Array.from(topOrders).flatMap(p => {
-                                                        const subs = subOrders.get(p) || new Set<string>();
-                                                        return Array.from(subs).map(s => `${p}.${s}`);
-                                                    }).sort((a, b) => {
-                                                        const [a1, a2] = a.split('.').map(n => parseInt(n)); const [b1, b2] = b.split('.').map(n => parseInt(n)); return a1 === b1 ? a2 - b2 : a1 - b1;
-                                                    });
-                                                    const parentChain = (currentParts[0] && currentParts[1]) ? `${currentParts[0]}.${currentParts[1]}` : (parentCandidates[0] || '');
-                                                    const usedChildren = parentChain ? (subSubOrders.get(parentChain) || new Set<string>()) : new Set<string>();
-                                                    const nums = Array.from(usedChildren).map(x => parseInt(x)).filter(x => !isNaN(x)).sort((a, b) => a - b);
-                                                    const max = nums.length ? nums[nums.length - 1] : 0;
-                                                    const childOptions: string[] = [];
-                                                    for (let k = 1; k <= Math.max(max + 10, 10); k++) {
-                                                        const kStr = String(k);
-                                                        if (!usedChildren.has(kStr) || currentParts[2] === kStr) childOptions.push(kStr);
-                                                    }
-                                                    if (currentParts[2] && !childOptions.includes(currentParts[2])) childOptions.push(currentParts[2]);
-                                                    childOptions.sort((a, b) => parseInt(a) - parseInt(b));
-                                                    return (
-                                                        <div key={i} className={colSpan + " space-y-1"}>
-                                                            <label className="block text-sm font-medium text-gray-700">{header}</label>
-                                                            <div className="flex gap-2">
-                                                                <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
-                                                                    value={parentChain}
-                                                                    onChange={(e) => { const nd = [...formData]; const child = currentParts[2] || ''; nd[i] = e.target.value && child ? `${e.target.value}.${child}` : e.target.value; setFormData(nd); }}
-                                                                >
-                                                                    <option value="">Subsección padre…</option>
-                                                                    {parentCandidates.map(p => (<option key={p} value={p}>{p}</option>))}
-                                                                </select>
-                                                                <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
-                                                                    value={currentParts[2] || ''}
-                                                                    onChange={(e) => { const nd = [...formData]; const child = e.target.value; const pc = parentChain; nd[i] = pc && child ? `${pc}.${child}` : child; setFormData(nd); }}
-                                                                >
-                                                                    <option value="">Índice…</option>
-                                                                    {childOptions.map(c => (<option key={c} value={c}>{c}</option>))}
-                                                                </select>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                }
-                                            }
-
-                                            if ((activeTab === 'tablas' || activeTab === 'figuras') && isSeccion) {
-                                                return (
-                                                    <div key={i} className={colSpan + " space-y-1"}>
-                                                        <label className="block text-sm font-medium text-gray-700">{header}</label>
-                                                        <select
-                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
-                                                            value={formData[i]?.toString().trim() || ''}
-                                                            onChange={(e) => {
-                                                                const newSec = e.target.value;
-                                                                const newData = [...formData];
-                                                                newData[i] = newSec;
-                                                                if (newSec) {
-                                                                    const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
-                                                                    if (ordIdx !== -1) {
-                                                                        newData[ordIdx] = calculateNextOrder(newSec);
-                                                                    }
-                                                                }
-                                                                setFormData(newData);
-                                                            }}
-                                                        >
-                                                            <option value="">Selecciona Sección...</option>
-                                                            {availableSections.map(sec => (
-                                                                <option key={sec.id} value={sec.id}>{sec.id} - {sec.title.substring(0, 30)}...</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                );
-                                            }
-
-                                            if ((activeTab === 'tablas' || activeTab === 'figuras') && isOrden) {
-                                                const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
-                                                const ordColIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
-                                                const currentSectionId = secColIdx !== -1 ? formData[secColIdx] : '';
-                                                const usedOrders = new Set<string>();
-                                                let maxOrder = 0;
-                                                gridData.forEach((row, idx) => {
-                                                    if (secColIdx !== -1 && ordColIdx !== -1 && row[secColIdx] === currentSectionId && idx !== editingRowIndex) {
-                                                        const val = row[ordColIdx];
-                                                        if (val) {
-                                                            usedOrders.add(val);
-                                                            const numVal = parseInt(val);
-                                                            if (!isNaN(numVal)) maxOrder = Math.max(maxOrder, numVal);
-                                                        }
-                                                    }
-                                                });
-                                                const currentValue = formData[i] || '';
-                                                const availableOptions = [];
-                                                const limit = Math.max(maxOrder + 5, 5);
-                                                for (let k = 1; k <= limit; k++) {
-                                                    const kStr = String(k);
-                                                    if (!usedOrders.has(kStr) || kStr === currentValue) availableOptions.push(kStr);
-                                                }
-                                                if (currentValue && !availableOptions.includes(currentValue) && parseInt(currentValue) > 0) {
-                                                    availableOptions.push(currentValue);
-                                                    availableOptions.sort((a, b) => parseInt(a) - parseInt(b));
-                                                }
-
-                                                return (
-                                                    <div key={i} className={colSpan + " space-y-1"}>
-                                                        <label className="block text-sm font-medium text-gray-700">{header}</label>
-                                                        <div className="relative">
-                                                            <select
-                                                                disabled={!currentSectionId}
-                                                                className={clsx("w-full px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900", !currentSectionId && "bg-gray-100 text-gray-500 cursor-not-allowed")}
-                                                                value={formData[i] || ''}
-                                                                onChange={(e) => {
-                                                                    const newData = [...formData];
-                                                                    newData[i] = e.target.value;
-                                                                    setFormData(newData);
-                                                                }}
-                                                            >
-                                                                <option value="">Selecciona Orden...</option>
-                                                                {availableOptions.map(opt => (
-                                                                    <option key={opt} value={opt}>{opt}</option>
-                                                                ))}
-                                                            </select>
-                                                            {!currentSectionId && (
-                                                                <p className="text-xs text-gray-500 mt-1">Selecciona una sección primero.</p>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            }
-
-                                            if (isTipoBiblio) {
-                                                const tipos = ['article', 'book', 'inbook', 'inproceedings', 'report', 'thesis', 'online', 'manual', 'dataset', 'misc'];
-                                                const current = (formData[i] || '').toString() || 'article';
-                                                return (
-                                                    <div key={i} className={colSpan + " space-y-1"}>
-                                                        <label className="block text-sm font-medium text-gray-700">{header}</label>
-                                                        <select
-                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
-                                                            value={current}
-                                                            onChange={(e) => {
-                                                                const next = [...formData];
-                                                                next[i] = e.target.value;
-                                                                setFormData(next);
-                                                            }}
-                                                        >
-                                                            {tipos.map(t => (<option key={t} value={t}>{t}</option>))}
-                                                        </select>
-                                                    </div>
-                                                );
-                                            }
-
-                                            const isDisabled = isReadOnly || isCsvRange;
+                                        if (activeTab === 'secciones' && isNivel) {
+                                            const current = normalizeLevelValue(formData[i] || '');
+                                            const selected = SECTION_LEVEL_OPTIONS.find(o => o.value === current) || SECTION_LEVEL_OPTIONS[0];
 
                                             return (
                                                 <div key={i} className={colSpan + " space-y-1"}>
                                                     <label className="block text-sm font-medium text-gray-700">{header}</label>
-                                                    <div className="flex gap-2">
-                                                        <input
-                                                            disabled={isDisabled}
-                                                            className={clsx("flex-1 px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32]", isDisabled ? "bg-gray-100 text-gray-500" : "bg-white text-gray-900 border-gray-300")}
+                                                    <select
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                        value={selected?.value}
+                                                        onChange={(e) => {
+                                                            const newData = [...formData];
+                                                            newData[i] = e.target.value;
+                                                            setFormData(newData);
+                                                        }}
+                                                    >
+                                                        {SECTION_LEVEL_OPTIONS.map(opt => (
+                                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                        ))}
+                                                    </select>
+                                                    <p className="text-xs text-gray-500">{selected?.help}</p>
+                                                </div>
+                                            );
+                                        }
+
+                                        if (activeTab === 'secciones' && isContenido) {
+                                            const currentValue = (formData[i] || '').toString();
+                                            const issues = sectionLintIssues;
+                                            const errorCount = issues.filter(x => x.type === 'error').length;
+                                            const warningCount = issues.filter(x => x.type === 'warning').length;
+
+                                            // We now use the generic modal for editing section content as well,
+                                            // to keep consistency and remove the inline complexity here.
+                                            // Or better: Let's keep the inline editor for sections as it was, 
+                                            // BUT we can also offer a "Maximize" button to open the modal?
+                                            //
+                                            // Wait, the user asked to REUSE the editor used in "content of sections" FOR metadata.
+                                            // I did that.
+                                            // But now I see the user might want the section editor itself to be improved or consistent?
+                                            //
+                                            // Actually, the previous implementation of "Section Editor" was inline.
+                                            // The Metadata editor is now Modal.
+                                            // They share the same toolbar logic (copied).
+                                            //
+                                            // Let's just keep the Section Editor as is (inline), but maybe clean up the code duplication later.
+                                            // For now, I will just fix the linting issue or whatever caused the overlay if any.
+                                            // The overlay was likely due to a syntax error in my previous SearchReplace which I fixed in the last step.
+
+                                            // Re-declaring the helper functions here because they are inside the map loop and closure.
+                                            // This is fine.
+
+                                            const applyEdit = (res: { text: string; selectionStart: number; selectionEnd: number }) => {
+                                                const newData = [...formData];
+                                                newData[i] = res.text;
+                                                setFormData(newData);
+                                                requestAnimationFrame(() => {
+                                                    const el = sectionContentTextareaRef.current;
+                                                    if (!el) return;
+                                                    el.focus();
+                                                    el.setSelectionRange(res.selectionStart, res.selectionEnd);
+                                                });
+                                            };
+
+                                            const lintNow = (nextText: string) => {
+                                                const nextIssues = lintTags(nextText, {
+                                                    bibliographyKeys: availableBibliographyKeys,
+                                                    figureIds: availableFigureIds,
+                                                    tableIds: availableTableIds,
+                                                });
+                                                setSectionLintIssues(nextIssues);
+                                            };
+
+                                            const getCurrentSectionOrder = (): string => {
+                                                const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+                                                const val = ordIdx !== -1 ? (formData[ordIdx] || '').toString().trim() : '';
+                                                return val;
+                                            };
+
+                                            const wrapInline = (name: string, opts?: { value?: string; placeholder?: string }) => {
+                                                const el = sectionContentTextareaRef.current;
+                                                const selStart = el ? el.selectionStart : 0;
+                                                const selEnd = el ? el.selectionEnd : 0;
+                                                const res = applyInlineTag(currentValue, selStart, selEnd, name, opts);
+                                                applyEdit(res);
+                                                lintNow(res.text);
+                                            };
+
+                                            const insertBlock = (name: string, title?: string) => {
+                                                const el = sectionContentTextareaRef.current;
+                                                const pos = el ? el.selectionStart : currentValue.length;
+                                                const res = insertBlockTag(currentValue, pos, name, title);
+                                                applyEdit(res);
+                                                lintNow(res.text);
+                                            };
+
+                                            const insertSnippet = (snippet: string) => {
+                                                const el = sectionContentTextareaRef.current;
+                                                const pos = el ? el.selectionStart : currentValue.length;
+                                                const before = currentValue.slice(0, pos);
+                                                const after = currentValue.slice(pos);
+                                                const nextText = before + snippet + after;
+                                                applyEdit({ text: nextText, selectionStart: pos, selectionEnd: pos + snippet.length });
+                                                lintNow(nextText);
+                                            };
+
+                                            return (
+                                                <div key={i} className={colSpan + " space-y-4"}>
+                                                    <div className="flex items-start justify-between gap-4">
+                                                        <div className="space-y-1">
+                                                            <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                            <p className="text-xs text-gray-500">
+                                                                Editor estilo “Word”: usa la barra para insertar etiquetas con formato. Validación en vivo (errores bloquean guardar).
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-[11px]">
+                                                            <span className={clsx(
+                                                                'inline-flex items-center gap-1 rounded-full px-2 py-1 border',
+                                                                errorCount ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                                            )}>
+                                                                <AlertCircle size={12} /> {errorCount ? `${errorCount} error(es)` : 'Sin errores'}
+                                                            </span>
+                                                            <span className={clsx(
+                                                                'inline-flex items-center gap-1 rounded-full px-2 py-1 border',
+                                                                warningCount ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-gray-100 text-gray-600 border-gray-200'
+                                                            )}>
+                                                                <AlertTriangle size={12} /> {warningCount}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Ribbon */}
+                                                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                                                        <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex flex-wrap items-center gap-2">
+                                                            <span className="text-xs font-semibold text-gray-700">Insertar</span>
+                                                            <span className="text-[11px] text-gray-500">(envuelve selección o inserta plantilla)</span>
+                                                        </div>
+                                                        <div className="p-3 flex flex-col gap-3">
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('nota', { placeholder: 'Nota...' })}>
+                                                                    <FileText size={14} className="mr-2" /> Nota
+                                                                </Button>
+                                                                <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('dorado', { placeholder: 'Texto...' })}>
+                                                                    <Type size={14} className="mr-2" /> Dorado
+                                                                </Button>
+                                                                <Button type="button" variant="outline" size="sm" onClick={() => wrapInline('guinda', { placeholder: 'Texto...' })}>
+                                                                    <Type size={14} className="mr-2" /> Guinda
+                                                                </Button>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() => {
+                                                                        const el = sectionContentTextareaRef.current;
+                                                                        const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
+                                                                        setEquationModal({ open: true, mode: 'math', title: 'Insertar math inline ([[math:...]])', value: sel || '' });
+                                                                    }}
+                                                                >
+                                                                    <Grid size={14} className="mr-2" /> Math
+                                                                </Button>
+
+                                                                <div className="w-px h-6 bg-gray-300 mx-1" />
+
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
+                                                                        <Book size={12} /> Cita
+                                                                    </div>
+                                                                    <select
+                                                                        className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
+                                                                        value=""
+                                                                        onChange={(e) => {
+                                                                            const v = e.target.value;
+                                                                            if (!v) return;
+                                                                            wrapInline('cita', { value: v });
+                                                                            e.currentTarget.value = '';
+                                                                        }}
+                                                                        title="Insertar cita"
+                                                                    >
+                                                                        <option value="">Selecciona…</option>
+                                                                        {availableBibliographyKeys.map(k => (
+                                                                            <option key={k} value={k}>{k}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <Button type="button" variant="ghost" size="sm" onClick={() => openTab('bibliografia')}>Crear nueva cita</Button>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
+                                                                        <Image size={12} /> Figura
+                                                                    </div>
+                                                                    <select
+                                                                        className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
+                                                                        value=""
+                                                                        onChange={(e) => {
+                                                                            const v = e.target.value;
+                                                                            if (!v) return;
+                                                                            if (v === '__CREATE_FIG__') {
+                                                                                const secIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
+                                                                                const currentSec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
+                                                                                if (currentSec) createNewForSection('figura', currentSec);
+                                                                            } else {
+                                                                                const item = availableFigureItems.find(x => x.id === v);
+                                                                                if (item) setSelectorPreview({ type: 'figura', id: item.id, title: item.title, image: item.route });
+                                                                                wrapInline('figura', { value: v });
+                                                                            }
+                                                                            e.currentTarget.value = '';
+                                                                        }}
+                                                                        title="Insertar referencia a figura"
+                                                                    >
+                                                                        <option value="">Selecciona…</option>
+                                                                        {(function () {
+                                                                            const currentSec = getCurrentSectionOrder();
+                                                                            const list = currentSec ? availableFigureItems.filter(i => (i.section || '') === currentSec) : availableFigureItems;
+                                                                            return list.map(i => (
+                                                                                <option key={i.id} value={i.id}>{i.title || i.id}</option>
+                                                                            ));
+                                                                        })()}
+                                                                    </select>
+                                                                    <Button type="button" variant="ghost" size="sm" onClick={() => createNewForSection('figura')}>Crear nueva figura</Button>
+                                                                    {selectorPreview?.type === 'figura' && (
+                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => setSelectorPreview(selectorPreview)}>Ver</Button>
+                                                                    )}
+                                                                </div>
+
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
+                                                                        <Table size={12} /> Tabla
+                                                                    </div>
+                                                                    <select
+                                                                        className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
+                                                                        value=""
+                                                                        onChange={(e) => {
+                                                                            const v = e.target.value;
+                                                                            if (!v) return;
+                                                                            if (v === '__CREATE_TBL__') {
+                                                                                const secIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
+                                                                                const currentSec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
+                                                                                if (currentSec) createNewForSection('tabla', currentSec);
+                                                                            } else {
+                                                                                const item = availableTableItems.find(x => x.id === v);
+                                                                                if (item) setSelectorPreview({ type: 'tabla', id: item.id, title: item.title });
+                                                                                wrapInline('tabla', { value: v });
+                                                                            }
+                                                                            e.currentTarget.value = '';
+                                                                        }}
+                                                                        title="Insertar referencia a tabla"
+                                                                    >
+                                                                        <option value="">Selecciona…</option>
+                                                                        {(function () {
+                                                                            const currentSec = getCurrentSectionOrder();
+                                                                            const list = currentSec ? availableTableItems.filter(i => (i.section || '') === currentSec) : availableTableItems;
+                                                                            return list.map(i => (
+                                                                                <option key={i.id} value={i.id}>{i.title || i.id}</option>
+                                                                            ));
+                                                                        })()}
+                                                                    </select>
+                                                                    <Button type="button" variant="ghost" size="sm" onClick={() => createNewForSection('tabla')}>Crear nueva tabla</Button>
+                                                                    {selectorPreview?.type === 'tabla' && (
+                                                                        <Button type="button" variant="ghost" size="sm" onClick={() => setSelectorPreview(selectorPreview)}>Ver</Button>
+                                                                    )}
+                                                                </div>
+
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
+                                                                        <Lightbulb size={12} /> Ejemplos
+                                                                    </div>
+                                                                    <select
+                                                                        className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900"
+                                                                        value=""
+                                                                        onChange={(e) => {
+                                                                            const v = e.target.value;
+                                                                            if (!v) return;
+
+                                                                            const citeKey = availableBibliographyKeys[0] || 'clave_biblio';
+                                                                            const figId = availableFigureIds[0] || '2.1';
+                                                                            const tableId = availableTableIds[0] || '3.2';
+
+                                                                            if (v === 'cita-nota') {
+                                                                                insertSnippet(
+                                                                                    `Texto con [[cita:${citeKey}]] y una nota [[nota:Nota al pie o comentario...]].\n\n` +
+                                                                                    `Ver [[figura:${figId}]] y [[tabla:${tableId}]].\n`
+                                                                                );
+                                                                            } else if (v === 'guinda-dorado') {
+                                                                                insertSnippet(`Texto con énfasis: [[guinda:Guinda]] y [[dorado:Dorado]].\n\n`);
+                                                                            } else if (v === 'caja-nota') {
+                                                                                insertSnippet(
+                                                                                    `\n\n[[caja:Título opcional]]\n` +
+                                                                                    `Contenido dentro de recuadro. Puedes agregar una [[nota:Nota al pie / comentario...]].\n` +
+                                                                                    `[[/caja]]\n\n`
+                                                                                );
+                                                                            } else if (v === 'bloque-alerta') {
+                                                                                insertSnippet(
+                                                                                    `\n\n[[alerta:Título]]\n` +
+                                                                                    `Escribe aquí el mensaje de alerta...\n` +
+                                                                                    `[[/alerta]]\n\n`
+                                                                                );
+                                                                            } else if (v === 'math-basico') {
+                                                                                insertSnippet(`\n\n[[math:\\frac{a}{b} + \\Delta x]]\n\n`);
+                                                                            } else if (v === 'ecuacion') {
+                                                                                insertSnippet(`\n\n[[ecuacion:E = mc^2]]\n\n`);
+                                                                            }
+
+                                                                            e.currentTarget.value = '';
+                                                                        }}
+                                                                        title="Insertar ejemplos de etiquetas"
+                                                                    >
+                                                                        <option value="">Selecciona…</option>
+                                                                        <option value="cita-nota">Cita + Nota + Figura/Tabla</option>
+                                                                        <option value="guinda-dorado">Guinda + Dorado</option>
+                                                                        <option value="caja-nota">Recuadro (Caja) + Nota</option>
+                                                                        <option value="bloque-alerta">Bloque Alerta</option>
+                                                                        <option value="math-basico">Math inline (fracción + delta)</option>
+                                                                        <option value="ecuacion">Ecuación (display)</option>
+                                                                    </select>
+                                                                </div>
+
+                                                                <div className="w-px h-6 bg-gray-300 mx-1" />
+
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
+                                                                        <Grid size={12} /> Bloques
+                                                                    </div>
+                                                                    <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('caja', 'Título opcional')}>
+                                                                        <Grid size={14} className="mr-2" /> Caja
+                                                                    </Button>
+                                                                    <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('alerta', 'Título')}>
+                                                                        <AlertTriangle size={14} className="mr-2" /> Alerta
+                                                                    </Button>
+                                                                    <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('info', 'Título')}>
+                                                                        <Info size={14} className="mr-2" /> Info
+                                                                    </Button>
+                                                                    <Button type="button" variant="ghost" size="sm" onClick={() => insertBlock('destacado')}>
+                                                                        <Lightbulb size={14} className="mr-2" /> Destacado
+                                                                    </Button>
+                                                                    <Button type="button" variant="ghost" size="sm" onClick={() => setNoteModal({ open: true, value: '' })}>
+                                                                        <FileText size={14} className="mr-2" /> Insertar Nota
+                                                                    </Button>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => {
+                                                                            const el = sectionContentTextareaRef.current;
+                                                                            const sel = el ? currentValue.slice(el.selectionStart, el.selectionEnd) : '';
+                                                                            setEquationModal({ open: true, mode: 'ecuacion', title: 'Insertar ecuación display ([[ecuacion:...]] multi-línea)', value: sel || '', target: 'main' });
+                                                                        }}
+                                                                    >
+                                                                        <Grid size={14} className="mr-2" /> Ecuación
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                            {selectorPreview && (
+                                                                <div className="mt-3 border border-gray-200 rounded p-3 bg-gray-50">
+                                                                    <div className="text-xs text-gray-600 mb-2">Previsualización: {selectorPreview.type === 'figura' ? 'Figura' : 'Tabla'} — {selectorPreview.title}</div>
+                                                                    {selectorPreview.type === 'figura' ? (
+                                                                        <div className="flex items-center justify-start">
+                                                                            {selectorPreview.image ? (
+                                                                                <img src={`${selectorPreview.image}?t=${dataTimestamp}`} alt={selectorPreview.title} className="max-h-40 object-contain border rounded" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                                                                            ) : (
+                                                                                <div className="text-xs text-gray-500">Sin ruta de imagen</div>
+                                                                            )}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="overflow-x-auto">
+                                                                            {selectorPreview.data && selectorPreview.data.length ? (
+                                                                                <table className="text-xs">
+                                                                                    <tbody>
+                                                                                        {selectorPreview.data.slice(0, 6).map((row, r) => (
+                                                                                            <tr key={r}>
+                                                                                                {row.slice(0, 6).map((cell, c) => (
+                                                                                                    <td key={c} className={clsx("px-2 py-1 border", r === 0 ? "font-semibold bg-gray-100" : "")}>{cell}</td>
+                                                                                                ))}
+                                                                                            </tr>
+                                                                                        ))}
+                                                                                    </tbody>
+                                                                                </table>
+                                                                            ) : (
+                                                                                <div className="text-xs text-gray-500">Cargando rango…</div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Word-like page */}
+                                                    <div className="bg-[#F5F5F5] border border-gray-200 rounded-lg p-4">
+                                                        <div className="mx-auto bg-white border border-gray-200 shadow-sm rounded-sm max-w-[860px]">
+                                                            <div className="px-10 py-10">
+                                                                <textarea
+                                                                    ref={sectionContentTextareaRef}
+                                                                    className={clsx(
+                                                                        'w-full min-h-[520px] resize-y text-sm leading-relaxed focus:outline-none bg-transparent text-gray-900',
+                                                                        errorCount > 0 ? 'outline outline-1 outline-red-300' : 'outline outline-1 outline-transparent'
+                                                                    )}
+                                                                    value={currentValue}
+                                                                    onChange={(e) => {
+                                                                        const newData = [...formData];
+                                                                        newData[i] = e.target.value;
+                                                                        setFormData(newData);
+                                                                        lintNow(e.target.value);
+                                                                    }}
+                                                                    placeholder="Escribe el contenido aquí…"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <LintPanel
+                                                        issues={issues}
+                                                        onSelectRange={(from, to) => {
+                                                            const el = sectionContentTextareaRef.current;
+                                                            if (!el) return;
+                                                            el.focus();
+                                                            el.setSelectionRange(from, to);
+                                                        }}
+                                                    />
+                                                </div>
+                                            );
+                                        }
+
+                                        // Orden de Secciones: seleccionar números disponibles y soportar jerarquía según Nivel
+                                        if (activeTab === 'secciones' && isOrden) {
+                                            const nivelIdx = findColumnIndex(formHeaders, NIVEL_VARIANTS);
+                                            const nivelVal = nivelIdx !== -1 ? normalizeLevelValue((formData[nivelIdx] || '').toString()) : 'seccion';
+                                            const docColIdx = findColumnIndex(formHeaders, DOC_ID_VARIANTS);
+                                            const currentDoc = (docColIdx !== -1 ? formData[docColIdx] : currentDocId) || currentDocId;
+                                            const gridDocIdx = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+                                            const gridOrdIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+                                            const gridNivelIdx = findColumnIndex(gridHeaders, NIVEL_VARIANTS);
+                                            const rowsDoc = gridData.filter(r => gridDocIdx !== -1 ? r[gridDocIdx] === currentDoc : true);
+                                            const topOrders = new Set<string>();
+                                            const subOrders = new Map<string, Set<string>>();
+                                            const subSubOrders = new Map<string, Set<string>>();
+                                            rowsDoc.forEach((row, idx) => {
+                                                if (idx === editingRowIndex) return;
+                                                const ord = (gridOrdIdx !== -1 ? row[gridOrdIdx] : '').toString();
+                                                if (!ord) return;
+                                                const parts = ord.split('.');
+                                                if (parts.length === 1) {
+                                                    topOrders.add(parts[0]);
+                                                } else if (parts.length === 2) {
+                                                    const parent = parts[0];
+                                                    if (!subOrders.has(parent)) subOrders.set(parent, new Set<string>());
+                                                    subOrders.get(parent)!.add(parts[1]);
+                                                } else if (parts.length >= 3) {
+                                                    const parent = `${parts[0]}.${parts[1]}`;
+                                                    if (!subSubOrders.has(parent)) subSubOrders.set(parent, new Set<string>());
+                                                    subSubOrders.get(parent)!.add(parts[2]);
+                                                }
+                                            });
+                                            const currentValue = (formData[i] || '').toString();
+                                            const currentParts = currentValue ? currentValue.split('.') : [];
+                                            if (nivelVal === 'seccion') {
+                                                const used = Array.from(topOrders).map(x => parseInt(x)).filter(x => !isNaN(x)).sort((a, b) => a - b);
+                                                const max = used.length ? used[used.length - 1] : 0;
+                                                const options: string[] = [];
+                                                for (let k = 1; k <= Math.max(max + 10, 10); k++) {
+                                                    const kStr = String(k);
+                                                    if (!topOrders.has(kStr) || currentValue === kStr) options.push(kStr);
+                                                }
+                                                if (currentValue && !options.includes(currentValue)) options.push(currentValue);
+                                                options.sort((a, b) => parseInt(a) - parseInt(b));
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                        <select className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                            value={currentValue}
+                                                            onChange={(e) => { const nd = [...formData]; nd[i] = e.target.value; setFormData(nd); }}
+                                                        >
+                                                            <option value="">Selecciona Orden…</option>
+                                                            {options.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
+                                                        </select>
+                                                    </div>
+                                                );
+                                            } else if (nivelVal === 'subseccion') {
+                                                const parent = currentParts[0] || Array.from(topOrders).sort((a, b) => parseInt(a) - parseInt(b))[0] || '';
+                                                const usedChildren = subOrders.get(parent) || new Set<string>();
+                                                const nums = Array.from(usedChildren).map(x => parseInt(x)).filter(x => !isNaN(x)).sort((a, b) => a - b);
+                                                const max = nums.length ? nums[nums.length - 1] : 0;
+                                                const childOptions: string[] = [];
+                                                for (let k = 1; k <= Math.max(max + 10, 10); k++) {
+                                                    const kStr = String(k);
+                                                    if (!usedChildren.has(kStr) || currentParts[1] === kStr) childOptions.push(kStr);
+                                                }
+                                                if (currentParts[1] && !childOptions.includes(currentParts[1])) childOptions.push(currentParts[1]);
+                                                childOptions.sort((a, b) => parseInt(a) - parseInt(b));
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                        <div className="flex gap-2">
+                                                            <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
+                                                                value={parent}
+                                                                onChange={(e) => { const nd = [...formData]; const child = currentParts[1] || ''; nd[i] = e.target.value && child ? `${e.target.value}.${child}` : e.target.value; setFormData(nd); }}
+                                                            >
+                                                                <option value="">Sección padre…</option>
+                                                                {Array.from(topOrders).sort((a, b) => parseInt(a) - parseInt(b)).map(p => (<option key={p} value={p}>{p}</option>))}
+                                                            </select>
+                                                            <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
+                                                                value={currentParts[1] || ''}
+                                                                onChange={(e) => { const nd = [...formData]; const child = e.target.value; const p = parent; nd[i] = p && child ? `${p}.${child}` : child; setFormData(nd); }}
+                                                            >
+                                                                <option value="">Índice…</option>
+                                                                {childOptions.map(c => (<option key={c} value={c}>{c}</option>))}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            } else if (nivelVal === 'subsubseccion') {
+                                                const parentCandidates = Array.from(topOrders).flatMap(p => {
+                                                    const subs = subOrders.get(p) || new Set<string>();
+                                                    return Array.from(subs).map(s => `${p}.${s}`);
+                                                }).sort((a, b) => {
+                                                    const [a1, a2] = a.split('.').map(n => parseInt(n)); const [b1, b2] = b.split('.').map(n => parseInt(n)); return a1 === b1 ? a2 - b2 : a1 - b1;
+                                                });
+                                                const parentChain = (currentParts[0] && currentParts[1]) ? `${currentParts[0]}.${currentParts[1]}` : (parentCandidates[0] || '');
+                                                const usedChildren = parentChain ? (subSubOrders.get(parentChain) || new Set<string>()) : new Set<string>();
+                                                const nums = Array.from(usedChildren).map(x => parseInt(x)).filter(x => !isNaN(x)).sort((a, b) => a - b);
+                                                const max = nums.length ? nums[nums.length - 1] : 0;
+                                                const childOptions: string[] = [];
+                                                for (let k = 1; k <= Math.max(max + 10, 10); k++) {
+                                                    const kStr = String(k);
+                                                    if (!usedChildren.has(kStr) || currentParts[2] === kStr) childOptions.push(kStr);
+                                                }
+                                                if (currentParts[2] && !childOptions.includes(currentParts[2])) childOptions.push(currentParts[2]);
+                                                childOptions.sort((a, b) => parseInt(a) - parseInt(b));
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                        <div className="flex gap-2">
+                                                            <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
+                                                                value={parentChain}
+                                                                onChange={(e) => { const nd = [...formData]; const child = currentParts[2] || ''; nd[i] = e.target.value && child ? `${e.target.value}.${child}` : e.target.value; setFormData(nd); }}
+                                                            >
+                                                                <option value="">Subsección padre…</option>
+                                                                {parentCandidates.map(p => (<option key={p} value={p}>{p}</option>))}
+                                                            </select>
+                                                            <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
+                                                                value={currentParts[2] || ''}
+                                                                onChange={(e) => { const nd = [...formData]; const child = e.target.value; const pc = parentChain; nd[i] = pc && child ? `${pc}.${child}` : child; setFormData(nd); }}
+                                                            >
+                                                                <option value="">Índice…</option>
+                                                                {childOptions.map(c => (<option key={c} value={c}>{c}</option>))}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+                                        }
+
+                                        if ((activeTab === 'tablas' || activeTab === 'figuras') && isSeccion) {
+                                            return (
+                                                <div key={i} className={colSpan + " space-y-1"}>
+                                                    <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                    <select
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                        value={formData[i]?.toString().trim() || ''}
+                                                        onChange={(e) => {
+                                                            const newSec = e.target.value;
+                                                            const newData = [...formData];
+                                                            newData[i] = newSec;
+                                                            if (newSec) {
+                                                                const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+                                                                if (ordIdx !== -1) {
+                                                                    newData[ordIdx] = calculateNextOrder(newSec);
+                                                                }
+                                                            }
+                                                            setFormData(newData);
+                                                        }}
+                                                    >
+                                                        <option value="">Selecciona Sección...</option>
+                                                        {availableSections.map(sec => (
+                                                            <option key={sec.id} value={sec.id}>{sec.id} - {sec.title.substring(0, 30)}...</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            );
+                                        }
+
+                                        if ((activeTab === 'tablas' || activeTab === 'figuras') && isOrden) {
+                                            const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
+                                            const ordColIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+                                            const currentSectionId = secColIdx !== -1 ? formData[secColIdx] : '';
+                                            const usedOrders = new Set<string>();
+                                            let maxOrder = 0;
+                                            gridData.forEach((row, idx) => {
+                                                if (secColIdx !== -1 && ordColIdx !== -1 && row[secColIdx] === currentSectionId && idx !== editingRowIndex) {
+                                                    const val = row[ordColIdx];
+                                                    if (val) {
+                                                        usedOrders.add(val);
+                                                        const numVal = parseInt(val);
+                                                        if (!isNaN(numVal)) maxOrder = Math.max(maxOrder, numVal);
+                                                    }
+                                                }
+                                            });
+                                            const currentValue = formData[i] || '';
+                                            const availableOptions = [];
+                                            const limit = Math.max(maxOrder + 5, 5);
+                                            for (let k = 1; k <= limit; k++) {
+                                                const kStr = String(k);
+                                                if (!usedOrders.has(kStr) || kStr === currentValue) availableOptions.push(kStr);
+                                            }
+                                            if (currentValue && !availableOptions.includes(currentValue) && parseInt(currentValue) > 0) {
+                                                availableOptions.push(currentValue);
+                                                availableOptions.sort((a, b) => parseInt(a) - parseInt(b));
+                                            }
+
+                                            return (
+                                                <div key={i} className={colSpan + " space-y-1"}>
+                                                    <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            disabled={!currentSectionId}
+                                                            className={clsx("w-full px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900", !currentSectionId && "bg-gray-100 text-gray-500 cursor-not-allowed")}
                                                             value={formData[i] || ''}
                                                             onChange={(e) => {
                                                                 const newData = [...formData];
                                                                 newData[i] = e.target.value;
                                                                 setFormData(newData);
                                                             }}
-                                                        />
-                                                        {isCsvRange && activeTab === 'tablas' && (
-                                                            <Button variant="secondary" size="sm" onClick={() => loadNestedGrid(formData[i])} isLoading={loadingGrid} title="Recargar Grid">
-                                                                <RefreshCw size={16} />
-                                                            </Button>
+                                                        >
+                                                            <option value="">Selecciona Orden...</option>
+                                                            {availableOptions.map(opt => (
+                                                                <option key={opt} value={opt}>{opt}</option>
+                                                            ))}
+                                                        </select>
+                                                        {!currentSectionId && (
+                                                            <p className="text-xs text-gray-500 mt-1">Selecciona una sección primero.</p>
                                                         )}
                                                     </div>
-                                                    {isCsvRange && (
-                                                        <p className="text-xs text-gray-500">
-                                                            {activeTab === 'tablas' ? "Este rango define dónde se guardarán los valores de la tabla inferior." : "Define el rango donde viven los datos."}
-                                                        </p>
-                                                    )}
                                                 </div>
                                             );
-                                        })}
-                                    </div>
-                                </div>
+                                        }
 
-                                {/* Equation Modal (Secciones) */}
-                                {equationModal.open && activeTab === 'secciones' && (
-                                    <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
-                                        <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 animate-in zoom-in duration-200">
-                                            <div className="flex items-start justify-between gap-4 mb-3">
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-[#691C32]">{equationModal.title}</h3>
-                                                    <p className="text-xs text-gray-500">Se insertará como etiqueta bien formada en el texto.</p>
+                                        if (isTipoBiblio) {
+                                            const tipos = ['article', 'book', 'inbook', 'inproceedings', 'report', 'thesis', 'online', 'manual', 'dataset', 'misc'];
+                                            const current = (formData[i] || '').toString() || 'article';
+                                            return (
+                                                <div key={i} className={colSpan + " space-y-1"}>
+                                                    <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                    <select
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                        value={current}
+                                                        onChange={(e) => {
+                                                            const next = [...formData];
+                                                            next[i] = e.target.value;
+                                                            setFormData(next);
+                                                        }}
+                                                    >
+                                                        {tipos.map(t => (<option key={t} value={t}>{t}</option>))}
+                                                    </select>
                                                 </div>
-                                                <button className="text-gray-500 hover:text-gray-700" onClick={() => setEquationModal({ ...equationModal, open: false })}>
-                                                    <X size={18} />
-                                                </button>
-                                            </div>
+                                            );
+                                        }
 
-                                            <div className="flex flex-wrap items-center gap-2 mb-2">
-                                                <div className="text-[11px] text-gray-600 mr-1">Plantillas:</div>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\frac{ {{1}} }{ {{2}} }', { selectFirstPlaceholder: true })} title="Fracción">
-                                                    {'\\frac'}
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\sqrt{ {{1}} }', { selectFirstPlaceholder: true })} title="Raíz">
-                                                    {'\\sqrt'}
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('{{1}}^{ {{2}} }', { selectFirstPlaceholder: true })} title="Exponente">
-                                                    x^n
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\int_{ {{1}} }^{ {{2}} } {{3}} \\, d{{4}}', { selectFirstPlaceholder: true })} title="Integral">
-                                                    {'\\int'}
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\frac{d {{1}}}{d {{2}}}', { selectFirstPlaceholder: true })} title="Derivada">
-                                                    d/dx
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\frac{\\partial {{1}}}{\\partial {{2}}}', { selectFirstPlaceholder: true })} title="Derivada parcial">
-                                                    {'\\partial'}
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\Delta')} title="Delta">
-                                                    {'\\Delta'}
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\cdot')} title="Multiplicación punto">
-                                                    {'\\cdot'}
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\times')} title="Multiplicación cruz">
-                                                    {'\\times'}
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\sin( {{1}} )', { selectFirstPlaceholder: true })} title="Seno">
-                                                    {'\\sin'}
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\cos( {{1}} )', { selectFirstPlaceholder: true })} title="Coseno">
-                                                    {'\\cos'}
-                                                </Button>
-                                            </div>
+                                        const isDisabled = isReadOnly || isCsvRange;
 
-                                            <div className="flex flex-wrap items-center gap-2 mb-2">
-                                                <div className="text-[11px] text-gray-600 mr-1">Símbolos:</div>
-                                                <select
-                                                    className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
-                                                    value={equationPaletteGroup}
-                                                    onChange={(e) => setEquationPaletteGroup(e.target.value as EquationSymbolGroup)}
-                                                >
-                                                    <option value="Todos">Todos</option>
-                                                    <option value="Griegas">Griegas</option>
-                                                    <option value="Operadores">Operadores</option>
-                                                    <option value="Relaciones">Relaciones</option>
-                                                    <option value="Flechas">Flechas</option>
-                                                    <option value="Conjuntos">Conjuntos</option>
-                                                    <option value="Funciones">Funciones</option>
-                                                </select>
-                                                <div className="relative flex-1 min-w-[180px]">
-                                                    <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                                        return (
+                                            <div key={i} className={colSpan + " space-y-1"}>
+                                                <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                <div className="flex gap-2">
                                                     <input
-                                                        className="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
-                                                        value={equationPaletteQuery}
-                                                        onChange={(e) => setEquationPaletteQuery(e.target.value)}
-                                                        placeholder="Buscar (alpha, integral, <=, R, flecha...)"
+                                                        disabled={isDisabled}
+                                                        className={clsx("flex-1 px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32]", isDisabled ? "bg-gray-100 text-gray-500" : "bg-white text-gray-900 border-gray-300")}
+                                                        value={formData[i] || ''}
+                                                        onChange={(e) => {
+                                                            const newData = [...formData];
+                                                            newData[i] = e.target.value;
+                                                            setFormData(newData);
+                                                        }}
                                                     />
-                                                </div>
-                                            </div>
-
-                                            <div className="border border-gray-200 rounded-md p-2 max-h-[160px] overflow-auto mb-2">
-                                                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                                                    {EQUATION_SYMBOLS
-                                                        .filter(s => equationPaletteGroup === 'Todos' || s.group === equationPaletteGroup)
-                                                        .filter(s => {
-                                                            const q = equationPaletteQuery.trim().toLowerCase();
-                                                            if (!q) return true;
-                                                            const hay = [s.label, s.latex, ...s.keywords].join(' ').toLowerCase();
-                                                            return hay.includes(q);
-                                                        })
-                                                        .map((s) => (
-                                                            <button
-                                                                key={`${s.group}:${s.latex}`}
-                                                                type="button"
-                                                                className="border border-gray-300 rounded-md px-2 py-1 text-left hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
-                                                                title={s.latex}
-                                                                onClick={() => insertIntoEquationModal(s.latex)}
-                                                            >
-                                                                <div className="text-sm leading-none text-gray-900">{s.label}</div>
-                                                                <div className="text-[10px] leading-tight text-gray-600 truncate">{s.latex}</div>
-                                                            </button>
-                                                        ))}
-                                                </div>
-                                            </div>
-
-                                            <textarea
-                                                ref={equationModalTextareaRef}
-                                                className="w-full min-h-[180px] px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
-                                                value={equationModal.value}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Tab') {
-                                                        e.preventDefault();
-                                                        focusNextEquationPlaceholder({ wrap: true });
-                                                    }
-                                                }}
-                                                onChange={(e) => setEquationModal({ ...equationModal, value: e.target.value })}
-                                                placeholder={equationModal.mode === 'math' ? 'a^2 + b^2 = c^2' : 'Escribe la ecuación (puede ser multi-línea)…'}
-                                            />
-
-                                            <div className="flex justify-end gap-3 mt-4">
-                                                <Button variant="ghost" onClick={() => setEquationModal({ ...equationModal, open: false })}>Cancelar</Button>
-                                                <Button
-                                                    variant="burgundy"
-                                                    onClick={commitEquationModal}
-                                                >
-                                                    Insertar
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Note Modal */}
-                                {noteModal.open && (
-                                    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-                                        <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 animate-in zoom-in duration-200">
-                                            <div className="flex items-start justify-between gap-4 mb-3">
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-[#691C32]">Insertar Nota</h3>
-                                                    <p className="text-xs text-gray-500">Agrega una nota explicativa o al pie.</p>
-                                                </div>
-                                                <button className="text-gray-500 hover:text-gray-700" onClick={() => setNoteModal({ ...noteModal, open: false })}>
-                                                    <X size={18} />
-                                                </button>
-                                            </div>
-
-                                            <div className="flex gap-2 mb-2">
-                                                <Button type="button" variant="outline" size="sm" onClick={() => {
-                                                    const el = noteContentTextareaRef.current;
-                                                    const start = el ? el.selectionStart : 0;
-                                                    const end = el ? el.selectionEnd : 0;
-                                                    const val = noteModal.value;
-                                                    const newVal = val.slice(0, start) + `**${val.slice(start, end)}**` + val.slice(end);
-                                                    setNoteModal({ ...noteModal, value: newVal });
-                                                }} title="Negrita">
-                                                    <b>B</b>
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => {
-                                                    const el = noteContentTextareaRef.current;
-                                                    const start = el ? el.selectionStart : 0;
-                                                    const end = el ? el.selectionEnd : 0;
-                                                    const val = noteModal.value;
-                                                    const newVal = val.slice(0, start) + `*${val.slice(start, end)}*` + val.slice(end);
-                                                    setNoteModal({ ...noteModal, value: newVal });
-                                                }} title="Cursiva">
-                                                    <i>I</i>
-                                                </Button>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => {
-                                                    const el = noteContentTextareaRef.current;
-                                                    const start = el ? el.selectionStart : 0;
-                                                    const end = el ? el.selectionEnd : 0;
-                                                    const val = noteModal.value;
-                                                    const sel = val.slice(start, end);
-
-                                                    // Open equation modal targeting note
-                                                    setEquationModal({
-                                                        open: true,
-                                                        mode: 'math',
-                                                        title: 'Insertar LaTeX en Nota',
-                                                        value: sel || '',
-                                                        target: 'note'
-                                                    });
-                                                }} title="Insertar LaTeX">
-                                                    LaTeX
-                                                </Button>
-                                            </div>
-
-                                            <textarea
-                                                ref={noteContentTextareaRef}
-                                                className="w-full min-h-[150px] px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900 mb-4"
-                                                value={noteModal.value}
-                                                onChange={(e) => setNoteModal({ ...noteModal, value: e.target.value })}
-                                                placeholder="Escribe el contenido de la nota..."
-                                            />
-
-                                            <div className="flex justify-end gap-3">
-                                                <Button variant="ghost" onClick={() => setNoteModal({ ...noteModal, open: false })}>Cancelar</Button>
-                                                <Button variant="burgundy" onClick={() => {
-                                                    insertSnippetIntoContent(`[[nota:${noteModal.value}]]`);
-                                                    setNoteModal({ open: false, value: '' });
-                                                }}>Insertar</Button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Nested Grid Editor (Only for Tablas) */}
-                                {activeTab === 'tablas' && (
-                                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 md:p-8">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <div className="flex items-center gap-2">
-                                                <Table className="text-[#691C32]" size={20} />
-                                                <h3 className="text-lg font-bold text-gray-900">Valores de la Tabla</h3>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <Button variant="ghost" size="sm" onClick={deleteGridRow} disabled={nestedGridData.length <= 1} title="Eliminar última fila">
-                                                    <Minus size={14} className="mr-1" /> Fila
-                                                </Button>
-                                                <Button variant="ghost" size="sm" onClick={addGridRow} title="Añadir fila al final">
-                                                    <Plus size={14} className="mr-1" /> Fila
-                                                </Button>
-                                                <div className="w-px bg-gray-300 mx-1"></div>
-                                                <Button variant="ghost" size="sm" onClick={deleteGridCol} disabled={!nestedGridData[0] || nestedGridData[0].length <= 1} title="Eliminar última columna">
-                                                    <Minus size={14} className="mr-1" /> Col
-                                                </Button>
-                                                <Button variant="ghost" size="sm" onClick={addGridCol} title="Añadir columna al final">
-                                                    <Plus size={14} className="mr-1" /> Col
-                                                </Button>
-                                            </div>
-                                        </div>
-
-                                        {loadingGrid ? (
-                                            <div className="h-32 flex items-center justify-center text-gray-400">Cargando datos...</div>
-                                        ) : (
-                                            <div className="overflow-x-auto border border-gray-300 rounded-md bg-gray-50">
-                                                {nestedGridData && nestedGridData.length > 0 ? (
-                                                    <table className="min-w-full divide-y divide-gray-200">
-                                                        <tbody className="bg-white divide-y divide-gray-200">
-                                                            {nestedGridData.map((row, rIndex) => (
-                                                                <tr key={rIndex}>
-                                                                    <td className={clsx("px-2 py-2 text-[10px] font-mono select-none w-8 text-center border-r border-gray-200 transition-colors duration-200", focusedCell?.r === rIndex ? "bg-[#691C32] text-white font-bold" : "bg-gray-50 text-gray-400")}>
-                                                                        {rIndex + 1}
-                                                                    </td>
-                                                                    {row.map((cell, cIndex) => (
-                                                                        <td key={cIndex} className="p-0 border-r border-gray-200 last:border-0 min-w-[120px]">
-                                                                            <input
-                                                                                onFocus={() => setFocusedCell({ r: rIndex, c: cIndex })}
-                                                                                className={clsx("w-full h-full px-3 py-2 text-sm focus:outline-none border-none bg-transparent transition-colors duration-200 text-gray-900", rIndex === 0 ? (focusedCell?.c === cIndex ? "font-bold text-[#691C32] bg-red-50" : "font-bold text-gray-800 bg-gray-50") : "text-gray-900 focus:bg-blue-50", cIndex === 0 && rIndex !== 0 && "font-bold text-gray-900")}
-                                                                                value={cell}
-                                                                                placeholder={rIndex === 0 ? "Encabezado" : ""}
-                                                                                onChange={(e) => {
-                                                                                    const newData = [...nestedGridData];
-                                                                                    newData[rIndex][cIndex] = e.target.value;
-                                                                                    setNestedGridData(newData);
-                                                                                }}
-                                                                            />
-                                                                        </td>
-                                                                    ))}
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                ) : (
-                                                    <div className="p-8 text-center text-gray-500 flex flex-col items-center">
-                                                        <p>La cuadrícula está vacía.</p>
-                                                        <Button variant="outline" size="sm" className="mt-2" onClick={() => setNestedGridData([['Encabezado', '', ''], ['', '', '']])}>
-                                                            Inicializar Cuadrícula
+                                                    {isCsvRange && activeTab === 'tablas' && (
+                                                        <Button variant="secondary" size="sm" onClick={() => loadNestedGrid(formData[i])} isLoading={loadingGrid} title="Recargar Grid">
+                                                            <RefreshCw size={16} />
                                                         </Button>
-                                                    </div>
+                                                    )}
+                                                </div>
+                                                {isCsvRange && (
+                                                    <p className="text-xs text-gray-500">
+                                                        {activeTab === 'tablas' ? "Este rango define dónde se guardarán los valores de la tabla inferior." : "Define el rango donde viven los datos."}
+                                                    </p>
                                                 )}
                                             </div>
-                                        )}
-                                        <p className="text-xs text-gray-400 italic mt-2">
-                                            Estos datos se guardarán automáticamente en el rango {nestedGridRange} al guardar el formulario.
-                                        </p>
-                                    </div>
-                                )}
-
-                                <div className="flex justify-end gap-3 pt-4">
-                                    {activeTab !== 'metadatos' && (
-                                        <Button variant="outline" onClick={() => setViewMode('LIST')}>Cancelar</Button>
-                                    )}
-                                    <Button variant="burgundy" onClick={handleSaveForm} isLoading={saving}>
-                                        <Save size={16} className="mr-2" /> Guardar Todo
-                                    </Button>
+                                        );
+                                    })}
                                 </div>
                             </div>
-                        )}
-                    </div>
+
+                            {/* Equation Modal (Secciones) */}
+                            {equationModal.open && activeTab === 'secciones' && (
+                                <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
+                                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 animate-in zoom-in duration-200">
+                                        <div className="flex items-start justify-between gap-4 mb-3">
+                                            <div>
+                                                <h3 className="text-lg font-bold text-[#691C32]">{equationModal.title}</h3>
+                                                <p className="text-xs text-gray-500">Se insertará como etiqueta bien formada en el texto.</p>
+                                            </div>
+                                            <button className="text-gray-500 hover:text-gray-700" onClick={() => setEquationModal({ ...equationModal, open: false })}>
+                                                <X size={18} />
+                                            </button>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                                            <div className="text-[11px] text-gray-600 mr-1">Plantillas:</div>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\frac{ {{1}} }{ {{2}} }', { selectFirstPlaceholder: true })} title="Fracción">
+                                                {'\\frac'}
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\sqrt{ {{1}} }', { selectFirstPlaceholder: true })} title="Raíz">
+                                                {'\\sqrt'}
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('{{1}}^{ {{2}} }', { selectFirstPlaceholder: true })} title="Exponente">
+                                                x^n
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\int_{ {{1}} }^{ {{2}} } {{3}} \\, d{{4}}', { selectFirstPlaceholder: true })} title="Integral">
+                                                {'\\int'}
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\frac{d {{1}}}{d {{2}}}', { selectFirstPlaceholder: true })} title="Derivada">
+                                                d/dx
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\frac{\\partial {{1}}}{\\partial {{2}}}', { selectFirstPlaceholder: true })} title="Derivada parcial">
+                                                {'\\partial'}
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\Delta')} title="Delta">
+                                                {'\\Delta'}
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\cdot')} title="Multiplicación punto">
+                                                {'\\cdot'}
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\times')} title="Multiplicación cruz">
+                                                {'\\times'}
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\sin( {{1}} )', { selectFirstPlaceholder: true })} title="Seno">
+                                                {'\\sin'}
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => insertIntoEquationModal('\\cos( {{1}} )', { selectFirstPlaceholder: true })} title="Coseno">
+                                                {'\\cos'}
+                                            </Button>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                                            <div className="text-[11px] text-gray-600 mr-1">Símbolos:</div>
+                                            <select
+                                                className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                value={equationPaletteGroup}
+                                                onChange={(e) => setEquationPaletteGroup(e.target.value as EquationSymbolGroup)}
+                                            >
+                                                <option value="Todos">Todos</option>
+                                                <option value="Griegas">Griegas</option>
+                                                <option value="Operadores">Operadores</option>
+                                                <option value="Relaciones">Relaciones</option>
+                                                <option value="Flechas">Flechas</option>
+                                                <option value="Conjuntos">Conjuntos</option>
+                                                <option value="Funciones">Funciones</option>
+                                            </select>
+                                            <div className="relative flex-1 min-w-[180px]">
+                                                <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                <input
+                                                    className="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                    value={equationPaletteQuery}
+                                                    onChange={(e) => setEquationPaletteQuery(e.target.value)}
+                                                    placeholder="Buscar (alpha, integral, <=, R, flecha...)"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="border border-gray-200 rounded-md p-2 max-h-[160px] overflow-auto mb-2">
+                                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                                {EQUATION_SYMBOLS
+                                                    .filter(s => equationPaletteGroup === 'Todos' || s.group === equationPaletteGroup)
+                                                    .filter(s => {
+                                                        const q = equationPaletteQuery.trim().toLowerCase();
+                                                        if (!q) return true;
+                                                        const hay = [s.label, s.latex, ...s.keywords].join(' ').toLowerCase();
+                                                        return hay.includes(q);
+                                                    })
+                                                    .map((s) => (
+                                                        <button
+                                                            key={`${s.group}:${s.latex}`}
+                                                            type="button"
+                                                            className="border border-gray-300 rounded-md px-2 py-1 text-left hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
+                                                            title={s.latex}
+                                                            onClick={() => insertIntoEquationModal(s.latex)}
+                                                        >
+                                                            <div className="text-sm leading-none text-gray-900">{s.label}</div>
+                                                            <div className="text-[10px] leading-tight text-gray-600 truncate">{s.latex}</div>
+                                                        </button>
+                                                    ))}
+                                            </div>
+                                        </div>
+
+                                        <textarea
+                                            ref={equationModalTextareaRef}
+                                            className="w-full min-h-[180px] px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                            value={equationModal.value}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Tab') {
+                                                    e.preventDefault();
+                                                    focusNextEquationPlaceholder({ wrap: true });
+                                                }
+                                            }}
+                                            onChange={(e) => setEquationModal({ ...equationModal, value: e.target.value })}
+                                            placeholder={equationModal.mode === 'math' ? 'a^2 + b^2 = c^2' : 'Escribe la ecuación (puede ser multi-línea)…'}
+                                        />
+
+                                        <div className="flex justify-end gap-3 mt-4">
+                                            <Button variant="ghost" onClick={() => setEquationModal({ ...equationModal, open: false })}>Cancelar</Button>
+                                            <Button
+                                                variant="burgundy"
+                                                onClick={commitEquationModal}
+                                            >
+                                                Insertar
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Note Modal */}
+                            {noteModal.open && (
+                                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+                                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 animate-in zoom-in duration-200">
+                                        <div className="flex items-start justify-between gap-4 mb-3">
+                                            <div>
+                                                <h3 className="text-lg font-bold text-[#691C32]">Insertar Nota</h3>
+                                                <p className="text-xs text-gray-500">Agrega una nota explicativa o al pie.</p>
+                                            </div>
+                                            <button className="text-gray-500 hover:text-gray-700" onClick={() => setNoteModal({ ...noteModal, open: false })}>
+                                                <X size={18} />
+                                            </button>
+                                        </div>
+
+                                        <div className="flex gap-2 mb-2">
+                                            <Button type="button" variant="outline" size="sm" onClick={() => {
+                                                const el = noteContentTextareaRef.current;
+                                                const start = el ? el.selectionStart : 0;
+                                                const end = el ? el.selectionEnd : 0;
+                                                const val = noteModal.value;
+                                                const newVal = val.slice(0, start) + `**${val.slice(start, end)}**` + val.slice(end);
+                                                setNoteModal({ ...noteModal, value: newVal });
+                                            }} title="Negrita">
+                                                <b>B</b>
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => {
+                                                const el = noteContentTextareaRef.current;
+                                                const start = el ? el.selectionStart : 0;
+                                                const end = el ? el.selectionEnd : 0;
+                                                const val = noteModal.value;
+                                                const newVal = val.slice(0, start) + `*${val.slice(start, end)}*` + val.slice(end);
+                                                setNoteModal({ ...noteModal, value: newVal });
+                                            }} title="Cursiva">
+                                                <i>I</i>
+                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => {
+                                                const el = noteContentTextareaRef.current;
+                                                const start = el ? el.selectionStart : 0;
+                                                const end = el ? el.selectionEnd : 0;
+                                                const val = noteModal.value;
+                                                const sel = val.slice(start, end);
+
+                                                // Open equation modal targeting note
+                                                setEquationModal({
+                                                    open: true,
+                                                    mode: 'math',
+                                                    title: 'Insertar LaTeX en Nota',
+                                                    value: sel || '',
+                                                    target: 'note'
+                                                });
+                                            }} title="Insertar LaTeX">
+                                                LaTeX
+                                            </Button>
+                                        </div>
+
+                                        <textarea
+                                            ref={noteContentTextareaRef}
+                                            className="w-full min-h-[150px] px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900 mb-4"
+                                            value={noteModal.value}
+                                            onChange={(e) => setNoteModal({ ...noteModal, value: e.target.value })}
+                                            placeholder="Escribe el contenido de la nota..."
+                                        />
+
+                                        <div className="flex justify-end gap-3">
+                                            <Button variant="ghost" onClick={() => setNoteModal({ ...noteModal, open: false })}>Cancelar</Button>
+                                            <Button variant="burgundy" onClick={() => {
+                                                insertSnippetIntoContent(`[[nota:${noteModal.value}]]`);
+                                                setNoteModal({ open: false, value: '' });
+                                            }}>Insertar</Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Nested Grid Editor (Only for Tablas) */}
+                            {activeTab === 'tablas' && (
+                                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 md:p-8">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <Table className="text-[#691C32]" size={20} />
+                                            <h3 className="text-lg font-bold text-gray-900">Valores de la Tabla</h3>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button variant="ghost" size="sm" onClick={deleteGridRow} disabled={nestedGridData.length <= 1} title="Eliminar última fila">
+                                                <Minus size={14} className="mr-1" /> Fila
+                                            </Button>
+                                            <Button variant="ghost" size="sm" onClick={addGridRow} title="Añadir fila al final">
+                                                <Plus size={14} className="mr-1" /> Fila
+                                            </Button>
+                                            <div className="w-px bg-gray-300 mx-1"></div>
+                                            <Button variant="ghost" size="sm" onClick={deleteGridCol} disabled={!nestedGridData[0] || nestedGridData[0].length <= 1} title="Eliminar última columna">
+                                                <Minus size={14} className="mr-1" /> Col
+                                            </Button>
+                                            <Button variant="ghost" size="sm" onClick={addGridCol} title="Añadir columna al final">
+                                                <Plus size={14} className="mr-1" /> Col
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {loadingGrid ? (
+                                        <div className="h-32 flex items-center justify-center text-gray-400">Cargando datos...</div>
+                                    ) : (
+                                        <div className="overflow-x-auto border border-gray-300 rounded-md bg-gray-50">
+                                            {nestedGridData && nestedGridData.length > 0 ? (
+                                                <table className="min-w-full divide-y divide-gray-200">
+                                                    <tbody className="bg-white divide-y divide-gray-200">
+                                                        {nestedGridData.map((row, rIndex) => (
+                                                            <tr key={rIndex}>
+                                                                <td className={clsx("px-2 py-2 text-[10px] font-mono select-none w-8 text-center border-r border-gray-200 transition-colors duration-200", focusedCell?.r === rIndex ? "bg-[#691C32] text-white font-bold" : "bg-gray-50 text-gray-400")}>
+                                                                    {rIndex + 1}
+                                                                </td>
+                                                                {row.map((cell, cIndex) => (
+                                                                    <td key={cIndex} className="p-0 border-r border-gray-200 last:border-0 min-w-[120px]">
+                                                                        <input
+                                                                            onFocus={() => setFocusedCell({ r: rIndex, c: cIndex })}
+                                                                            className={clsx("w-full h-full px-3 py-2 text-sm focus:outline-none border-none bg-transparent transition-colors duration-200 text-gray-900", rIndex === 0 ? (focusedCell?.c === cIndex ? "font-bold text-[#691C32] bg-red-50" : "font-bold text-gray-800 bg-gray-50") : "text-gray-900 focus:bg-blue-50", cIndex === 0 && rIndex !== 0 && "font-bold text-gray-900")}
+                                                                            value={cell}
+                                                                            placeholder={rIndex === 0 ? "Encabezado" : ""}
+                                                                            onChange={(e) => {
+                                                                                const newData = [...nestedGridData];
+                                                                                newData[rIndex][cIndex] = e.target.value;
+                                                                                setNestedGridData(newData);
+                                                                            }}
+                                                                        />
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            ) : (
+                                                <div className="p-8 text-center text-gray-500 flex flex-col items-center">
+                                                    <p>La cuadrícula está vacía.</p>
+                                                    <Button variant="outline" size="sm" className="mt-2" onClick={() => setNestedGridData([['Encabezado', '', ''], ['', '', '']])}>
+                                                        Inicializar Cuadrícula
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    <p className="text-xs text-gray-400 italic mt-2">
+                                        Estos datos se guardarán automáticamente en el rango {nestedGridRange} al guardar el formulario.
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-3 pt-4">
+                                {activeTab !== 'metadatos' && (
+                                    <Button variant="outline" onClick={() => setViewMode('LIST')}>Cancelar</Button>
+                                )}
+                                <Button variant="burgundy" onClick={handleSaveForm} isLoading={saving}>
+                                    <Save size={16} className="mr-2" /> Guardar Todo
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
-    );
+    </div>
+);
 };
