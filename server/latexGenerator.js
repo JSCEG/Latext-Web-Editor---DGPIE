@@ -389,7 +389,9 @@ function procesarDirectorio(contenidoRaw) {
     for (let i = 0; i < lines.length; i += 2) {
         const nombre = lines[i];
         const cargo = lines[i + 1] || '';
-        dirTex += `{\\patriafont\\fontsize{12}{14}\\selectfont\\color{gobmxGuinda} ${escaparLatex(nombre)}}\\\\\n`;
+        // FIX: Evitar saltos de línea con \\\\ si no hay contenido después, que causa "There's no line here to end"
+        // y usar \par en su lugar si es necesario o simplemente saltar línea
+        dirTex += `{\\patriafont\\fontsize{12}{14}\\selectfont\\color{gobmxGuinda} ${escaparLatex(nombre)}}\\par\n`;
         if (cargo) {
             dirTex += `{\\patriafont\\fontsize{9}{11}\\selectfont ${escaparLatex(cargo)}}\\\\[0.5cm]\n`;
         } else {
@@ -445,6 +447,14 @@ function generarFigura(figura) {
 
     let tex = `\\begin{figure}[H]\n`;
     tex += `  {\\centering\n`;
+    
+    // 1. Caption (Título) arriba
+    if (caption) {
+        tex += `  \\caption{${escaparLatex(caption)}}\n`;
+        tex += `  \\label{fig:${generarLabel(caption)}}\n`;
+    }
+
+    // 2. Imagen
     if (rutaArchivo) {
         if (textoAlt) {
             tex += `  % Texto alternativo para accesibilidad\n`;
@@ -455,11 +465,10 @@ function generarFigura(figura) {
     }
     tex += `  \\par}\n`;
     tex += `  \\raggedright\n`;
-    if (caption) {
-        tex += `  \\caption{${escaparLatex(caption)}}\n`;
-        tex += `  \\label{fig:${generarLabel(caption)}}\n`;
-    }
+
     tex += `\\end{figure}\n`;
+    
+    // 3. Fuente abajo
     if (fuente) {
         tex += `\\vspace{-4pt}\n`;
         tex += `\\fuente{${procesarTextoFuente(fuente)}}\n`;
@@ -488,9 +497,11 @@ function generarTabla(tabla) {
     esLarga = resultado.tipo === 'longtable';
 
     if (esLarga) {
+        // Para tablas largas: usar tabladoradoLargo (sin caption, va en longtable)
         texInicio = `\\begin{tabladoradoLargo}\n`;
         texFin = `\\end{tabladoradoLargo}\n`;
     } else {
+        // FIX: Para tablas cortas: usar tabladoradoCorto (mismo estilo que longtable)
         texInicio = `\\begin{tabladoradoCorto}\n`;
         texInicio += `  \\caption{${escaparLatex(titulo)}}\n`;
         texInicio += `  \\label{tab:${generarLabel(titulo)}}\n`;
@@ -513,43 +524,96 @@ function procesarDatosArray(datos, tituloTabla, forzarLongtable = false) {
         return { tipo: 'tabular', contenido: `  \\begin{tabular}{lc}\n    % Sin datos\n  \\end{tabular}\n` };
     }
     const numCols = datos[0].length;
-    const MAX_COLS_POR_TABLA = 6;
+    // Máximo de columnas por tabla (incluyendo la primera).
+    // Requisito: permitir hasta 14 columnas además de la primera (total 15) antes de dividir por columnas.
+    const MAX_COLS_POR_TABLA = 15;
     const MAX_FILAS_COMPACTA = 15;
     const MAX_FILAS_POR_PARTE = 35;
 
+    // FIX: Si hay caracteres extraños en los datos que parecen & o \\, ya deberían estar escapados.
+    // Pero si el número de columnas varía en los datos respecto al header, tabularx explota.
+    // Vamos a normalizar los datos para asegurar que todas las filas tengan el mismo número de columnas.
+    const datosNormalizados = normalizarColumnasDatos(datos, numCols);
+
     if (numCols <= MAX_COLS_POR_TABLA) {
-        const numFilas = Math.max(0, datos.length - 1);
+        const numFilas = Math.max(0, datosNormalizados.length - 1);
         if (numFilas <= MAX_FILAS_COMPACTA && !forzarLongtable) {
-            return { tipo: 'tabular', contenido: generarTablaCompacta(datos) };
+            return { tipo: 'tabular', contenido: generarTablaCompacta(datosNormalizados) };
         }
         if (numFilas > MAX_FILAS_POR_PARTE) {
-            return { tipo: 'longtable', contenido: dividirTablaPorFilas(datos, MAX_FILAS_POR_PARTE, tituloTabla) };
+            return { tipo: 'longtable', contenido: dividirTablaPorFilas(datosNormalizados, MAX_FILAS_POR_PARTE, tituloTabla) };
         }
-        return { tipo: 'longtable', contenido: generarTablaSimple(datos, tituloTabla) };
+        return { tipo: 'longtable', contenido: generarTablaSimple(datosNormalizados, tituloTabla) };
     }
-    return { tipo: 'longtable', contenido: dividirTabla(datos, MAX_COLS_POR_TABLA, tituloTabla) };
+    return { tipo: 'longtable', contenido: dividirTabla(datosNormalizados, MAX_COLS_POR_TABLA, tituloTabla) };
+}
+
+// Helper para asegurar consistencia en columnas
+function normalizarColumnasDatos(datos, numColsEsperado) {
+    return datos.map(fila => {
+        if (fila.length === numColsEsperado) return fila;
+        if (fila.length > numColsEsperado) return fila.slice(0, numColsEsperado);
+        // Rellenar con vacíos si faltan
+        return [...fila, ...Array(numColsEsperado - fila.length).fill('')];
+    });
+}
+
+// ================================
+// SENER: Tablas largas (xltabular)
+// ================================
+
+// Ajusta el ancho de la primera columna (definido en sener2025.cls)
+const SENER_LONGTABLE_FIRSTCOL_WIDTH = '0.34\\textwidth';
+
+function senerLongtablePreamble() {
+    return `  \\setlength{\\SENERLongTableFirstColWidth}{${SENER_LONGTABLE_FIRSTCOL_WIDTH}}\n`;
+}
+
+function senerLongtableSpec(numCols) {
+    // Primera columna: Q (ancha + bold), resto: Z (X) para auto-fit
+    return 'Q' + 'Z'.repeat(Math.max(0, numCols - 1));
+}
+
+function senerLongtableHeaderRow(celdasEncabezadoProcesadas) {
+    // Primera columna normal; resto con encabezado vertical
+    return celdasEncabezadoProcesadas
+        .map((c, idx) => idx === 0
+            ? `\\encabezadodorado{${c}}`
+            : `\\encabezadodorado{\\SENERVHeader{${c}}}`)
+        .join(' & ');
 }
 
 function generarTablaSimple(datos, tituloTabla) {
     const numCols = datos[0].length;
-    const especCols = 'Y' + 'Z'.repeat(numCols - 1);
-    let tex = `  \\begin{xltabular}{\\textwidth}{${especCols}}\n`;
+    const especCols = senerLongtableSpec(numCols);
+    
+    let tex = senerLongtablePreamble();
+    tex += `  \\begin{xltabular}{\\textwidth}{${especCols}}\n`;
     if (tituloTabla) tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+    
+    // Encabezado para la primera página
     tex += `    \\toprule\n`;
-    const encabezados = procesarCeldasFila(datos[0], true, true).map(c => `\\encabezadodorado{${c}}`).join(' & ');
+    const encabezados = senerLongtableHeaderRow(procesarCeldasFila(datos[0], true, true));
     tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
     tex += `    \\midrule\n`;
     tex += `    \\endfirsthead\n\n`;
+    
+    // Encabezado para páginas siguientes
     tex += `    \\multicolumn{${numCols}}{l}{\\small\\textit{Continuación...}} \\\\\n`;
     tex += `    \\toprule\n`;
     tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
     tex += `    \\midrule\n`;
     tex += `    \\endhead\n\n`;
+    
+    // Pie de tabla en páginas intermedias
     tex += `    \\midrule\n`;
     tex += `    \\multicolumn{${numCols}}{r}{\\small\\textit{Continúa en la siguiente página...}} \\\\\n`;
     tex += `    \\endfoot\n\n`;
+    
+    // Pie de tabla en la última página
     tex += `    \\bottomrule\n`;
     tex += `    \\endlastfoot\n\n`;
+    
     for (let i = 1; i < datos.length; i++) {
         const celdas = procesarCeldasFila(datos[i], false, true);
         tex += `    ${celdas.join(' & ')} \\\\\n`;
@@ -584,30 +648,42 @@ function dividirTabla(datos, maxCols, tituloTabla) {
 
     while (colInicio < numCols) {
         const colFin = Math.min(colInicio + colsPorParte, numCols);
+        
         if (parte > 1) {
-            tex += `\n  \\vspace{0.25em}\n  {\\small\\textit{Continuación Tabla. ${escaparLatex(tituloTabla || '')}}}\n  \\vspace{0.15em}\n\n`;
+            tex += `\n  \\clearpage\n`;
+            tex += `  {\\small\\textit{Continuación Tabla. ${escaparLatex(tituloTabla || '')}}}\n`;
+            tex += `  \\vspace{0.15em}\n\n`;
         }
+        
         const colsEnEstaParte = [0].concat(Array.from({ length: colFin - colInicio }, (_, i) => colInicio + i));
         const numColsTabla = colsEnEstaParte.length;
-        const especCols = 'Y' + 'Z'.repeat(numColsTabla - 1);
+        const especCols = senerLongtableSpec(numColsTabla);
+        
+        tex += senerLongtablePreamble();
         tex += `  \\begin{xltabular}{\\textwidth}{${especCols}}\n`;
         if (tituloTabla && parte === 1) tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+        
         const celdasEncabezado = colsEnEstaParte.map(colIdx => datos[0][colIdx]);
-        const encabezados = procesarCeldasFila(celdasEncabezado, true, true).map(c => `\\encabezadodorado{${c}}`).join(' & ');
+        const encabezados = senerLongtableHeaderRow(procesarCeldasFila(celdasEncabezado, true, true));
+        
         tex += `    \\toprule\n`;
         tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
         tex += `    \\midrule\n`;
         tex += `    \\endfirsthead\n\n`;
+        
         tex += `    \\multicolumn{${numColsTabla}}{l}{\\small\\textit{Continuación...}} \\\\\n`;
         tex += `    \\toprule\n`;
         tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
         tex += `    \\midrule\n`;
         tex += `    \\endhead\n\n`;
+        
         tex += `    \\midrule\n`;
         tex += `    \\multicolumn{${numColsTabla}}{r}{\\small\\textit{Continúa en la siguiente página...}} \\\\\n`;
         tex += `    \\endfoot\n\n`;
+        
         tex += `    \\bottomrule\n`;
         tex += `    \\endlastfoot\n\n`;
+        
         for (let i = 1; i < datos.length; i++) {
             const celdasParte = colsEnEstaParte.map(colIdx => datos[i][colIdx]);
             const celdas = procesarCeldasFila(celdasParte, false, true);
@@ -622,36 +698,44 @@ function dividirTabla(datos, maxCols, tituloTabla) {
 
 function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla) {
     const numCols = datos[0].length;
-    const especCols = 'Y' + 'Z'.repeat(numCols - 1);
+    const especCols = senerLongtableSpec(numCols);
     let tex = '';
     let inicio = 1;
     let parte = 1;
     while (inicio < datos.length) {
         const fin = Math.min(inicio + maxFilasParte, datos.length);
+        
+        tex += senerLongtablePreamble();
         tex += `  \\begin{xltabular}{\\textwidth}{${especCols}}\n`;
         if (tituloTabla && parte === 1) tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+        
         tex += `    \\toprule\n`;
-        const encabezados = procesarCeldasFila(datos[0], true, true).map(c => `\\encabezadodorado{${c}}`).join(' & ');
+        const encabezados = senerLongtableHeaderRow(procesarCeldasFila(datos[0], true, true));
         tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
         tex += `    \\midrule\n`;
         tex += `    \\endfirsthead\n\n`;
+        
         tex += `    \\multicolumn{${numCols}}{l}{\\small\\textit{Continuación...}} \\\\\n`;
         tex += `    \\toprule\n`;
         tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
         tex += `    \\midrule\n`;
         tex += `    \\endhead\n\n`;
+        
         tex += `    \\midrule\n`;
         tex += `    \\multicolumn{${numCols}}{r}{\\small\\textit{Continúa en la siguiente página...}} \\\\\n`;
         tex += `    \\endfoot\n\n`;
+        
         tex += `    \\bottomrule\n`;
         tex += `    \\endlastfoot\n\n`;
+        
         for (let i = inicio; i < fin; i++) {
             const celdas = procesarCeldasFila(datos[i], false, true);
             tex += `    ${celdas.join(' & ')} \\\\\n`;
         }
         tex += `  \\end{xltabular}\n`;
+        
         if (fin < datos.length) {
-            tex += `\n  \\vspace{0.25em}\n  {\\small\\textit{Continuación Tabla. ${escaparLatex(tituloTabla || '')}}}\n  \\vspace{0.15em}\n\n`;
+            tex += `\n  \\clearpage\n  {\\small\\textit{Continuación Tabla. ${escaparLatex(tituloTabla || '')}}}\n\n`;
         }
         inicio = fin;
         parte++;
@@ -769,16 +853,33 @@ function procesarConEtiquetas(texto) {
 
     const recuadros = [];
     str = str.replace(/\[\[recuadro:([^\]]*)\]\]([\s\S]*?)\[\[\/recuadro\]\]/g, (m, t, c) => {
-        const tituloArg = t.trim() ? `{${t.trim()}}` : '';
-        recuadros.push(`\\begin{recuadro}${tituloArg}\n${c}\n\\end{recuadro}`);
+        const tituloArg = t.trim() ? `{${escaparLatex(t.trim())}}` : '';
+        // Procesar contenido interno recursivamente para permitir otras etiquetas (negritas, math, etc.)
+        // pero evitar recuadros anidados (regex no lo captura bien de todos modos)
+        const contenidoProcesado = procesarConEtiquetas(c);
+        recuadros.push(`\\begin{recuadro}${tituloArg}\n${contenidoProcesado}\n\\end{recuadro}`);
         return `ZRECUADROPLACEHOLDER${recuadros.length - 1}Z`;
     });
 
     const etiquetas = [];
     str = str.replace(/\[\[nota:([\s\S]*?)\]\]/g, (m, c) => { etiquetas.push(`\\footnote{${escaparFootnote(c)}}`); return `ZETIQUETAPLACEHOLDER${etiquetas.length - 1}Z`; });
-    str = str.replace(/\[\[destacado:([\s\S]*?)\]\]/g, (m, c) => { etiquetas.push(`\\begin{destacado}\n${c}\n\\end{destacado}`); return `ZETIQUETAPLACEHOLDER${etiquetas.length - 1}Z`; });
-    str = str.replace(/\[\[dorado:([\s\S]*?)\]\]/g, (m, c) => { etiquetas.push(`\\textbf{\\textcolor{gobmxDorado}{${c}}}`); return `ZETIQUETAPLACEHOLDER${etiquetas.length - 1}Z`; });
-    str = str.replace(/\[\[guinda:([\s\S]*?)\]\]/g, (m, c) => { etiquetas.push(`\\textbf{\\textcolor{gobmxGuinda}{${c}}}`); return `ZETIQUETAPLACEHOLDER${etiquetas.length - 1}Z`; });
+
+    // Para destacado, dorado y guinda, ES FUNDAMENTAL escapar el contenido 'c'
+    // ya que se inserta en un contexto LaTeX ya protegido.
+    str = str.replace(/\[\[destacado:([\s\S]*?)\]\]/g, (m, c) => {
+        etiquetas.push(`\\begin{destacado}\n${procesarConEtiquetas(c)}\n\\end{destacado}`);
+        return `ZETIQUETAPLACEHOLDER${etiquetas.length - 1}Z`;
+    });
+
+    str = str.replace(/\[\[dorado:([\s\S]*?)\]\]/g, (m, c) => {
+        etiquetas.push(`\\textbf{\\textcolor{gobmxDorado}{${escaparLatexBasico(c)}}}`);
+        return `ZETIQUETAPLACEHOLDER${etiquetas.length - 1}Z`;
+    });
+
+    str = str.replace(/\[\[guinda:([\s\S]*?)\]\]/g, (m, c) => {
+        etiquetas.push(`\\textbf{\\textcolor{gobmxGuinda}{${escaparLatexBasico(c)}}}`);
+        return `ZETIQUETAPLACEHOLDER${etiquetas.length - 1}Z`;
+    });
 
     str = escaparLatexBasico(str);
     str = str.replace(/[""]/g, '"').replace(/['']/g, "'");
@@ -794,33 +895,65 @@ function procesarConEtiquetas(texto) {
 
 function procesarTextoFuente(texto) {
     if (!texto) return '';
+
+    // Usar normalización segura de saltos
     const textoNormalizado = normalizarSaltosLatex(texto);
+
+    // Separar en líneas para reconstruir con espacios simples
     const lineas = textoNormalizado.split(/\s+/).filter(l => l.trim() !== '');
+
+    // Reconstruir texto en una sola línea para facilitar el regex
     const textoCompleto = lineas.join(' ');
+
+    // Separar fuente principal de notas usando regex para marcadores "1/", "a/", etc.
+    // El regex busca palabra boundary + digitos/letras + barra
     const partesTexto = textoCompleto.split(/(\b[0-9]+\/|\b[a-zA-Z]+\/)/);
 
     let textoFuente = '';
     const lineasNotas = [];
+
     for (let i = 0; i < partesTexto.length; i++) {
         const parte = partesTexto[i];
+        // Verificar si es un marcador de nota
         if (parte.match(/^([0-9]+\/|[a-zA-Z]+\/)$/)) {
+            // Es una nota, tomar el siguiente elemento como contenido
             const contenidoNota = partesTexto[i + 1] || '';
-            lineasNotas.push({ nota: parte, texto: contenidoNota.trim() });
-            i++;
+            lineasNotas.push({
+                nota: parte,
+                texto: contenidoNota.trim()
+            });
+            i++; // Saltar el contenido ya procesado
         } else if (parte.trim()) {
+            // Es parte del texto de la fuente principal
             textoFuente += parte + ' ';
         }
     }
 
+    // Construir resultado LaTeX
     let resultado = '';
-    if (textoFuente.trim()) resultado += escaparLatex(textoFuente.trim());
+
+    // Agregar fuente principal procesando etiquetas (permite negritas, etc.)
+    if (textoFuente.trim()) {
+        resultado += procesarConEtiquetas(textoFuente.trim());
+    }
+
+    // Agregar notas como lista si existen
     if (lineasNotas.length > 0) {
-        resultado += '\n\n{\\fontsize{9pt}{11pt}\\selectfont\n\\begin{itemize}\n';
+        resultado += '\n\n{\\fontsize{9pt}{11pt}\\selectfont\n';
+        resultado += '\\begin{itemize}\n';
+
         lineasNotas.forEach(item => {
-            resultado += `  \\item[\\hypertarget{${generarIdNota(item.nota)}}{${escaparLatex(item.nota)}}] ${escaparLatex(item.texto)}\n`;
+            const idNota = generarIdNota(item.nota);
+            const notaEscapada = escaparLatex(item.nota);
+            // Procesar etiquetas dentro del texto de la nota también
+            const textoProcesado = procesarConEtiquetas(item.texto);
+
+            resultado += `  \\item[\\hypertarget{${idNota}}{${notaEscapada}}] ${textoProcesado}\n`;
         });
+
         resultado += '\\end{itemize}\n}';
     }
+
     return resultado;
 }
 
