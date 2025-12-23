@@ -130,6 +130,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                     filteredDocuments.map((doc) => (
                         <div
                             key={`${doc.sheetId || 'master'}-${doc.id}`}
+                            aria-label={`Documento ${doc.title || doc.id}`}
                             className="group bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row gap-6 hover:shadow-md transition-all duration-200 hover:border-gob-guinda/30"
                         >
                             {/* Icon / ID */}
