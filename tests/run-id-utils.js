@@ -1,4 +1,4 @@
-import { computeFigureId, computeTableId, generateManyIds } from '../utils/idUtils.ts';
+import { computeFigureId, computeTableId, generateManyIds } from '../utils/idUtils.js';
 
 const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
 

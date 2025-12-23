@@ -1,9 +1,82 @@
 
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args)).catch(() => global.fetch(...args));
+const AdmZip = require('adm-zip');
+const {
+    sanitizeFileName,
+    downloadImageToBuffer,
+    ensureUniqueName,
+    randomName
+} = require('./imageUtils');
 
 // ============================================================================
 // CORE LATEX GENERATION LOGIC (Ported from GAS)
 // ============================================================================
+
+function parseExtensionFromPath(path) {
+    if (!path) return '';
+    const clean = path.split('?')[0];
+    const parts = clean.split('.');
+    if (parts.length < 2) return '';
+    return parts.pop().toLowerCase();
+}
+
+function cleanRelativePath(path) {
+    if (!path) return '';
+    const basename = path.split(/[/\\]/).pop();
+    return `img/${basename}`;
+}
+
+async function prepareFigureAssets(figurasRaw) {
+    const usedNames = new Set();
+    const assets = [];
+    const figuras = figurasRaw.map(f => ({ ...f }));
+    const warnings = [];
+
+    for (let i = 0; i < figuras.length; i++) {
+        const figura = figuras[i];
+        const sourceType = (figura['imageSourceType'] || figura['Origen'] || '').toString().toLowerCase();
+        const url = figura['imageUrl'] || figura['URL'] || figura['Ruta de Imagen'] || figura['RutaArchivo'];
+        const providedExt = figura['imageExt'] || parseExtensionFromPath(figura['RutaArchivo'] || figura['Ruta de Imagen'] || '');
+
+        const seccion = figura['SeccionOrden'] || figura['Seccion'] || figura['ID_Seccion'] || '';
+        const orden = figura['OrdenFigura'] || figura['Orden'] || '';
+        const fallbackName = sanitizeFileName(figura['imageFileName'] || figura['Titulo'] || figura['Título/Descripción'] || `fig_${seccion}_${orden}` || randomName('fig'));
+
+        const isUrl = sourceType === 'url' || (url && url.startsWith('http')); // autodetect
+
+        try {
+            if (isUrl && url) {
+                const downloadResult = await downloadImageToBuffer(url, { preferredExt: providedExt });
+                const ext = downloadResult.extension || providedExt || 'png';
+                const unique = ensureUniqueName(fallbackName, ext, usedNames);
+                figura['imageFileName'] = unique.fileName;
+                figura['imageExt'] = unique.ext;
+                figura['imageLocalPath'] = `img/${unique.fullName}`;
+                figura['RutaArchivo'] = figura['imageLocalPath'];
+
+                assets.push({
+                    path: figura['imageLocalPath'],
+                    buffer: downloadResult.buffer,
+                    contentType: downloadResult.contentType || 'application/octet-stream'
+                });
+            } else {
+                const ruta = figura['imageLocalPath'] || figura['RutaArchivo'] || figura['Ruta de Imagen'] || '';
+                const baseExt = parseExtensionFromPath(ruta) || providedExt || 'png';
+                const baseName = sanitizeFileName(fallbackName || ruta.split(/[/\\]/).pop());
+                const unique = ensureUniqueName(baseName, baseExt, usedNames);
+                figura['imageFileName'] = unique.fileName;
+                figura['imageExt'] = unique.ext;
+                figura['imageLocalPath'] = cleanRelativePath(`img/${unique.fullName}`);
+                figura['RutaArchivo'] = figura['imageLocalPath'];
+            }
+        } catch (err) {
+            warnings.push(`Figura ${i + 1}: ${err.message}`);
+            throw err;
+        }
+    }
+
+    return { figuras, assets, warnings };
+}
 
 /**
  * Main function to generate the LaTeX string
@@ -1175,10 +1248,13 @@ async function generateLatex(spreadsheetId, docId, token) {
         }
     }));
 
-    // 4. Generate LaTeX
-    const tex = generarLatexString(datosDoc, docSecciones, docBibliografia, docFiguras, docTablas, docSiglas, docGlosario);
+    // 4. Prepare figure assets (download URLs and normalize paths)
+    const { figuras: preparedFiguras, assets: figureAssets, warnings: figureWarnings } = await prepareFigureAssets(docFiguras);
 
-    // 5. Generate References (BibTeX) content if needed
+    // 5. Generate LaTeX
+    const tex = generarLatexString(datosDoc, docSecciones, docBibliografia, preparedFiguras, docTablas, docSiglas, docGlosario);
+
+    // 6. Generate References (BibTeX) content if needed
     let bib = '';
     if (docBibliografia.length > 0) {
         docBibliografia.forEach(ref => {
@@ -1194,10 +1270,17 @@ async function generateLatex(spreadsheetId, docId, token) {
         });
     }
 
+    const zip = new AdmZip();
+    zip.addFile('main.tex', Buffer.from(tex, 'utf8'));
+    if (bib) zip.addFile('referencias.bib', Buffer.from(bib, 'utf8'));
+    figureAssets.forEach(asset => zip.addFile(asset.path, asset.buffer));
+
     return {
         tex,
         bib,
-        filename: datosDoc['DocumentoCorto'] || 'documento'
+        filename: datosDoc['DocumentoCorto'] || 'documento',
+        zipBase64: zip.toBuffer().toString('base64'),
+        warnings: figureWarnings
     };
 }
 
