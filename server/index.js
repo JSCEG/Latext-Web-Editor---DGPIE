@@ -3,10 +3,34 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const { generateLatex } = require('./latexGenerator');
+const { extractDriveFileId, buildDriveDownloadUrl, downloadImageToBuffer } = require('./imageUtils');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// --- Image helpers ---
+app.post('/images/resolve-drive', (req, res) => {
+  const { url } = req.body || {};
+  const fileId = extractDriveFileId(url);
+  if (!fileId) {
+    return res.status(400).json({ error: 'No se pudo extraer el ID del archivo. Usa un enlace público de Google Drive.' });
+  }
+  res.json({ fileId, directDownloadUrl: buildDriveDownloadUrl(fileId) });
+});
+
+app.get('/images/preview', async (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).json({ error: 'Falta parámetro url' });
+  try {
+    const result = await downloadImageToBuffer(url, { maxSize: 5 * 1024 * 1024 });
+    res.setHeader('Content-Type', result.contentType || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.send(result.buffer);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
 app.post('/generate-latext', async (req, res) => {
   try {
@@ -25,7 +49,9 @@ app.post('/generate-latext', async (req, res) => {
       success: true,
       tex: result.tex,
       bib: result.bib,
-      filename: result.filename
+      filename: result.filename,
+      zipBase64: result.zipBase64,
+      warnings: result.warnings || []
     });
 
   } catch (error) {

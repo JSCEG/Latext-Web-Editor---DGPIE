@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { StructurePreview } from './StructurePreview';
 import { Spreadsheet } from '../types';
 import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValues, updateValues, insertDimension, createNewTab } from '../services/sheetsService';
@@ -69,6 +69,11 @@ const TITLE_VARIANTS = ['Titulo', 'Título', 'Nombre'];
 const NIVEL_VARIANTS = ['Nivel', 'level'];
 const CONTENIDO_VARIANTS = ['Contenido', 'content', 'texto', 'cuerpo'];
 const CLAVE_VARIANTS = ['Clave', 'Key', 'ID'];
+const IMAGE_SOURCE_VARIANTS = ['imageSourceType', 'OrigenImagen', 'Origen'];
+const IMAGE_URL_VARIANTS = ['imageUrl', 'URLImagen', 'UrlImagen', 'Url'];
+const IMAGE_FILE_NAME_VARIANTS = ['imageFileName', 'NombreArchivo', 'NombreImagen'];
+const IMAGE_EXT_VARIANTS = ['imageExt', 'Extension', 'Extensión'];
+const IMAGE_LOCAL_PATH_VARIANTS = ['imageLocalPath', 'RutaArchivo', 'Ruta de Imagen'];
 
 type SectionLevelOption = {
     value: string;
@@ -270,6 +275,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info'; duration?: number } | null>(null);
     const [saving, setSaving] = useState(false);
     const [loadingGrid, setLoadingGrid] = useState(false);
+    const [imagePreview, setImagePreview] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; url?: string; message?: string; size?: number; contentType?: string }>({ status: 'idle' });
+    const imagePreviewUrlRef = useRef<string>('');
 
     // Audio context for sound effects
     const playNotificationSound = (type: 'success' | 'error') => {
@@ -316,6 +323,57 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 navigator.vibrate(300); // Long buzz
             }
         }
+    };
+
+    const sanitizeImageFileName = (value: string) => {
+        const cleaned = (value || '').toString()
+            .trim()
+            .replace(/[\s]+/g, '_')
+            .replace(/[\\/:]/g, '_')
+            .replace(/\.{2,}/g, '.')
+            .replace(/[^A-Za-z0-9_.-]/g, '_');
+        return cleaned.replace(/_{2,}/g, '_');
+    };
+
+    const getExistingImageNames = () => {
+        const names = new Set<string>();
+        const fileIdx = findColumnIndex(gridHeaders, IMAGE_FILE_NAME_VARIANTS);
+        const extIdx = findColumnIndex(gridHeaders, IMAGE_EXT_VARIANTS);
+        const pathIdx = findColumnIndex(gridHeaders, IMAGE_LOCAL_PATH_VARIANTS);
+
+        gridData.forEach((row, idx) => {
+            if (editingRowIndex !== null && idx === editingRowIndex) return;
+            const fileName = fileIdx !== -1 ? (row[fileIdx] || '').toString().trim() : '';
+            const ext = extIdx !== -1 ? (row[extIdx] || '').toString().replace(/^\./, '') : '';
+            if (fileName && ext) {
+                names.add(`${fileName}.${ext}`);
+                return;
+            }
+            if (pathIdx !== -1) {
+                const raw = (row[pathIdx] || '').toString();
+                if (!raw) return;
+                const base = raw.split(/[/\\]/).pop() || '';
+                if (base.includes('.')) names.add(base);
+            }
+        });
+        return names;
+    };
+
+    const ensureUniqueImageName = (base: string, ext: string) => {
+        const used = getExistingImageNames();
+        const safeBase = sanitizeImageFileName(base || 'imagen');
+        const safeExt = (ext || 'png').replace(/^\./, '');
+        let candidate = `${safeBase}.${safeExt}`;
+        let counter = 1;
+        while (used.has(candidate)) {
+            candidate = `${safeBase}_${counter}.${safeExt}`;
+            counter++;
+        }
+        return {
+            fileName: candidate.replace(/\.[^.]+$/, ''),
+            ext: safeExt,
+            fullName: candidate
+        };
     };
 
     const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info', duration = 3000) => {
@@ -939,6 +997,65 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         setCurrentPage(1);
     }, [searchTerm]);
 
+    const figureImageIndexes = useMemo(() => ({
+        sourceTypeIdx: findColumnIndex(formHeaders, IMAGE_SOURCE_VARIANTS),
+        urlIdx: findColumnIndex(formHeaders, IMAGE_URL_VARIANTS),
+        fileNameIdx: findColumnIndex(formHeaders, IMAGE_FILE_NAME_VARIANTS),
+        extIdx: findColumnIndex(formHeaders, IMAGE_EXT_VARIANTS),
+        localPathIdx: findColumnIndex(formHeaders, IMAGE_LOCAL_PATH_VARIANTS),
+        rutaIdx: findColumnIndex(formHeaders, ['Ruta de Imagen', 'RutaArchivo'])
+    }), [formHeaders]);
+
+    useEffect(() => {
+        if (activeTab !== 'figuras') return;
+        const urlIdx = figureImageIndexes.urlIdx;
+        const srcIdx = figureImageIndexes.sourceTypeIdx;
+        if (urlIdx === -1 || srcIdx === -1) {
+            setImagePreview({ status: 'idle' });
+            return;
+        }
+
+        const sourceType = (formData[srcIdx] || '').toString().toLowerCase();
+        const url = (formData[urlIdx] || '').toString().trim();
+        if (sourceType !== 'url' || !url) {
+            if (imagePreviewUrlRef.current) {
+                URL.revokeObjectURL(imagePreviewUrlRef.current);
+                imagePreviewUrlRef.current = '';
+            }
+            setImagePreview({ status: 'idle' });
+            return;
+        }
+
+        setImagePreview(prev => ({ ...prev, status: 'loading' }));
+        const controller = new AbortController();
+        fetch(`${API_URL}/images/preview?url=${encodeURIComponent(url)}`, { signal: controller.signal })
+            .then(async res => {
+                if (!res.ok) {
+                    const msg = await res.json().catch(() => ({}));
+                    throw new Error(msg.error || 'No se pudo obtener la vista previa');
+                }
+                const blob = await res.blob();
+                const objectUrl = URL.createObjectURL(blob);
+                if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
+                imagePreviewUrlRef.current = objectUrl;
+                setImagePreview({ status: 'ready', url: objectUrl, size: blob.size, contentType: blob.type });
+            })
+            .catch(err => {
+                if (controller.signal.aborted) return;
+                setImagePreview({ status: 'error', message: err.message });
+            });
+
+        return () => controller.abort();
+    }, [activeTab, formData, figureImageIndexes]);
+
+    useEffect(() => {
+        return () => {
+            if (imagePreviewUrlRef.current) {
+                URL.revokeObjectURL(imagePreviewUrlRef.current);
+            }
+        };
+    }, []);
+
 
 
     const EQUATION_PLACEHOLDER_RE = /\{\{\d+\}\}/g;
@@ -1219,6 +1336,29 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             }
         }
     }, [availableDocs, initialDocId]);
+
+    useEffect(() => {
+        if (activeTab !== 'figuras') return;
+        const { fileNameIdx, extIdx, localPathIdx, rutaIdx } = figureImageIndexes;
+        if (fileNameIdx === -1 && localPathIdx === -1) return;
+
+        const baseNameRaw = fileNameIdx !== -1 ? sanitizeImageFileName(formData[fileNameIdx] || '') : '';
+        const extRaw = extIdx !== -1 ? (formData[extIdx] || '').toString() : 'png';
+        const ext = extRaw.replace(/^\./, '') || 'png';
+        if (!baseNameRaw) return;
+
+        const unique = ensureUniqueImageName(baseNameRaw, ext);
+        const next = [...formData];
+        let changed = false;
+        if (fileNameIdx !== -1 && next[fileNameIdx] !== unique.fileName) { next[fileNameIdx] = unique.fileName; changed = true; }
+        if (extIdx !== -1 && next[extIdx] !== unique.ext) { next[extIdx] = unique.ext; changed = true; }
+
+        const finalPath = `img/${unique.fullName}`;
+        if (localPathIdx !== -1 && next[localPathIdx] !== finalPath) { next[localPathIdx] = finalPath; changed = true; }
+        if (rutaIdx !== -1 && next[rutaIdx] !== finalPath) { next[rutaIdx] = finalPath; changed = true; }
+
+        if (changed) setFormData(next);
+    }, [activeTab, formData, figureImageIndexes, gridData, editingRowIndex]);
 
     const fetchSheetData = async () => {
         if (!activeSheet) return;
@@ -2131,6 +2271,34 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     }
                 }
             }
+
+            if (activeTab === 'figuras') {
+                const fileNameIdx = figureImageIndexes.fileNameIdx;
+                const extIdx = figureImageIndexes.extIdx;
+                const urlIdx = figureImageIndexes.urlIdx;
+                const sourceIdx = figureImageIndexes.sourceTypeIdx;
+                const localPathIdx = figureImageIndexes.localPathIdx;
+
+                const sourceType = sourceIdx !== -1 ? (formData[sourceIdx] || '').toString().toLowerCase() : 'local';
+                const fileName = fileNameIdx !== -1 ? (formData[fileNameIdx] || '').toString().trim() : '';
+                const ext = extIdx !== -1 ? (formData[extIdx] || '').toString().trim() : '';
+                if (!fileName) {
+                    showNotification('Define un nombre de archivo para la imagen.', 'error');
+                    return;
+                }
+                if (!ext) {
+                    showNotification('Selecciona una extensión para la imagen.', 'error');
+                    return;
+                }
+                if (sourceType === 'url' && urlIdx !== -1 && !(formData[urlIdx] || '').toString().trim()) {
+                    showNotification('Proporciona la URL pública de la imagen de Google Drive.', 'error');
+                    return;
+                }
+                if (localPathIdx !== -1 && !(formData[localPathIdx] || '').toString().startsWith('img/')) {
+                    showNotification('La ruta local debe vivir dentro de la carpeta img/.', 'error');
+                    return;
+                }
+            }
         }
 
         setSaving(true);
@@ -2539,18 +2707,35 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             }
 
             // Trigger Download
-            // 1. .tex file
-            const blobTex = new Blob([result.tex], { type: 'text/plain' });
-            const urlTex = window.URL.createObjectURL(blobTex);
-            const aTex = document.createElement('a');
-            aTex.href = urlTex;
-            aTex.download = `${result.filename}.tex`;
-            document.body.appendChild(aTex);
-            aTex.click();
-            document.body.removeChild(aTex);
-            window.URL.revokeObjectURL(urlTex);
+            // 1. ZIP with assets (preferred)
+            if (result.zipBase64) {
+                const byteCharacters = atob(result.zipBase64);
+                const byteNumbers = new Array(byteCharacters.length).fill(0).map((_, idx) => byteCharacters.charCodeAt(idx));
+                const zipBlob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/zip' });
+                const zipUrl = window.URL.createObjectURL(zipBlob);
+                const aZip = document.createElement('a');
+                aZip.href = zipUrl;
+                aZip.download = `${result.filename}.zip`;
+                document.body.appendChild(aZip);
+                aZip.click();
+                document.body.removeChild(aZip);
+                window.URL.revokeObjectURL(zipUrl);
+            }
 
-            // 2. .bib file (if exists)
+            // 2. .tex file (fallback/reference)
+            if (result.tex) {
+                const blobTex = new Blob([result.tex], { type: 'text/plain' });
+                const urlTex = window.URL.createObjectURL(blobTex);
+                const aTex = document.createElement('a');
+                aTex.href = urlTex;
+                aTex.download = `${result.filename}.tex`;
+                document.body.appendChild(aTex);
+                aTex.click();
+                document.body.removeChild(aTex);
+                window.URL.revokeObjectURL(urlTex);
+            }
+
+            // 3. .bib file (if exists)
             if (result.bib) {
                 const blobBib = new Blob([result.bib], { type: 'text/plain' });
                 const urlBib = window.URL.createObjectURL(blobBib);
@@ -2563,7 +2748,11 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 window.URL.revokeObjectURL(urlBib);
             }
 
-            showNotification("Archivos generados y descargados correctamente.", 'success');
+            if (result.warnings && result.warnings.length > 0) {
+                showNotification(`LaTeX generado con advertencias: ${result.warnings.join('; ')}`, 'info');
+            } else {
+                showNotification("Archivos generados y descargados correctamente.", 'success');
+            }
 
         } catch (e: any) {
             console.error(e);
@@ -3015,6 +3204,122 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                             const isContenido = activeTab === 'secciones' && findColumnIndex([header], CONTENIDO_VARIANTS) !== -1;
                                             const colSpan = ((activeTab === 'tablas' || activeTab === 'figuras') && !isSeccion && !isOrden) ? "col-span-2" : "col-span-1";
                                             const isTipoBiblio = activeTab === 'bibliografia' && header.trim().toLowerCase() === 'tipo';
+                                            const isFigureTab = activeTab === 'figuras';
+                                            const isImageSourceType = isFigureTab && figureImageIndexes.sourceTypeIdx === i;
+                                            const isImageUrlField = isFigureTab && figureImageIndexes.urlIdx === i;
+                                            const isImageFileNameField = isFigureTab && figureImageIndexes.fileNameIdx === i;
+                                            const isImageExtField = isFigureTab && figureImageIndexes.extIdx === i;
+                                            const isImageLocalPathField = isFigureTab && (figureImageIndexes.localPathIdx === i || figureImageIndexes.rutaIdx === i);
+
+                                            if (isImageSourceType) {
+                                                const value = (formData[i] || 'local').toString();
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">Origen de la imagen</label>
+                                                        <select
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900"
+                                                            value={value}
+                                                            onChange={(e) => {
+                                                                const next = [...formData];
+                                                                next[i] = e.target.value;
+                                                                setFormData(next);
+                                                            }}
+                                                        >
+                                                            <option value="local">Local / existente</option>
+                                                            <option value="url">URL (Google Drive)</option>
+                                                        </select>
+                                                        <p className="text-xs text-gray-500">Elige "URL" para descargar y empaquetar la imagen pública de Drive.</p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            if (isImageUrlField) {
+                                                const value = (formData[i] || '').toString();
+                                                return (
+                                                    <div key={i} className="col-span-2 space-y-1">
+                                                        <label className="block text-sm font-medium text-gray-700">URL de imagen (Google Drive público)</label>
+                                                        <input
+                                                            className="w-full px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900 border-gray-300"
+                                                            value={value}
+                                                            onChange={(e) => {
+                                                                const next = [...formData];
+                                                                next[i] = e.target.value;
+                                                                setFormData(next);
+                                                            }}
+                                                            placeholder="https://drive.google.com/file/d/<ID>/view?usp=sharing"
+                                                        />
+                                                        <p className="text-xs text-gray-500">Debe ser un enlace público de Google Drive. Se descargará al exportar y se guardará en /img.</p>
+                                                        {imagePreview.status === 'loading' && <p className="text-xs text-blue-600">Validando vista previa...</p>}
+                                                        {imagePreview.status === 'error' && <p className="text-xs text-red-600">{imagePreview.message}</p>}
+                                                        {imagePreview.status === 'ready' && imagePreview.url && (
+                                                            <div className="flex items-center gap-3">
+                                                                <img src={imagePreview.url} alt="Vista previa" className="h-20 w-20 object-cover rounded border" />
+                                                                <div className="text-xs text-gray-600">
+                                                                    <div>Vista previa lista</div>
+                                                                    {imagePreview.contentType && <div>Tipo: {imagePreview.contentType}</div>}
+                                                                    {typeof imagePreview.size === 'number' && <div>Tamaño: {(imagePreview.size / 1024).toFixed(1)} KB</div>}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            }
+
+                                            if (isImageFileNameField) {
+                                                const value = sanitizeImageFileName((formData[i] || '').toString());
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">Nombre de archivo destino</label>
+                                                        <input
+                                                            className="w-full px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900 border-gray-300"
+                                                            value={value}
+                                                            onChange={(e) => {
+                                                                const next = [...formData];
+                                                                next[i] = sanitizeImageFileName(e.target.value);
+                                                                setFormData(next);
+                                                            }}
+                                                            placeholder="figura_1_mapa"
+                                                        />
+                                                        <p className="text-xs text-gray-500">Sin espacios ni diagonales. Se agregará automáticamente la extensión.</p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            if (isImageExtField) {
+                                                const value = (formData[i] || 'png').toString().replace(/^\./, '');
+                                                const options = ['png', 'jpg', 'jpeg', 'webp', 'svg', 'pdf'];
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">Extensión</label>
+                                                        <select
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900"
+                                                            value={value}
+                                                            onChange={(e) => {
+                                                                const next = [...formData];
+                                                                next[i] = e.target.value;
+                                                                setFormData(next);
+                                                            }}
+                                                        >
+                                                            {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                        </select>
+                                                    </div>
+                                                );
+                                            }
+
+                                            if (isImageLocalPathField) {
+                                                const value = (formData[i] || '').toString() || 'img/';
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">Ruta local en paquete</label>
+                                                        <input
+                                                            className="w-full px-4 py-2 border rounded-md text-sm bg-gray-100 text-gray-600"
+                                                            value={value}
+                                                            readOnly
+                                                        />
+                                                        <p className="text-xs text-gray-500">Se calculará como img/&lt;nombre&gt;.&lt;ext&gt; y se usará en el LaTeX.</p>
+                                                    </div>
+                                                );
+                                            }
 
                                             if (activeTab === 'secciones' && isNivel) {
                                                 const current = normalizeLevelValue(formData[i] || '');
