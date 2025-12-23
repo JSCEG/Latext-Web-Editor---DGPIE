@@ -28,7 +28,47 @@ function generarLatexString(datosDoc, secciones, bibliografia, figuras, tablas, 
 function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario) {
     let tex = '';
 
-    // Create maps for quick access
+    // Helpers to match Frontend ID generation
+    const computeFigureId = (sec, ord) => {
+        const s = (sec || '').toString().trim();
+        const o = (ord || '').toString().trim();
+        if (s && o) return `FIG-${s}-${o}`;
+        if (o) return `FIG-${o}`;
+        return '';
+    };
+
+    const computeTableId = (sec, ord) => {
+        const s = (sec || '').toString().trim();
+        const o = (ord || '').toString().trim();
+        if (s && o) return `TBL-${s}-${o}`;
+        if (o) return `TBL-${o}`;
+        return '';
+    };
+
+    const figurasById = {};
+    figuras.forEach(f => {
+        // Try explicit ID first, then computed
+        let id = f['ID'] || '';
+        if (!id) {
+            const sec = f['SeccionOrden'] || f['Seccion'] || f['ID_Seccion'] || '';
+            const ord = f['OrdenFigura'] || f['Orden'] || '';
+            id = computeFigureId(sec, ord);
+        }
+        if (id) figurasById[id.toString().trim()] = f;
+    });
+
+    const tablasById = {};
+    tablas.forEach(t => {
+        let id = t['ID'] || '';
+        if (!id) {
+            const sec = t['SeccionOrden'] || t['Seccion'] || t['ID_Seccion'] || '';
+            const ord = t['OrdenTabla'] || t['Orden'] || '';
+            id = computeTableId(sec, ord);
+        }
+        if (id) tablasById[id.toString().trim()] = t;
+    });
+
+    // We still pass the maps for potential fallback, but primarily we use the ID maps in procesarSecciones
     const figurasMap = crearMapaPorSeccion(figuras);
     const tablasMap = crearMapaPorSeccion(tablas);
 
@@ -143,7 +183,7 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     }
 
     // --- Sections ---
-    const resultado = procesarSecciones(secciones, figurasMap, tablasMap);
+    const resultado = procesarSecciones(secciones, figurasMap, tablasMap, figurasById, tablasById);
     tex += resultado.contenido;
 
     // --- Glossary ---
@@ -180,7 +220,7 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     return tex;
 }
 
-function procesarSecciones(secciones, figurasMap, tablasMap) {
+function procesarSecciones(secciones, figurasMap, tablasMap, figurasById, tablasById) {
     let contenido = '';
     let directorio = '';
     let contraportada = '';
@@ -215,19 +255,13 @@ function procesarSecciones(secciones, figurasMap, tablasMap) {
         }
 
         contenido += generarComandoSeccion(nivel, titulo, anexosIniciados);
-        contenido += procesarContenido(contenidoRaw);
 
-        if (figurasMap[ordenSeccion]) {
-            figurasMap[ordenSeccion].forEach(fig => {
-                contenido += generarFigura(fig);
-            });
-        }
+        // Pass maps to procesarContenido to allow inline replacement
+        contenido += procesarContenido(contenidoRaw, figurasById, tablasById);
 
-        if (tablasMap[ordenSeccion]) {
-            tablasMap[ordenSeccion].forEach(tabla => {
-                contenido += generarTabla(tabla);
-            });
-        }
+        // NOTE: We strictly follow WYSIWYG. 
+        // We do NOT append unreferenced figures/tables at the end of the section anymore.
+        // If it's not in the content (via [[figura:ID]]), it won't be in the PDF.
 
         contenido += '\n\n';
     });
@@ -277,7 +311,7 @@ function limpiarPrefijoAnexoEnTitulo(titulo) {
     return tituloLimpio.trim();
 }
 
-function procesarContenido(contenidoRaw) {
+function procesarContenido(contenidoRaw, figurasById = {}, tablasById = {}) {
     const lineas = contenidoRaw.split('\n');
     let resultado = '';
     let enLista = false;
@@ -350,10 +384,26 @@ function procesarContenido(contenidoRaw) {
             if (!enLista) {
                 if (lineaTrim.startsWith('[[tabla:')) {
                     const match = lineaTrim.match(/\[\[tabla:(.+?)\]\]/);
-                    if (match) resultado += `% Referencia a tabla: ${match[1]}\n`;
+                    if (match) {
+                        const id = match[1].trim();
+                        const tabla = tablasById[id];
+                        if (tabla) {
+                            resultado += generarTabla(tabla);
+                        } else {
+                            resultado += `% ERROR: Tabla ${id} no encontrada\n\\textbf{\\textcolor{red}{[Error: Tabla ${escaparLatex(id)} no encontrada]}}\n`;
+                        }
+                    }
                 } else if (lineaTrim.startsWith('[[figura:')) {
                     const match = lineaTrim.match(/\[\[figura:(.+?)\]\]/);
-                    if (match) resultado += `% Referencia a figura: ${match[1]}\n`;
+                    if (match) {
+                        const id = match[1].trim();
+                        const figura = figurasById[id];
+                        if (figura) {
+                            resultado += generarFigura(figura);
+                        } else {
+                            resultado += `% ERROR: Figura ${id} no encontrada\n\\textbf{\\textcolor{red}{[Error: Figura ${escaparLatex(id)} no encontrada]}}\n`;
+                        }
+                    }
                 } else if (lineaTrim !== '') {
                     resultado += `${procesarConEtiquetas(linea)}\n`;
                 } else {
@@ -447,7 +497,7 @@ function generarFigura(figura) {
 
     let tex = `\\begin{figure}[H]\n`;
     tex += `  {\\centering\n`;
-    
+
     // 1. Caption (Título) arriba
     if (caption) {
         tex += `  \\caption{${escaparLatex(caption)}}\n`;
@@ -467,7 +517,7 @@ function generarFigura(figura) {
     tex += `  \\raggedright\n`;
 
     tex += `\\end{figure}\n`;
-    
+
     // 3. Fuente abajo
     if (fuente) {
         tex += `\\vspace{-4pt}\n`;
@@ -586,34 +636,34 @@ function senerLongtableHeaderRow(celdasEncabezadoProcesadas) {
 function generarTablaSimple(datos, tituloTabla) {
     const numCols = datos[0].length;
     const especCols = senerLongtableSpec(numCols);
-    
+
     let tex = senerLongtablePreamble();
     tex += `  \\begin{xltabular}{\\textwidth}{${especCols}}\n`;
     if (tituloTabla) tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
-    
+
     // Encabezado para la primera página
     tex += `    \\toprule\n`;
     const encabezados = senerLongtableHeaderRow(procesarCeldasFila(datos[0], true, true));
     tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
     tex += `    \\midrule\n`;
     tex += `    \\endfirsthead\n\n`;
-    
+
     // Encabezado para páginas siguientes
     tex += `    \\multicolumn{${numCols}}{l}{\\small\\textit{Continuación...}} \\\\\n`;
     tex += `    \\toprule\n`;
     tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
     tex += `    \\midrule\n`;
     tex += `    \\endhead\n\n`;
-    
+
     // Pie de tabla en páginas intermedias
     tex += `    \\midrule\n`;
     tex += `    \\multicolumn{${numCols}}{r}{\\small\\textit{Continúa en la siguiente página...}} \\\\\n`;
     tex += `    \\endfoot\n\n`;
-    
+
     // Pie de tabla en la última página
     tex += `    \\bottomrule\n`;
     tex += `    \\endlastfoot\n\n`;
-    
+
     for (let i = 1; i < datos.length; i++) {
         const celdas = procesarCeldasFila(datos[i], false, true);
         tex += `    ${celdas.join(' & ')} \\\\\n`;
@@ -648,42 +698,42 @@ function dividirTabla(datos, maxCols, tituloTabla) {
 
     while (colInicio < numCols) {
         const colFin = Math.min(colInicio + colsPorParte, numCols);
-        
+
         if (parte > 1) {
             tex += `\n  \\clearpage\n`;
             tex += `  {\\small\\textit{Continuación Tabla. ${escaparLatex(tituloTabla || '')}}}\n`;
             tex += `  \\vspace{0.15em}\n\n`;
         }
-        
+
         const colsEnEstaParte = [0].concat(Array.from({ length: colFin - colInicio }, (_, i) => colInicio + i));
         const numColsTabla = colsEnEstaParte.length;
         const especCols = senerLongtableSpec(numColsTabla);
-        
+
         tex += senerLongtablePreamble();
         tex += `  \\begin{xltabular}{\\textwidth}{${especCols}}\n`;
         if (tituloTabla && parte === 1) tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
-        
+
         const celdasEncabezado = colsEnEstaParte.map(colIdx => datos[0][colIdx]);
         const encabezados = senerLongtableHeaderRow(procesarCeldasFila(celdasEncabezado, true, true));
-        
+
         tex += `    \\toprule\n`;
         tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
         tex += `    \\midrule\n`;
         tex += `    \\endfirsthead\n\n`;
-        
+
         tex += `    \\multicolumn{${numColsTabla}}{l}{\\small\\textit{Continuación...}} \\\\\n`;
         tex += `    \\toprule\n`;
         tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
         tex += `    \\midrule\n`;
         tex += `    \\endhead\n\n`;
-        
+
         tex += `    \\midrule\n`;
         tex += `    \\multicolumn{${numColsTabla}}{r}{\\small\\textit{Continúa en la siguiente página...}} \\\\\n`;
         tex += `    \\endfoot\n\n`;
-        
+
         tex += `    \\bottomrule\n`;
         tex += `    \\endlastfoot\n\n`;
-        
+
         for (let i = 1; i < datos.length; i++) {
             const celdasParte = colsEnEstaParte.map(colIdx => datos[i][colIdx]);
             const celdas = procesarCeldasFila(celdasParte, false, true);
@@ -704,36 +754,36 @@ function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla) {
     let parte = 1;
     while (inicio < datos.length) {
         const fin = Math.min(inicio + maxFilasParte, datos.length);
-        
+
         tex += senerLongtablePreamble();
         tex += `  \\begin{xltabular}{\\textwidth}{${especCols}}\n`;
         if (tituloTabla && parte === 1) tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
-        
+
         tex += `    \\toprule\n`;
         const encabezados = senerLongtableHeaderRow(procesarCeldasFila(datos[0], true, true));
         tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
         tex += `    \\midrule\n`;
         tex += `    \\endfirsthead\n\n`;
-        
+
         tex += `    \\multicolumn{${numCols}}{l}{\\small\\textit{Continuación...}} \\\\\n`;
         tex += `    \\toprule\n`;
         tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
         tex += `    \\midrule\n`;
         tex += `    \\endhead\n\n`;
-        
+
         tex += `    \\midrule\n`;
         tex += `    \\multicolumn{${numCols}}{r}{\\small\\textit{Continúa en la siguiente página...}} \\\\\n`;
         tex += `    \\endfoot\n\n`;
-        
+
         tex += `    \\bottomrule\n`;
         tex += `    \\endlastfoot\n\n`;
-        
+
         for (let i = inicio; i < fin; i++) {
             const celdas = procesarCeldasFila(datos[i], false, true);
             tex += `    ${celdas.join(' & ')} \\\\\n`;
         }
         tex += `  \\end{xltabular}\n`;
-        
+
         if (fin < datos.length) {
             tex += `\n  \\clearpage\n  {\\small\\textit{Continuación Tabla. ${escaparLatex(tituloTabla || '')}}}\n\n`;
         }

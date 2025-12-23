@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useGoogleLogin } from '@react-oauth/google';
-import { Dashboard } from './components/Dashboard';
+import { Dashboard, type DocumentCard } from './components/Dashboard';
 import { SheetEditor } from './components/SheetEditor';
 import { Spreadsheet, AppView } from './types';
 import { createSpreadsheet, fetchSpreadsheet, fetchSpreadsheetProperties, appendRow } from './services/sheetsService';
@@ -28,7 +28,7 @@ const App: React.FC = () => {
     const cached = localStorage.getItem('spreadsheet_metadata_cache');
     return cached ? JSON.parse(cached) : {};
   });
-  const [dashboardDocuments, setDashboardDocuments] = useState<import('./components/Dashboard').DocumentCard[]>([]);
+  const [dashboardDocuments, setDashboardDocuments] = useState<DocumentCard[]>([]);
   const [initialDocId, setInitialDocId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,9 +94,9 @@ const App: React.FC = () => {
           date: get(dateIdx),
           institution: get(instIdx),
           unit: get(unitIdx),
-        };
+        } as DocumentCard;
       })
-      .filter((x): x is import('./components/Dashboard').DocumentCard => Boolean(x));
+      .filter((x): x is DocumentCard => Boolean(x));
   };
 
   useEffect(() => {

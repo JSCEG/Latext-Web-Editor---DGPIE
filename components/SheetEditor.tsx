@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { StructurePreview } from './StructurePreview';
 import { Spreadsheet } from '../types';
 import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValues, updateValues, insertDimension, createNewTab } from '../services/sheetsService';
 import { socketService } from '../services/socketService';
@@ -252,6 +253,15 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const [formHeaders, setFormHeaders] = useState<string[]>([]);
     const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
     const [dataTimestamp, setDataTimestamp] = useState<number>(Date.now());
+    const [fullData, setFullData] = useState<{
+        secciones: { headers: string[], data: string[][] },
+        figuras: { headers: string[], data: string[][] },
+        tablas: { headers: string[], data: string[][] }
+    } | null>(null);
+
+    // Cache for other tabs to support optimistic updates across tab switching
+    const [sheetCache, setSheetCache] = useState<Record<string, { headers: string[], data: string[][] }>>({});
+    const [lastSaveTime, setLastSaveTime] = useState<number>(0);
 
     // Ribbon State
     const [ribbonOpen, setRibbonOpen] = useState(true);
@@ -266,6 +276,74 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         onSave: () => { },
         zenMode: false
     });
+
+    const loadPreviewData = async () => {
+        // If we already have fullData and we just updated it optimistically, 
+        // we might want to skip fetching or just fetch in background.
+        // But for now, let's allow fetching but if the data is same, react diffing handles it.
+        // However, the issue is that Google Sheets API is slow to update.
+        // So if we fetch immediately after save, we might get OLD data.
+
+        // Strategy: If fullData exists and we are coming from a save (maybe check timestamp?), rely on it?
+        // Better: Always set loading true, but if we have valid fullData, maybe don't clear it immediately?
+        // Actually, the problem reported is that changes are not reflected until refresh.
+        // The optimistic update above solves this by updating `fullData` in memory.
+        // So when we switch tab to 'vista_previa', `fullData` is already correct.
+        // BUT `loadPreviewData` is called in useEffect when activeTab changes.
+        // And it calls `setLoadingGrid(true)`.
+        // And then fetches from API.
+        // If API returns old data, it overwrites our optimistic `fullData` with old data!
+
+        // Fix: We should delay the fetch or debounce it? Or trust local data if it's "fresh"?
+        // Let's implement a simple check: if we just saved (within last 2 seconds?), don't fetch?
+        // Or better: merge the local data with the fetched data? That's hard.
+
+        // The best approach for "lag" in Google Sheets is to rely on local state until we are sure.
+        // But here we are switching context.
+
+        // Let's try this: When switching to Preview, if `fullData` is populated, show it immediately 
+        // and fetch in background WITHOUT clearing it or showing loading spinner over it?
+        // But `setLoadingGrid(true)` hides the preview.
+
+        if (!fullData) setLoadingGrid(true); // Only show spinner if no data
+
+        try {
+            // Check sheet names from metadata or assume defaults
+            // We use TAB_TO_SHEET_TITLE values
+            const secTitle = TAB_TO_SHEET_TITLE['secciones'];
+            const figTitle = TAB_TO_SHEET_TITLE['figuras'];
+            const tabTitle = TAB_TO_SHEET_TITLE['tablas'];
+
+            const [sec, fig, tab] = await Promise.all([
+                fetchValues(spreadsheet.spreadsheetId, secTitle, token),
+                fetchValues(spreadsheet.spreadsheetId, figTitle, token),
+                fetchValues(spreadsheet.spreadsheetId, tabTitle, token)
+            ]);
+
+            // STALE DATA PROTECTION FOR PREVIEW
+            if (Date.now() - lastSaveTime < 10000 && fullData) {
+                const cachedSecRows = fullData.secciones.data.length;
+                const fetchedSecRows = sec?.length || 0;
+
+                if (fetchedSecRows < cachedSecRows) {
+                    console.warn(`[SheetEditor] Ignoring stale Preview data. Cached Secciones: ${cachedSecRows}, Fetched: ${fetchedSecRows}`);
+                    return;
+                }
+            }
+
+            setFullData({
+                secciones: { headers: sec[0] || [], data: sec },
+                figuras: { headers: fig[0] || [], data: fig },
+                tablas: { headers: tab[0] || [], data: tab }
+            });
+        } catch (e) {
+            console.error(e);
+            showNotification("Error cargando datos para vista previa", "error");
+        } finally {
+            setLoadingGrid(false);
+        }
+    };
+
     // We need a ref for the generic editor textarea to support insertion
     const genericEditorRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -739,11 +817,56 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 20;
 
+    const [pendingEditSectionId, setPendingEditSectionId] = useState<string | null>(null);
+
     // Reset pagination when tab changes
     useEffect(() => {
         setCurrentPage(1);
         setSearchTerm('');
+        if (activeTab === 'vista_previa') {
+            loadPreviewData();
+        }
     }, [activeTab]);
+
+    // Handle Pending Edit Section (when switching from Preview to Sections)
+    useEffect(() => {
+        if (activeTab === 'secciones' && pendingEditSectionId && gridData.length > 0) {
+            // Find the row with the ID
+            const secOrdIdx = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+            const secIdIdx = findColumnIndex(gridHeaders, SECCION_COL_VARIANTS); // Sometimes ID is in "Seccion" column
+
+            // Try to find match
+            let foundIndex = -1;
+
+            // First try by ID/Orden column match
+            if (secOrdIdx !== -1) {
+                foundIndex = gridData.findIndex(r => (r[secOrdIdx] || '').toString().trim() === pendingEditSectionId);
+            }
+
+            // If not found, try Seccion column (sometimes used as ID)
+            if (foundIndex === -1 && secIdIdx !== -1) {
+                foundIndex = gridData.findIndex(r => (r[secIdIdx] || '').toString().trim() === pendingEditSectionId);
+            }
+
+            if (foundIndex !== -1) {
+                // We need to map gridData index to filteredData index if we were using filtered view, 
+                // but handleEdit takes index relative to gridData if we use it directly?
+                // Actually handleEdit takes index relative to `displayedRows` if clicked from UI?
+                // No, handleEdit takes `index` which in the UI map is `displayedRows.map(({ row, index })`.
+                // The `index` in displayedRows object is the original index in `gridData`.
+                // So `foundIndex` (index in gridData) is correct.
+
+                handleEdit(foundIndex);
+                setPendingEditSectionId(null);
+            }
+        }
+    }, [activeTab, gridData, pendingEditSectionId, gridHeaders]);
+
+    const handleEditSectionFromPreview = (sectionId: string) => {
+        setPendingEditSectionId(sectionId);
+        setActiveTab('secciones');
+        setViewMode('LIST'); // Will switch to FORM automatically by handleEdit, but LIST ensures data load
+    };
 
     // Reset pagination when search term changes
     useEffect(() => {
@@ -1041,11 +1164,135 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         }
     }, [availableDocs, initialDocId]);
 
+    const fetchSheetData = async () => {
+        if (!activeSheet) return;
+
+        console.log(`[SheetEditor] Fetching data for tab: ${activeTab}`);
+
+        // 1. Optimistic Load from Cache
+        if (sheetCache[activeTab]) {
+            console.log(`[SheetEditor] Cache hit for ${activeTab}. Using cached data.`);
+            const cached = sheetCache[activeTab];
+            setGridHeaders(cached.headers);
+            const body = cached.data.slice(1).map(row => {
+                const newRow = [...row];
+                while (newRow.length < cached.headers.length) newRow.push('');
+                return newRow;
+            });
+            if (currentDocId) {
+                const docIdIndex = findColumnIndex(cached.headers, DOC_ID_VARIANTS);
+                if (docIdIndex !== -1) {
+                    setGridData(body.filter(row => row[docIdIndex] === currentDocId));
+                } else {
+                    setGridData(body);
+                }
+            } else {
+                setGridData(body);
+            }
+        }
+        // 2. Fallback to Props Data (Initial Load) if no cache
+        else if (activeSheet.data && activeSheet.data[0]?.rowData) {
+            console.log(`[SheetEditor] No cache. Loading from Props initially.`);
+            const rawData: string[][] = [];
+            activeSheet.data[0].rowData.forEach((row) => {
+                const rowValues = row.values?.map(cell =>
+                    cell.formattedValue ||
+                    cell.userEnteredValue?.stringValue ||
+                    (cell.userEnteredValue?.numberValue !== undefined ? String(cell.userEnteredValue.numberValue) : '') ||
+                    ''
+                ) || [];
+                rawData.push(rowValues);
+            });
+
+            if (rawData.length > 0) {
+                const headers = rawData[0];
+                setGridHeaders(headers);
+                const body = rawData.slice(1).map(row => {
+                    const newRow = [...row];
+                    while (newRow.length < headers.length) newRow.push('');
+                    return newRow;
+                });
+                if (currentDocId) {
+                    const docIdIndex = findColumnIndex(headers, DOC_ID_VARIANTS);
+                    if (docIdIndex !== -1) {
+                        setGridData(body.filter(row => row[docIdIndex] === currentDocId));
+                    } else setGridData(body);
+                } else setGridData(body);
+
+                // Populate cache from props so next time it's instant
+                setSheetCache(prev => ({
+                    ...prev,
+                    [activeTab]: { headers, data: rawData }
+                }));
+            }
+            // Still fetch in background to ensure freshness
+            setLoadingGrid(true);
+        } else {
+            setLoadingGrid(true);
+        }
+
+        // 3. Background Fetch from API
+        try {
+            const values = await fetchValues(spreadsheet.spreadsheetId, activeSheet.properties.title, token);
+            console.log(`[SheetEditor] API response received for ${activeTab}. Rows: ${values?.length || 0}`);
+
+            // STALE DATA PROTECTION
+            if (Date.now() - lastSaveTime < 10000 && sheetCache[activeTab]) {
+                const cachedRows = sheetCache[activeTab].data.length;
+                const fetchedRows = values?.length || 0;
+
+                if (fetchedRows < cachedRows) {
+                    console.warn(`[SheetEditor] IGNORING STALE API DATA. Cached: ${cachedRows}, Fetched: ${fetchedRows}.`);
+                    return;
+                }
+            }
+
+            // Update Cache & Grid if we got data
+            if (values && values.length > 0) {
+                setSheetCache(prev => ({
+                    ...prev,
+                    [activeTab]: { headers: values[0], data: values }
+                }));
+
+                const headers = values[0];
+                setGridHeaders(headers);
+
+                const body = values.slice(1).map(row => {
+                    const newRow = [...row];
+                    while (newRow.length < headers.length) newRow.push('');
+                    return newRow;
+                });
+
+                if (currentDocId) {
+                    const docIdIndex = findColumnIndex(headers, DOC_ID_VARIANTS);
+                    if (docIdIndex !== -1) {
+                        setGridData(body.filter(row => row[docIdIndex] === currentDocId));
+                    } else {
+                        setGridData(body);
+                    }
+                } else {
+                    setGridData(body);
+                }
+            }
+        } catch (e) {
+            console.error(e);
+            showNotification("Error actualizando datos.", "error");
+        } finally {
+            setLoadingGrid(false);
+        }
+    };
+
     useEffect(() => {
         setViewMode('LIST');
         setSearchTerm('');
         setCurrentPage(1);
         setFocusedCell(null);
+
+        // Refresh fullData for preview if needed
+        if (activeTab === 'vista_previa') {
+            loadPreviewData();
+            return;
+        }
 
         // Load Relationship Data for Tablas AND Figuras
         if ((activeTab === 'tablas' || activeTab === 'figuras') && currentDocId) {
@@ -1089,44 +1336,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             setFormData(values.length ? values : new Array(headers.length).fill(''));
             setViewMode('FORM');
         } else {
-            if (!activeSheet) {
-                setGridData([]);
-                setGridHeaders([]);
-                return;
-            }
-            const rawData: string[][] = [];
-            if (activeSheet.data && activeSheet.data[0]?.rowData) {
-                activeSheet.data[0].rowData.forEach((row) => {
-                    const rowValues = row.values?.map(cell =>
-                        cell.formattedValue ||
-                        cell.userEnteredValue?.stringValue ||
-                        (cell.userEnteredValue?.numberValue !== undefined ? String(cell.userEnteredValue.numberValue) : '') ||
-                        ''
-                    ) || [];
-                    rawData.push(rowValues);
-                });
-            }
-            if (rawData.length === 0) rawData.push([]);
-
-            const headers = rawData[0];
-            setGridHeaders(headers);
-
-            const body = rawData.slice(1).map(row => {
-                const newRow = [...row];
-                while (newRow.length < headers.length) newRow.push('');
-                return newRow;
-            });
-
-            if (currentDocId) {
-                const docIdIndex = findColumnIndex(headers, DOC_ID_VARIANTS);
-                if (docIdIndex !== -1) {
-                    setGridData(body.filter(row => row[docIdIndex] === currentDocId));
-                } else {
-                    setGridData(body);
-                }
-            } else {
-                setGridData(body);
-            }
+            // Use the robust fetch logic with cache
+            fetchSheetData();
         }
     }, [activeTab, spreadsheet, currentDocId, currentDocRowIndex]);
 
@@ -1169,45 +1380,95 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         const bibKeys = extractColumnValuesByDoc('Bibliografía', CLAVE_VARIANTS);
         setAvailableBibliographyKeys(uniqueSorted(bibKeys));
 
-        const figurasSheet = findSheetByTitle('Figuras');
-        const tablasSheet = findSheetByTitle('Tablas');
+        // Use cached data if available for cross-tab lookups
+        const getSheetData = (title: string) => {
+            // First check cache if activeTab is not the one we are looking for (if it is, use gridData?)
+            // Actually gridData is for activeTab.
+            // If activeTab is 'secciones', we need 'Figuras' and 'Tablas'.
+            // They might be in sheetCache.
+            const cacheKey = Object.keys(TAB_TO_SHEET_TITLE).find(k => TAB_TO_SHEET_TITLE[k] === title);
+            if (cacheKey && sheetCache[cacheKey]) {
+                return {
+                    data: [sheetCache[cacheKey].headers, ...sheetCache[cacheKey].data]
+                };
+            }
+            return findSheetByTitle(title);
+        };
+
+        const figurasSheet = getSheetData('Figuras'); // findSheetByTitle('Figuras');
+        const tablasSheet = getSheetData('Tablas'); // findSheetByTitle('Tablas');
 
         const figurasItems: { id: string; title: string; section: string; route?: string }[] = [];
         const tablasItems: { id: string; title: string; section: string; range?: string }[] = [];
 
-        if (figurasSheet?.data?.[0]?.rowData?.length && figurasSheet.data[0].rowData.length > 1) {
-            const headers = figurasSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+        // Helper to extract from raw data (either from Sheet object or Cache object structure)
+        // Cache structure: headers: string[], data: string[][] (where data includes only body?)
+        // Wait, in fetchSheetData I set cache as: { headers: values[0], data: values } where values INCLUDES headers at 0.
+        // So cache.data[0] is headers.
+
+        // But findSheetByTitle returns a Google Sheet object structure: data[0].rowData[...].values
+        // This is DIFFERENT from my simple cache structure.
+
+        // I need to normalize extraction.
+
+        const extractRows = (sheetObj: any) => {
+            if (!sheetObj) return [];
+
+            // Check if it's my cache format (simple object with data array of strings)
+            if (sheetObj.data && Array.isArray(sheetObj.data) && Array.isArray(sheetObj.data[0]) && typeof sheetObj.data[0][0] === 'string') {
+                // It's the cache format or fetchValues format
+                return sheetObj.data;
+            }
+
+            // It's Google Sheet format
+            if (sheetObj.data?.[0]?.rowData) {
+                const rows: string[][] = [];
+                sheetObj.data[0].rowData.forEach((r: any) => {
+                    const vals = r.values?.map((c: any) => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+                    rows.push(vals);
+                });
+                return rows;
+            }
+            return [];
+        };
+
+        const figRows = extractRows(figurasSheet);
+        if (figRows.length > 1) {
+            const headers = figRows[0];
             const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
             const secIdx = findColumnIndex(headers, [...SECCION_COL_VARIANTS, 'SeccionOrden', 'SecciónOrden']);
             const ordIdx = findColumnIndex(headers, [...ORDEN_COL_VARIANTS, 'OrdenFigura']);
             const titleIdx = findColumnIndex(headers, ['Título/Descripción', 'Titulo', 'Descripción', 'Descripcion', 'Caption']);
             const routeIdx = findColumnIndex(headers, ['Ruta de Imagen', 'RutaArchivo']);
-            figurasSheet.data[0].rowData.slice(1).forEach(r => {
-                const dId = r.values?.[docIdx]?.userEnteredValue?.stringValue || r.values?.[docIdx]?.formattedValue || '';
+
+            figRows.slice(1).forEach(r => {
+                const dId = docIdx !== -1 ? r[docIdx] : '';
                 if (dId !== currentDocId) return;
-                const sec = r.values?.[secIdx]?.userEnteredValue?.stringValue || r.values?.[secIdx]?.formattedValue || '';
-                const ord = r.values?.[ordIdx]?.userEnteredValue?.stringValue || r.values?.[ordIdx]?.formattedValue || '';
-                const title = r.values?.[titleIdx]?.userEnteredValue?.stringValue || r.values?.[titleIdx]?.formattedValue || '';
-                const route = r.values?.[routeIdx]?.userEnteredValue?.stringValue || r.values?.[routeIdx]?.formattedValue || '';
+                const sec = secIdx !== -1 ? r[secIdx] : '';
+                const ord = ordIdx !== -1 ? r[ordIdx] : '';
+                const title = titleIdx !== -1 ? r[titleIdx] : '';
+                const route = routeIdx !== -1 ? r[routeIdx] : '';
                 const id = computeFigureId(sec, ord);
                 if (id) figurasItems.push({ id, title, section: sec, route });
             });
         }
 
-        if (tablasSheet?.data?.[0]?.rowData?.length && tablasSheet.data[0].rowData.length > 1) {
-            const headers = tablasSheet.data[0].rowData[0]?.values?.map(c => c.userEnteredValue?.stringValue || c.formattedValue || '') || [];
+        const tabRows = extractRows(tablasSheet);
+        if (tabRows.length > 1) {
+            const headers = tabRows[0];
             const docIdx = findColumnIndex(headers, DOC_ID_VARIANTS);
             const secIdx = findColumnIndex(headers, [...SECCION_COL_VARIANTS, 'SeccionOrden', 'SecciónOrden', 'ID_Seccion']);
             const ordIdx = findColumnIndex(headers, [...ORDEN_COL_VARIANTS, 'OrdenTabla', 'Orden']);
             const titleIdx = findColumnIndex(headers, ['Título', 'Titulo']);
             const rangeIdx = findColumnIndex(headers, CSV_COL_VARIANTS);
-            tablasSheet.data[0].rowData.slice(1).forEach(r => {
-                const dId = r.values?.[docIdx]?.userEnteredValue?.stringValue || r.values?.[docIdx]?.formattedValue || '';
+
+            tabRows.slice(1).forEach(r => {
+                const dId = docIdx !== -1 ? r[docIdx] : '';
                 if (dId !== currentDocId) return;
-                const sec = r.values?.[secIdx]?.userEnteredValue?.stringValue || r.values?.[secIdx]?.formattedValue || '';
-                const ord = r.values?.[ordIdx]?.userEnteredValue?.stringValue || r.values?.[ordIdx]?.formattedValue || '';
-                const title = r.values?.[titleIdx]?.userEnteredValue?.stringValue || r.values?.[titleIdx]?.formattedValue || '';
-                const range = r.values?.[rangeIdx]?.userEnteredValue?.stringValue || r.values?.[rangeIdx]?.formattedValue || '';
+                const sec = secIdx !== -1 ? r[secIdx] : '';
+                const ord = ordIdx !== -1 ? r[ordIdx] : '';
+                const title = titleIdx !== -1 ? r[titleIdx] : '';
+                const range = rangeIdx !== -1 ? r[rangeIdx] : '';
                 const id = computeTableId(sec, ord);
                 if (id) tablasItems.push({ id, title, section: sec, range });
             });
@@ -1219,7 +1480,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         setAvailableTableIds(uniqueSorted(tabIds));
         setAvailableFigureItems(figurasItems);
         setAvailableTableItems(tablasItems);
-    }, [activeTab, spreadsheet, currentDocId]);
+    }, [activeTab, spreadsheet, currentDocId, sheetCache]); // Added sheetCache as dependency
 
     // --- Logic to Calculate Next Order ---
     const calculateNextOrder = (sectionId: string) => {
@@ -1924,6 +2185,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 showNotification("Guardado correctamente.", "success");
                 socketService.reportAction(`Guardó cambios en ${activeTab} (${currentDocId})`);
 
+                // Mark save time to prevent stale reads from API for a few seconds
+                setLastSaveTime(Date.now());
+
                 // Notify other users about the data update
                 socketService.notifyDataUpdate({
                     docId: currentDocId,
@@ -1942,6 +2206,41 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     // Existing item updated
                     newGridData[editingRowIndex] = finalFormData;
                     setGridData(newGridData);
+                }
+
+                // Update the generic cache for the current tab so switching tabs keeps this data
+                if (activeTab && gridHeaders.length > 0) {
+                    setSheetCache(prev => ({
+                        ...prev,
+                        [activeTab]: { headers: gridHeaders, data: [gridHeaders, ...newGridData] }
+                    }));
+                }
+
+                // Optimistically update fullData for Preview if we are editing sections/tables/figures
+                if (fullData) {
+                    const nextFullData = { ...fullData };
+                    if (activeTab === 'secciones') {
+                        nextFullData.secciones = {
+                            ...nextFullData.secciones,
+                            data: [nextFullData.secciones.data[0], ...newGridData] // Assuming gridData contains only data rows? 
+                            // Wait, gridData usually contains headers at index 0?
+                            // No, in fetchValues, row 0 is headers.
+                            // But setGridData in useEffect (line 1160) does: setGridData(body), where body is rawData.slice(1).
+                            // So gridData does NOT contain headers.
+                            // But fullData.secciones.data DOES contain headers at index 0.
+                        };
+                        // We need to reconstruct fullData.secciones.data
+                        // The headers are in nextFullData.secciones.headers or nextFullData.secciones.data[0]
+                        const headers = nextFullData.secciones.headers || nextFullData.secciones.data[0];
+                        nextFullData.secciones.data = [headers, ...newGridData];
+                    } else if (activeTab === 'figuras') {
+                        const headers = nextFullData.figuras.headers || nextFullData.figuras.data[0];
+                        nextFullData.figuras.data = [headers, ...newGridData];
+                    } else if (activeTab === 'tablas') {
+                        const headers = nextFullData.tablas.headers || nextFullData.tablas.data[0];
+                        nextFullData.tablas.data = [headers, ...newGridData];
+                    }
+                    setFullData(nextFullData);
                 }
 
                 // Do not refresh or switch view mode, to keep user context
@@ -2321,7 +2620,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                             { id: 'figuras', icon: Image, label: 'Figuras' },
                             { id: 'bibliografia', icon: Book, label: 'Bibliografía' },
                             { id: 'siglas', icon: Type, label: 'Siglas' },
-                            { id: 'glosario', icon: FileText, label: 'Glosario' }
+                            { id: 'glosario', icon: FileText, label: 'Glosario' },
+                            { id: 'vista_previa', icon: Maximize2, label: 'Vista Previa' }
                         ].map(item => (
                             <button
                                 key={item.id}
@@ -2341,8 +2641,27 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
                         <Breadcrumbs />
 
+                        {/* --- PREVIEW VIEW --- */}
+                        {activeTab === 'vista_previa' && (
+                            <div className="h-[calc(100vh-200px)]">
+                                {loadingGrid ? (
+                                    <div className="flex items-center justify-center h-full">
+                                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#691C32]"></div>
+                                    </div>
+                                ) : (fullData && (
+                                    <StructurePreview
+                                        docId={currentDocId}
+                                        secciones={fullData.secciones}
+                                        figuras={fullData.figuras}
+                                        tablas={fullData.tablas}
+                                        onEditSection={handleEditSectionFromPreview}
+                                    />
+                                ))}
+                            </div>
+                        )}
+
                         {/* --- LIST VIEW --- */}
-                        {viewMode === 'LIST' && activeTab !== 'metadatos' && (
+                        {viewMode === 'LIST' && activeTab !== 'metadatos' && activeTab !== 'vista_previa' && (
                             <div className="space-y-6 animate-in fade-in duration-300">
                                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                                     <div>
@@ -2675,6 +2994,32 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     lintNow(nextText);
                                                 };
 
+                                                // Check for unreferenced items assigned to this section
+                                                const unreferencedItems = (() => {
+                                                    const secOrd = getCurrentSectionOrder();
+                                                    if (!secOrd) return [];
+                                                    const missing: { type: string, id: string, title: string }[] = [];
+
+                                                    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+                                                    availableTableItems.filter(t => t.section === secOrd).forEach(t => {
+                                                        const safeId = t.id.trim();
+                                                        const regex = new RegExp(`\\[\\[tabla:\\s*${escapeRegExp(safeId)}\\s*\\]\\]`, 'i');
+                                                        if (!regex.test(currentValue)) {
+                                                            missing.push({ type: 'Tabla', id: t.id, title: t.title });
+                                                        }
+                                                    });
+
+                                                    availableFigureItems.filter(f => f.section === secOrd).forEach(f => {
+                                                        const safeId = f.id.trim();
+                                                        const regex = new RegExp(`\\[\\[figura:\\s*${escapeRegExp(safeId)}\\s*\\]\\]`, 'i');
+                                                        if (!regex.test(currentValue)) {
+                                                            missing.push({ type: 'Figura', id: f.id, title: f.title });
+                                                        }
+                                                    });
+                                                    return missing;
+                                                })();
+
                                                 return (
                                                     <div key={i} className={colSpan + " space-y-4"}>
                                                         <div className="flex items-start justify-between gap-4">
@@ -2699,6 +3044,38 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                 </span>
                                                             </div>
                                                         </div>
+
+                                                        {/* Unreferenced Items Warning */}
+                                                        {unreferencedItems.length > 0 && (
+                                                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                                                                <AlertTriangle className="text-amber-600 flex-shrink-0 mt-0.5" size={18} />
+                                                                <div className="flex-1">
+                                                                    <p className="text-sm font-bold text-amber-800 mb-1">
+                                                                        Elementos asignados pendientes de insertar:
+                                                                    </p>
+                                                                    <p className="text-xs text-amber-700 mb-2">
+                                                                        Estos elementos están vinculados a esta sección pero no has añadido su etiqueta en el contenido.
+                                                                        <strong> No aparecerán en el PDF</strong> si no los insertas.
+                                                                    </p>
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {unreferencedItems.map((item, idx) => (
+                                                                            <div key={idx} className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-amber-200 rounded text-xs text-amber-900 shadow-sm group hover:border-amber-400 transition-colors">
+                                                                                {item.type === 'Figura' ? <Image size={10} /> : <Table size={10} />}
+                                                                                <span className="font-mono font-bold">{item.id}</span>
+                                                                                <span className="truncate max-w-[150px] opacity-75 hidden sm:inline">- {item.title}</span>
+                                                                                <button
+                                                                                    onClick={(e) => { e.preventDefault(); insertSnippet(item.type === 'Figura' ? `\n[[figura:${item.id}]]\n` : `\n[[tabla:${item.id}]]\n`); }}
+                                                                                    className="ml-1 bg-amber-100 hover:bg-amber-200 text-amber-700 p-0.5 rounded cursor-pointer"
+                                                                                    title="Insertar etiqueta ahora"
+                                                                                >
+                                                                                    <Plus size={12} />
+                                                                                </button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
 
                                                         {/* Ribbon */}
                                                         <RichEditorToolbar
