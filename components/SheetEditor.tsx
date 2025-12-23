@@ -875,6 +875,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         rowIndex: null
     });
 
+    const [duplicateOrders, setDuplicateOrders] = useState<Set<string>>(new Set());
+    const [missingOrderRows, setMissingOrderRows] = useState<Set<number>>(new Set());
+
     // UI State
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
@@ -1340,6 +1343,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         setSearchTerm('');
         setCurrentPage(1);
         setFocusedCell(null);
+        setDuplicateOrders(new Set()); // Reset validation highlight
+        setMissingOrderRows(new Set());
 
         // Refresh fullData for preview if needed
         if (activeTab === 'vista_previa') {
@@ -1811,23 +1816,52 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         const idxTitulo = findColumnIndex(headers, TITLE_VARIANTS);
         const idxContenido = findColumnIndex(headers, CONTENIDO_VARIANTS);
         const idxEstado = headers.findIndex(h => h.trim().toLowerCase() === 'estado');
-        const used: Record<string, number> = {} as any;
-        let disponibles = 0, duplicados = 0, faltantes = 0;
+
+        // Group by Order to allow Portada exception
+        const orderByOrder: Record<string, string[]> = {};
+        const missing = new Set<number>();
+        let disponibles = 0, faltantes = 0;
+
         gridData.forEach((row, idx) => {
             if (idx === 0) return;
             const dId = idxDoc !== -1 ? (row[idxDoc] || '') : '';
             if (dId !== currentDocId) return;
             const est = idxEstado !== -1 ? String(row[idxEstado] || '').toLowerCase().trim() : 'disponible';
             if (est !== 'disponible' && est !== 'available') return;
+
             disponibles++;
             const ord = idxOrden !== -1 ? (row[idxOrden] || '') : '';
-            const niv = idxNivel !== -1 ? (row[idxNivel] || '') : '';
+            const niv = idxNivel !== -1 ? (row[idxNivel] || '').toLowerCase() : '';
             const tit = idxTitulo !== -1 ? (row[idxTitulo] || '') : '';
             const cont = idxContenido !== -1 ? (row[idxContenido] || '') : '';
-            if (!ord || !niv || !tit || !cont) faltantes++;
-            if (ord) { if (used[ord]) duplicados++; else used[ord] = 1; }
+
+            if (!ord || !niv || !tit || !cont) {
+                faltantes++;
+                missing.add(idx);
+            }
+
+            if (ord) {
+                if (!orderByOrder[ord]) orderByOrder[ord] = [];
+                orderByOrder[ord].push(niv);
+            }
         });
-        showNotification(`Órdenes disponibles: ${disponibles}. Duplicados: ${duplicados}. Faltantes: ${faltantes}.`, (duplicados || faltantes) ? 'error' : 'success');
+
+        const dups = new Set<string>();
+        let duplicados = 0;
+
+        Object.entries(orderByOrder).forEach(([ord, levels]) => {
+            if (levels.length > 1) {
+                // Duplicate found. Check if it's valid (contains 'portada')
+                const hasPortada = levels.some(l => l.includes('portada'));
+                if (!hasPortada) {
+                    duplicados++;
+                    dups.add(ord);
+                }
+            }
+        });
+
+        setDuplicateOrders(dups);
+        showNotification(`Órdenes disponibles: ${disponibles}. Duplicados reales: ${duplicados}. Faltantes: ${faltantes}.`, (duplicados || faltantes) ? 'error' : 'success');
     };
 
     const createNewForSection = (kind: 'figura' | 'tabla') => {
@@ -2815,14 +2849,19 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     // Get Order value for data attribute
                                                     const ordIdxLocal = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
                                                     const orderVal = ordIdxLocal !== -1 ? (row[ordIdxLocal] || '') : '';
+                                                    const isDuplicate = activeTab === 'secciones' && duplicateOrders.has(orderVal);
 
                                                     return (
                                                         <tr
                                                             key={index}
-                                                            className={clsx("hover:bg-gray-50", saving && "opacity-50 pointer-events-none")}
+                                                            className={clsx(
+                                                                "hover:bg-gray-50",
+                                                                saving && "opacity-50 pointer-events-none",
+                                                                isDuplicate && "bg-red-50"
+                                                            )}
                                                             data-order={orderVal}
                                                         >
-                                                            <td className="px-6 py-4 text-left" style={{ backgroundColor: '#f5f5f5', border: '1px solid #ddd' }}>
+                                                            <td className={clsx("px-6 py-4 text-left", isDuplicate && "border-l-4 border-l-red-500")} style={{ backgroundColor: isDuplicate ? '#FEF2F2' : '#f5f5f5', border: '1px solid #ddd', borderLeft: isDuplicate ? '4px solid #ef4444' : '1px solid #ddd' }}>
                                                                 <div className="flex justify-start gap-2">
                                                                     <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-800" title="Editar"><Edit size={16} /></button>
                                                                     <button onClick={() => canDelete ? requestDelete(index) : null} className={clsx("", canDelete ? "text-red-600 hover:text-red-800" : "text-gray-400 cursor-not-allowed")} title={canDelete ? "Eliminar" : "No puedes eliminar registros de otro DocumentoID"}><Trash2 size={16} /></button>
