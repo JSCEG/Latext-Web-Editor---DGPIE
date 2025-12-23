@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, FileText, User, Calendar, Building, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, FileText, User, Calendar, Building, X, Search, LayoutGrid, List } from 'lucide-react';
 import { Button } from './Button';
 
 export type DocumentCard = {
@@ -44,6 +44,8 @@ const DEFAULT_SHEET_ID = '1HpvaN82xj75IhTg0ZyeGOBWluivCQdQh9OuDL-nnGgI';
 
 export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout, documents }) => {
     const [inputSheetId, setInputSheetId] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [formData, setFormData] = useState<NewDocumentData>({
         id: '',
@@ -85,87 +87,110 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
         setIsModalOpen(false);
     };
 
+    const filteredDocuments = useMemo(() => {
+        if (!searchQuery) return documents;
+        const lowerQuery = searchQuery.toLowerCase();
+        return documents.filter(doc =>
+            doc.title?.toLowerCase().includes(lowerQuery) ||
+            doc.id.toLowerCase().includes(lowerQuery) ||
+            doc.author?.toLowerCase().includes(lowerQuery) ||
+            doc.institution?.toLowerCase().includes(lowerQuery)
+        );
+    }, [documents, searchQuery]);
+
     return (
         <div className="max-w-7xl mx-auto p-8 space-y-8 animate-in fade-in duration-500">
 
-            {/* Title Section */}
-            <div className="flex justify-between items-end border-b-4 border-[#691C32] pb-2">
+            {/* Title Section & Actions */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b-4 border-gob-guinda pb-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-[#691C32]">Documentos Disponibles</h1>
+                    <h1 className="text-3xl font-bold text-gob-guinda">Documentos Disponibles</h1>
+                    <p className="text-gray-500 mt-1">Gestiona y edita tus documentos oficiales</p>
                 </div>
-                <div>
-                    <Button onClick={() => setIsModalOpen(true)}>
-                        <Plus size={16} className="mr-2" /> Nuevo Documento
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Buscar documentos..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gob-guinda/20 focus:border-gob-guinda outline-none transition-all"
+                        />
+                    </div>
+                    <Button onClick={() => setIsModalOpen(true)} className="flex-shrink-0">
+                        <Plus size={16} className="mr-2" /> Nuevo
                     </Button>
                 </div>
             </div>
 
             {/* Document Card List */}
             <div className="space-y-4">
-
-                {documents.length > 0 ? (
-                    documents.map((doc) => (
+                {filteredDocuments.length > 0 ? (
+                    filteredDocuments.map((doc) => (
                         <div
                             key={`${doc.sheetId || 'master'}-${doc.id}`}
-                            aria-label={`Documento ${doc.id}`}
-                            className="group bg-white rounded-lg shadow-sm border border-gray-200 p-6 md:p-8 flex flex-col md:flex-row gap-6 hover:shadow-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-[#691C32]/30"
+                            className="group bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row gap-6 hover:shadow-md transition-all duration-200 hover:border-gob-guinda/30"
                         >
                             {/* Icon / ID */}
-                            <div className="flex-shrink-0">
-                                <div className="w-12 h-16 bg-red-50 border border-red-100 rounded flex flex-col items-center justify-center text-[#691C32]">
-                                    <FileText size={24} />
-                                    <span className="text-[10px] font-bold mt-1">{doc.id}</span>
+                            <div className="flex-shrink-0 flex flex-col items-center">
+                                <div className="w-16 h-20 bg-gray-50 border border-gray-200 rounded-lg flex flex-col items-center justify-center text-gob-guinda group-hover:bg-gob-guinda/5 transition-colors relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-4 h-4 bg-gray-200 rounded-bl-lg" />
+                                    <FileText size={32} strokeWidth={1.5} />
                                 </div>
-                                <div className="text-center mt-2 text-xs font-bold text-gray-500">DOCUMENTO</div>
+                                <span className="text-[10px] font-bold mt-2 text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{doc.id}</span>
                             </div>
 
                             {/* Content */}
-                            <div className="flex-1 space-y-3">
-                                <div>
-                                    <h2 className="text-xl font-bold text-gray-900 leading-tight">
+                            <div className="flex-1 min-w-0">
+                                <div className="mb-3">
+                                    <h2 className="text-xl font-bold text-gray-900 leading-tight group-hover:text-gob-guinda transition-colors">
                                         {doc.title || `Documento ${doc.id}`}
                                     </h2>
                                     {doc.subtitle && (
-                                        <p className="text-gray-600 italic text-sm mt-1 line-clamp-2">{doc.subtitle}</p>
+                                        <p className="text-gray-500 text-sm mt-1">{doc.subtitle}</p>
                                     )}
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 text-sm text-gray-700">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm text-gray-600">
                                     {doc.author && (
                                         <div className="flex items-center gap-2">
-                                            <User size={14} className="text-[#13322B]" />
+                                            <User size={14} className="text-gob-gold" />
                                             <span className="truncate">{doc.author}</span>
                                         </div>
                                     )}
                                     {doc.date && (
                                         <div className="flex items-center gap-2">
-                                            <Calendar size={14} className="text-[#13322B]" />
+                                            <Calendar size={14} className="text-gob-gold" />
                                             <span>{doc.date}</span>
                                         </div>
                                     )}
                                     {(doc.institution || doc.unit) && (
                                         <div className="flex items-center gap-2 md:col-span-2">
-                                            <Building size={14} className="text-[#13322B]" />
+                                            <Building size={14} className="text-gob-gold" />
                                             <span className="truncate">{[doc.institution, doc.unit].filter(Boolean).join(' · ')}</span>
                                         </div>
                                     )}
                                 </div>
+                            </div>
 
-                                {/* Actions */}
-                                <div className="flex flex-wrap gap-3 pt-2">
-                                    <Button variant="burgundy" size="sm" onClick={() => onOpen(doc.sheetId || DEFAULT_SHEET_ID, doc.id)}>
-                                        <FileText size={14} className="mr-2" /> Abrir
-                                    </Button>
-                                </div>
+                            {/* Actions */}
+                            <div className="flex flex-col justify-center items-end gap-2 border-l border-gray-100 pl-6 ml-2">
+                                <Button variant="burgundy" onClick={() => onOpen(doc.sheetId || DEFAULT_SHEET_ID, doc.id)} className="w-full md:w-auto">
+                                    <FileText size={16} className="mr-2" /> Abrir
+                                </Button>
                             </div>
                         </div>
                     ))
                 ) : (
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-500">
-                        No se encontraron documentos en la hoja "Documentos".
+                    <div className="bg-gray-50 rounded-xl border border-dashed border-gray-300 p-12 text-center">
+                        <div className="mx-auto h-12 w-12 text-gray-400 mb-4">
+                            <Search size={48} strokeWidth={1} />
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-900">No se encontraron documentos</h3>
+                        <p className="text-gray-500 mt-1">Intenta con otros términos de búsqueda.</p>
                     </div>
                 )}
-
             </div>
 
             <div className="mt-8 pt-8 border-t border-gray-200 text-center">
@@ -174,7 +199,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                     <input
                         type="text"
                         placeholder="Pegar ID de Google Sheets aquí"
-                        className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#691C32]"
+                        className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-gob-guinda"
                         value={inputSheetId}
                         onChange={(e) => setInputSheetId(e.target.value)}
                     />
@@ -189,7 +214,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center p-6 border-b border-gray-200">
-                            <h2 className="text-xl font-bold text-[#691C32]">Nuevo Documento</h2>
+                            <h2 className="text-xl font-bold text-gob-guinda">Nuevo Documento</h2>
                             <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-gray-700">
                                 <X size={24} />
                             </button>
@@ -213,7 +238,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                                         name="version"
                                         value={formData.version}
                                         onChange={handleChange}
-                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-[#691C32] focus:border-[#691C32]"
+                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-gob-guinda focus:border-gob-guinda"
                                     />
                                 </div>
                                 <div className="md:col-span-2">
@@ -224,7 +249,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                                         required
                                         value={formData.title}
                                         onChange={handleChange}
-                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-[#691C32] focus:border-[#691C32]"
+                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-gob-guinda focus:border-gob-guinda"
                                     />
                                 </div>
                                 <div className="md:col-span-2">
@@ -234,7 +259,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                                         name="subtitle"
                                         value={formData.subtitle}
                                         onChange={handleChange}
-                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-[#691C32] focus:border-[#691C32]"
+                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-gob-guinda focus:border-gob-guinda"
                                     />
                                 </div>
                                 <div>
@@ -244,7 +269,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                                         name="author"
                                         value={formData.author}
                                         onChange={handleChange}
-                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-[#691C32] focus:border-[#691C32]"
+                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-gob-guinda focus:border-gob-guinda"
                                     />
                                 </div>
                                 <div>
@@ -254,7 +279,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                                         name="date"
                                         value={formData.date}
                                         onChange={handleChange}
-                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-[#691C32] focus:border-[#691C32]"
+                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-gob-guinda focus:border-gob-guinda"
                                     />
                                 </div>
                                 <div>
@@ -264,7 +289,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                                         name="institution"
                                         value={formData.institution}
                                         onChange={handleChange}
-                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-[#691C32] focus:border-[#691C32]"
+                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-gob-guinda focus:border-gob-guinda"
                                     />
                                 </div>
                                 <div>
@@ -274,7 +299,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                                         name="unit"
                                         value={formData.unit}
                                         onChange={handleChange}
-                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-[#691C32] focus:border-[#691C32]"
+                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-gob-guinda focus:border-gob-guinda"
                                     />
                                 </div>
                                 <div>
@@ -285,7 +310,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                                         value={formData.shortName}
                                         onChange={handleChange}
                                         placeholder="Ej: Informe2025"
-                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-[#691C32] focus:border-[#691C32]"
+                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-gob-guinda focus:border-gob-guinda"
                                     />
                                 </div>
                                 <div>
@@ -295,7 +320,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onCreate, onOpen, onLogout
                                         name="keywords"
                                         value={formData.keywords}
                                         onChange={handleChange}
-                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-[#691C32] focus:border-[#691C32]"
+                                        className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-gob-guinda focus:border-gob-guinda"
                                     />
                                 </div>
                             </div>

@@ -67,7 +67,7 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
                             <Book size={12} /> Cita
                         </div>
                         <select
-                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900 w-32 focus:ring-1 focus:ring-[#691C32] outline-none"
+                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900 w-32 focus:ring-1 focus:ring-gob-guinda outline-none"
                             value=""
                             onChange={(e) => {
                                 const v = e.target.value;
@@ -90,7 +90,7 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
                             <Image size={12} /> Figura
                         </div>
                         <select
-                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900 w-32 focus:ring-1 focus:ring-[#691C32] outline-none"
+                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900 w-32 focus:ring-1 focus:ring-gob-guinda outline-none"
                             value=""
                             onChange={(e) => {
                                 const v = e.target.value;
@@ -125,7 +125,7 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
                             <Table size={12} /> Tabla
                         </div>
                          <select
-                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900 w-32 focus:ring-1 focus:ring-[#691C32] outline-none"
+                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900 w-32 focus:ring-1 focus:ring-gob-guinda outline-none"
                             value=""
                             onChange={(e) => {
                                 const v = e.target.value;
@@ -160,7 +160,7 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
                             <Lightbulb size={12} /> Ejemplos
                         </div>
                         <select
-                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900 w-32 focus:ring-1 focus:ring-[#691C32] outline-none"
+                            className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900 w-32 focus:ring-1 focus:ring-gob-guinda outline-none"
                             value=""
                             onChange={(e) => {
                                 const v = e.target.value;

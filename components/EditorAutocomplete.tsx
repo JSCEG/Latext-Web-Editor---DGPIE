@@ -68,7 +68,7 @@ export const EditorAutocomplete: React.FC<EditorAutocompleteProps> = ({
                         key={`${item.type}-${item.id}`}
                         className={clsx(
                             "px-3 py-2 text-sm cursor-pointer flex items-center gap-2 transition-colors",
-                            index === selectedIndex ? "bg-[#691C32]/10 text-[#691C32]" : "text-gray-700 hover:bg-gray-50"
+                            index === selectedIndex ? "bg-gob-guinda/10 text-gob-guinda" : "text-gray-700 hover:bg-gray-50"
                         )}
                         onClick={() => onSelect(item)}
                     >

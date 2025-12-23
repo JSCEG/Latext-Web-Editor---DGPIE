@@ -66,6 +66,9 @@ export const validateStructure = (
     const referencedFigures = new Set<string>();
     const referencedTables = new Set<string>();
     
+    // Map to track IDs and their types to allow duplicates for 'portada'
+    const seenSectionTypes = new Map<string, string[]>();
+
     secciones.data.forEach((row, idx) => {
         if (idx === 0) return; // Skip header
         
@@ -74,6 +77,7 @@ export const validateStructure = (
         
         const id = secOrdenIdx !== -1 ? row[secOrdenIdx] : '';
         const content = secContenidoIdx !== -1 ? (row[secContenidoIdx] || '') : '';
+        const nivel = secNivelIdx !== -1 ? (row[secNivelIdx] || '').toLowerCase().trim() : '';
 
         // Scan content for references
         const figMatches = content.matchAll(/\[\[figura:(.+?)\]\]/g);
@@ -87,14 +91,25 @@ export const validateStructure = (
         }
 
         if (id) {
-            if (validSectionIds.has(id)) {
-                errors.push({
-                    type: 'DUPLICATE_ID',
-                    message: `ID de Sección duplicado: ${id}`,
-                    itemId: id,
-                    sheet: 'Secciones'
-                });
+            if (seenSectionTypes.has(id)) {
+                const prevTypes = seenSectionTypes.get(id) || [];
+                // Allow duplicate if current or any previous is 'portada'
+                // This handles the case: Portada (ID X) -> Section (ID X)
+                const isPortadaContext = nivel.includes('portada') || prevTypes.some(t => t.includes('portada'));
+                
+                if (!isPortadaContext) {
+                    errors.push({
+                        type: 'DUPLICATE_ID',
+                        message: `ID de Sección duplicado: ${id}`,
+                        itemId: id,
+                        sheet: 'Secciones'
+                    });
+                }
+                prevTypes.push(nivel);
+            } else {
+                seenSectionTypes.set(id, [nivel]);
             }
+            
             validSectionIds.add(id);
             sectionsCount++;
         } else {

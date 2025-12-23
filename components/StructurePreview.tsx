@@ -127,7 +127,7 @@ export const StructurePreview: React.FC<StructurePreviewProps> = ({ docId, secci
         <div className="flex flex-col h-full bg-gray-50 p-6 overflow-hidden">
             <div className="mb-6 flex justify-between items-center">
                 <div>
-                    <h2 className="text-2xl font-bold text-[#691C32]">Vista Previa Estructural</h2>
+                    <h2 className="text-2xl font-bold text-gob-guinda">Vista Previa Estructural</h2>
                     <p className="text-sm text-gray-500">Representación jerárquica del documento final</p>
                 </div>
                 <div className="flex gap-4">
@@ -146,7 +146,7 @@ export const StructurePreview: React.FC<StructurePreviewProps> = ({ docId, secci
                     ) : (
                         <div className="space-y-4">
                             {tree.map((node, i) => (
-                                <div key={i} className="border-l-2 border-[#BC955C] pl-4 pb-4">
+                                <div key={i} className="border-l-2 border-gob-gold pl-4 pb-4">
                                     <div className="flex items-center gap-2 mb-2 justify-between">
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs font-mono bg-gray-100 px-1 rounded text-gray-500">{node.id}</span>
@@ -158,7 +158,7 @@ export const StructurePreview: React.FC<StructurePreviewProps> = ({ docId, secci
                                         {onEditSection && (
                                             <button
                                                 onClick={() => onEditSection(node.id)}
-                                                className="text-gray-400 hover:text-[#691C32] p-1 rounded hover:bg-red-50 transition-colors"
+                                                className="text-gray-400 hover:text-gob-guinda p-1 rounded hover:bg-red-50 transition-colors"
                                                 title="Editar esta sección"
                                             >
                                                 <Edit size={16} />
@@ -276,7 +276,7 @@ export const StructurePreview: React.FC<StructurePreviewProps> = ({ docId, secci
                         <h4 className="font-bold text-gray-700 text-sm uppercase tracking-wider mb-3">Estadísticas</h4>
                         <div className="grid grid-cols-2 gap-4 text-center">
                             <div className="bg-gray-50 p-3 rounded">
-                                <div className="text-2xl font-bold text-[#691C32]">{validation.stats.sectionsCount}</div>
+                                <div className="text-2xl font-bold text-gob-guinda">{validation.stats.sectionsCount}</div>
                                 <div className="text-xs text-gray-500">Secciones</div>
                             </div>
                             <div className="bg-gray-50 p-3 rounded">

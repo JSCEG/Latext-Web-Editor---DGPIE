@@ -345,10 +345,10 @@ const App: React.FC = () => {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
-        <div className="bg-white max-w-md w-full rounded-lg shadow-xl p-8 border-t-4 border-[#691C32]">
+        <div className="bg-white max-w-md w-full rounded-lg shadow-xl p-8 border-t-4 border-gob-guinda">
           <div className="text-center mb-6">
-            <h2 className="text-[#691C32] font-bold text-lg uppercase tracking-widest mb-1">Gobierno de México</h2>
-            <div className="h-px w-24 bg-[#BC955C] mx-auto mb-4"></div>
+            <h2 className="text-gob-guinda font-bold text-lg uppercase tracking-widest mb-1">Gobierno de México</h2>
+            <div className="h-px w-24 bg-gob-gold mx-auto mb-4"></div>
             <h1 className="text-2xl font-bold text-gray-800">Acceso Editor LatexT</h1>
             <p className="text-gray-500 mt-2 text-sm">Ingrese su Token de Google Sheets</p>
           </div>
@@ -393,7 +393,7 @@ const App: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowHelp(!showHelp)}
-              className="flex items-center justify-center w-full text-sm font-medium text-[#691C32] hover:underline py-2 rounded-lg transition-colors"
+              className="flex items-center justify-center w-full text-sm font-medium text-gob-guinda hover:underline py-2 rounded-lg transition-colors"
             >
               <HelpCircle size={16} className="mr-2" />
               {showHelp ? 'Ocultar Instrucciones' : '¿Cómo obtener un token?'}
@@ -403,7 +403,7 @@ const App: React.FC = () => {
               <div className="mt-3 bg-gray-50 p-4 rounded text-sm text-gray-600 border border-gray-200">
                 <p className="mb-2 font-semibold">Pasos rápidos:</p>
                 <ol className="list-decimal pl-4 space-y-2">
-                  <li>Ir a <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noreferrer" className="text-[#691C32] underline">Google OAuth Playground</a>.</li>
+                  <li>Ir a <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noreferrer" className="text-gob-guinda underline">Google OAuth Playground</a>.</li>
                   <li>Seleccionar API: <code>Google Sheets API v4</code> &gt; <code>.../auth/spreadsheets</code>.</li>
                   <li>Clic en "Authorize APIs".</li>
                   <li>Clic en "Exchange authorization code for tokens".</li>
@@ -420,7 +420,7 @@ const App: React.FC = () => {
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="Pegar token aquí (ya29...) o el JSON completo"
-                className="w-full h-24 p-3 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#691C32] outline-none resize-none font-mono"
+                className="w-full h-24 p-3 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-gob-guinda outline-none resize-none font-mono"
               />
             </div>
 
@@ -450,8 +450,8 @@ const App: React.FC = () => {
     return (
       <div className="fixed inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-50">
         <div className="flex flex-col items-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#691C32] mb-4"></div>
-          <p className="text-[#691C32] font-medium">Procesando...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gob-guinda mb-4"></div>
+          <p className="text-gob-guinda font-medium">Procesando...</p>
         </div>
       </div>
     );
@@ -468,18 +468,18 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <div className="flex flex-col">
               <span className="text-xs text-gray-500 uppercase tracking-widest">Gobierno de</span>
-              <span className="text-xl font-bold text-[#691C32] leading-none">México</span>
+              <span className="text-xl font-bold text-gob-guinda leading-none">México</span>
             </div>
             <div className="h-8 w-px bg-gray-300 mx-2"></div>
             <div className="flex flex-col">
-              <span className="text-xl font-bold text-[#BC955C] leading-none">Energía</span>
+              <span className="text-xl font-bold text-gob-gold leading-none">Energía</span>
               <span className="text-[10px] text-gray-400 uppercase tracking-wider">Secretaría de Energía</span>
             </div>
           </div>
 
           {/* App Title */}
           <div className="hidden md:block">
-            <h1 className="text-2xl font-bold text-[#691C32] tracking-tight">Editor LatexT</h1>
+            <h1 className="text-2xl font-bold text-gob-guinda tracking-tight">Editor LatexT</h1>
           </div>
 
           {/* Help/Actions */}
@@ -488,13 +488,13 @@ const App: React.FC = () => {
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 hover:bg-gray-50 p-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#691C32]/20"
+                  className="flex items-center gap-2 hover:bg-gray-50 p-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-gob-guinda/20"
                 >
                   <div className="flex flex-col items-end hidden md:flex">
                     <span className="text-sm font-bold text-gray-700 leading-tight">{currentUser.name}</span>
                     <span className="text-[10px] text-gray-500">{currentUser.email}</span>
                   </div>
-                  <div className="w-8 h-8 bg-[#691C32] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                  <div className="w-8 h-8 bg-gob-guinda rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm">
                     {currentUser.name.charAt(0).toUpperCase()}
                   </div>
                   <ChevronDown size={14} className="text-gray-400" />
@@ -532,7 +532,7 @@ const App: React.FC = () => {
           </div>
         </div>
         {/* Gold Bar */}
-        <div className="h-1 bg-[#BC955C] w-full"></div>
+        <div className="h-1 bg-gob-gold w-full"></div>
       </header>
 
       {/* Error Banner for Main Layout */}
@@ -559,7 +559,7 @@ const App: React.FC = () => {
         {isAuthenticated && !selectedSpreadsheetId && token !== 'DEMO' && (
           <div className="max-w-5xl mx-auto p-8 animate-in fade-in duration-500">
             <div className="text-center mb-10 mt-8">
-              <h2 className="text-3xl font-bold text-[#691C32]">Seleccionar Libro de Trabajo</h2>
+              <h2 className="text-3xl font-bold text-gob-guinda">Seleccionar Libro de Trabajo</h2>
               <p className="text-gray-600 mt-3 text-lg">Elige el repositorio de documentos donde deseas trabajar</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 px-4">
@@ -567,12 +567,12 @@ const App: React.FC = () => {
                 <button
                   key={sheet.id}
                   onClick={() => setSelectedSpreadsheetId(sheet.id)}
-                  className="bg-white p-8 rounded-xl shadow-sm border border-gray-200 cursor-pointer hover:shadow-xl hover:border-[#691C32]/30 hover:-translate-y-1 transition-all text-left group flex flex-col items-center text-center h-full"
+                  className="bg-white p-8 rounded-xl shadow-sm border border-gray-200 cursor-pointer hover:shadow-xl hover:border-gob-guinda/30 hover:-translate-y-1 transition-all text-left group flex flex-col items-center text-center h-full"
                 >
-                  <div className="w-16 h-16 bg-[#691C32]/5 rounded-full flex items-center justify-center text-[#691C32] mb-6 group-hover:bg-[#691C32] group-hover:text-white transition-colors duration-300">
+                  <div className="w-16 h-16 bg-gob-guinda/5 rounded-full flex items-center justify-center text-gob-guinda mb-6 group-hover:bg-gob-guinda group-hover:text-white transition-colors duration-300">
                     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /></svg>
                   </div>
-                  <h3 className="font-bold text-xl text-gray-900 group-hover:text-[#691C32] mb-2">
+                  <h3 className="font-bold text-xl text-gray-900 group-hover:text-gob-guinda mb-2">
                     {spreadsheetMetadata[sheet.id] || sheet.name}
                   </h3>
                   <p className="text-gray-500 mb-6 flex-1">{sheet.description}</p>
@@ -594,12 +594,12 @@ const App: React.FC = () => {
             <div className="bg-gray-50 border-b border-gray-200 px-4 md:px-8 py-2 flex items-center justify-between">
               <div className="text-xs text-gray-500 font-medium flex items-center gap-2">
                 <span className="uppercase tracking-wider">Libro Actual:</span>
-                <span className="text-[#691C32] font-bold">
+                <span className="text-gob-guinda font-bold">
                   {spreadsheetMetadata[selectedSpreadsheetId!] || AVAILABLE_SPREADSHEETS.find(s => s.id === selectedSpreadsheetId)?.name || (token === 'DEMO' ? 'Modo Demostración' : 'Desconocido')}
                 </span>
               </div>
               {token !== 'DEMO' && (
-                <button onClick={() => setSelectedSpreadsheetId(null)} className="text-xs text-gray-500 hover:text-[#691C32] flex items-center gap-1 transition-colors">
+                <button onClick={() => setSelectedSpreadsheetId(null)} className="text-xs text-gray-500 hover:text-gob-guinda flex items-center gap-1 transition-colors">
                   <Settings size={12} /> Cambiar Libro
                 </button>
               )}

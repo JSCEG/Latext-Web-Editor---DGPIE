@@ -5,7 +5,7 @@ import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValue
 import { socketService } from '../services/socketService';
 import { UserActivityTracker } from './UserActivityTracker';
 import { Button } from './Button';
-import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, ChevronDown, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle, MoreVertical, Hash, Calendar, User, Building, AlignLeft, Database, Heart, Maximize2, Minimize2 } from 'lucide-react';
+import { Save, Info, List, Table, Image, Book, Type, FileText, ChevronLeft, Plus, Search, Trash2, Edit, X, Lightbulb, Menu, Copy, ChevronRight, ChevronDown, Grid, RefreshCw, Check, Minus, AlertCircle, AlertTriangle, MoreVertical, Hash, Calendar, User, Building, AlignLeft, Database, Heart, Maximize2, Minimize2, CheckCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 import { LintPanel } from './LintPanel';
 import { RichEditorToolbar } from './RichEditorToolbar';
@@ -226,7 +226,7 @@ const ContentPreview: React.FC<{ text: string; limit?: number }> = ({ text, limi
             )}
             <button
                 onClick={() => setExpanded(!expanded)}
-                className="mt-1 text-xs font-semibold text-[#691C32] hover:underline focus:outline-none"
+                className="mt-1 text-xs font-semibold text-gob-guinda hover:underline focus:outline-none"
             >
                 {expanded ? 'Leer menos' : 'Leer más...'}
             </button>
@@ -266,6 +266,74 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     // Ribbon State
     const [ribbonOpen, setRibbonOpen] = useState(true);
     const [activeMetadataField, setActiveMetadataField] = useState<string | null>(null);
+
+    const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info'; duration?: number } | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [loadingGrid, setLoadingGrid] = useState(false);
+
+    // Audio context for sound effects
+    const playNotificationSound = (type: 'success' | 'error') => {
+        try {
+            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+            if (!AudioContext) return;
+
+            const audioCtx = new AudioContext();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            if (type === 'success') {
+                // Success: High pitched pleasant ding
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+                oscillator.frequency.exponentialRampToValueAtTime(1046.5, audioCtx.currentTime + 0.1); // C6
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.3);
+            } else {
+                // Error: Low pitched buzz
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+                oscillator.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 0.2);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.3);
+            }
+        } catch (e) {
+            console.error("Audio playback failed", e);
+        }
+    };
+
+    const triggerHaptic = (type: 'success' | 'error') => {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            if (type === 'success') {
+                navigator.vibrate([50, 50, 50]); // Short double tap
+            } else {
+                navigator.vibrate(300); // Long buzz
+            }
+        }
+    };
+
+    const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info', duration = 3000) => {
+        setNotification({ message, type, duration });
+
+        // Audio and Haptic Feedback
+        if (type === 'success' || type === 'error') {
+            playNotificationSound(type);
+            triggerHaptic(type);
+        }
+
+        // Auto hide
+        if (duration > 0) {
+            setTimeout(() => {
+                setNotification(prev => (prev && prev.message === message ? null : prev));
+            }, duration);
+        }
+    };
 
     // Generic Editor Modal State (For any text field)
     const [editorModal, setEditorModal] = useState<{ open: boolean; title: string; value: string; fieldId: string | null; onSave: (val: string) => void; zenMode?: boolean }>({
@@ -631,7 +699,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             <div className="bg-white border-b border-gray-200 shadow-sm transition-all duration-300">
                 <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-100">
                     <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Metadatos del Documento</span>
-                    <button onClick={() => setRibbonOpen(!ribbonOpen)} className="text-gray-400 hover:text-[#691C32]">
+                    <button onClick={() => setRibbonOpen(!ribbonOpen)} className="text-gray-400 hover:text-gob-guinda">
                         {ribbonOpen ? <ChevronDown size={16} className="transform rotate-180" /> : <ChevronDown size={16} />}
                     </button>
                 </div>
@@ -807,12 +875,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         rowIndex: null
     });
 
-    // Notification State (Replaces native alerts)
-    const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
-
     // UI State
-    const [saving, setSaving] = useState(false);
-    const [loadingGrid, setLoadingGrid] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 20;
@@ -873,17 +936,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         setCurrentPage(1);
     }, [searchTerm]);
 
-    // Auto-dismiss notification
-    useEffect(() => {
-        if (notification) {
-            const timer = setTimeout(() => setNotification(null), 5000);
-            return () => clearTimeout(timer);
-        }
-    }, [notification]);
 
-    const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-        setNotification({ message, type });
-    };
 
     const EQUATION_PLACEHOLDER_RE = /\{\{\d+\}\}/g;
 
@@ -2331,20 +2384,20 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
     const Breadcrumbs = () => (
         <nav className="flex items-center text-sm text-gray-500 mb-4 overflow-hidden whitespace-nowrap">
-            <button onClick={onBack} className="hover:text-[#691C32] transition-colors">Inicio</button>
+            <button onClick={onBack} className="hover:text-gob-guinda transition-colors">Inicio</button>
             <ChevronRight size={14} className="mx-2 flex-shrink-0" />
             <span className="font-medium text-gray-900 truncate max-w-[150px]">{spreadsheet.properties.title}</span>
             <ChevronRight size={14} className="mx-2 flex-shrink-0" />
             <button
                 onClick={() => { if (activeTab !== 'metadatos') setViewMode('LIST'); }}
-                className={clsx("hover:text-[#691C32] transition-colors capitalize", viewMode === 'LIST' && activeTab !== 'metadatos' ? "font-bold text-[#691C32]" : "")}
+                className={clsx("hover:text-gob-guinda transition-colors capitalize", viewMode === 'LIST' && activeTab !== 'metadatos' ? "font-bold text-gob-guinda" : "")}
             >
                 {activeTab}
             </button>
             {viewMode === 'FORM' && (
                 <>
                     <ChevronRight size={14} className="mx-2 flex-shrink-0" />
-                    <span className="font-bold text-[#691C32]">
+                    <span className="font-bold text-gob-guinda">
                         {activeTab === 'metadatos' ? 'Edición' : (editingRowIndex !== null ? 'Editar' : 'Nuevo')}
                     </span>
                 </>
@@ -2493,17 +2546,34 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
             {/* Notification Banner */}
             {notification && (
-                <div className={clsx(
-                    "fixed top-4 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-3 animate-in fade-in slide-in-from-top-2",
-                    notification.type === 'success' ? "bg-[#13322B] text-white" :
-                        notification.type === 'error' ? "bg-red-600 text-white" : "bg-blue-600 text-white"
-                )}>
-                    {notification.type === 'success' ? <Check size={18} /> :
-                        notification.type === 'error' ? <AlertCircle size={18} /> : <Info size={18} />}
-                    {notification.message}
-                    <button onClick={() => setNotification(null)} className="ml-2 opacity-80 hover:opacity-100">
-                        <X size={14} />
+                <div
+                    role="alert"
+                    aria-live="assertive"
+                    className={clsx(
+                        "fixed top-4 left-1/2 -translate-x-1/2 z-[60] px-6 py-4 rounded-lg shadow-2xl text-base font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 border-2",
+                        notification.type === 'success' ? "bg-green-100 text-green-900 border-green-600" :
+                            notification.type === 'error' ? "bg-red-100 text-red-900 border-red-600" : "bg-blue-100 text-blue-900 border-blue-600"
+                    )}>
+                    {notification.type === 'success' ? <CheckCircle size={24} className="text-green-600" /> :
+                        notification.type === 'error' ? <AlertCircle size={24} className="text-red-600" /> : <Info size={24} className="text-blue-600" />}
+
+                    <span className="flex-1">{notification.message}</span>
+
+                    <button
+                        onClick={() => setNotification(null)}
+                        className="ml-4 p-1 rounded-full hover:bg-black/10 transition-colors"
+                        aria-label="Cerrar notificación"
+                    >
+                        <X size={18} />
                     </button>
+                </div>
+            )}
+
+            {/* Editing Indicator (Sticky Pill) */}
+            {viewMode === 'FORM' && activeTab !== 'metadatos' && !notification && (
+                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[50] px-4 py-1.5 rounded-full bg-yellow-100 border border-yellow-300 text-yellow-800 text-xs font-bold uppercase tracking-wide shadow-sm flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                    <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+                    Edición en progreso
                 </div>
             )}
 
@@ -2536,7 +2606,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             {showTableWizard && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 animate-in zoom-in duration-200">
-                        <h3 className="text-lg font-bold text-[#691C32] mb-2">Nueva Tabla</h3>
+                        <h3 className="text-lg font-bold text-gob-guinda mb-2">Nueva Tabla</h3>
                         <p className="text-sm text-gray-600 mb-4">Define el tamaño inicial. El sistema buscará un espacio vacío en la hoja de datos.</p>
 
                         <div className="space-y-4">
@@ -2547,7 +2617,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                     min="2" max="100"
                                     value={wizardConfig.rows}
                                     onChange={(e) => setWizardConfig({ ...wizardConfig, rows: parseInt(e.target.value) })}
-                                    className="w-full border border-gray-300 rounded px-3 py-2 mt-1 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
+                                    className="w-full border border-gray-300 rounded px-3 py-2 mt-1 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-gob-guinda"
                                 />
                             </div>
                             <div>
@@ -2557,7 +2627,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                     min="2" max="26"
                                     value={wizardConfig.cols}
                                     onChange={(e) => setWizardConfig({ ...wizardConfig, cols: parseInt(e.target.value) })}
-                                    className="w-full border border-gray-300 rounded px-3 py-2 mt-1 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
+                                    className="w-full border border-gray-300 rounded px-3 py-2 mt-1 bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-gob-guinda"
                                 />
                             </div>
                         </div>
@@ -2579,7 +2649,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                         <Menu size={24} />
                     </button>
                     <div className="flex flex-col">
-                        <h1 className="text-lg font-bold text-[#691C32] capitalize leading-tight">
+                        <h1 className="text-lg font-bold text-gob-guinda capitalize leading-tight">
                             {activeTab === 'metadatos' ? 'Editor de Documento' : activeTab}
                         </h1>
                         <div className="mt-1 text-sm text-gray-700 font-medium flex items-center gap-2">
@@ -2593,7 +2663,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={handleGenerateLatex} className="hidden md:flex gap-2 text-[#691C32] border-[#691C32] hover:bg-[#691C32] hover:text-white transition-colors" title="Generar archivos .tex y .bib">
+                    <Button variant="outline" size="sm" onClick={handleGenerateLatex} className="hidden md:flex gap-2 text-gob-guinda border-gob-guinda hover:bg-gob-guinda hover:text-white transition-colors" title="Generar archivos .tex y .bib">
                         <FileText size={16} /> Generar .Latex
                     </Button>
                     <Button variant="outline" size="sm" onClick={onBack} className="hidden md:flex">
@@ -2610,7 +2680,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
                 )}>
                     <nav className="space-y-1 px-2">
-                        <button onClick={() => { setActiveTab('metadatos'); setMobileMenuOpen(false); }} className={clsx("w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md", activeTab === 'metadatos' ? "bg-red-50 text-[#691C32]" : "text-gray-600 hover:bg-gray-50")}>
+                        <button onClick={() => { setActiveTab('metadatos'); setMobileMenuOpen(false); }} className={clsx("w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md", activeTab === 'metadatos' ? "bg-red-50 text-gob-guinda" : "text-gray-600 hover:bg-gray-50")}>
                             <Info size={18} /> Metadatos
                         </button>
                         <div className="my-2 border-t border-gray-100"></div>
@@ -2626,7 +2696,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                             <button
                                 key={item.id}
                                 onClick={() => { setActiveTab(item.id); setViewMode('LIST'); setMobileMenuOpen(false); }}
-                                className={clsx("w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md", activeTab === item.id ? "bg-red-50 text-[#691C32]" : "text-gray-600 hover:bg-gray-50")}
+                                className={clsx("w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md", activeTab === item.id ? "bg-red-50 text-gob-guinda" : "text-gray-600 hover:bg-gray-50")}
                             >
                                 <item.icon size={18} /> {item.label}
                             </button>
@@ -2646,7 +2716,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                             <div className="h-[calc(100vh-200px)]">
                                 {loadingGrid ? (
                                     <div className="flex items-center justify-center h-full">
-                                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#691C32]"></div>
+                                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gob-guinda"></div>
                                     </div>
                                 ) : (fullData && (
                                     <StructurePreview
@@ -2682,7 +2752,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                 {(activeTab === 'bibliografia' || activeTab === 'glosario' || activeTab === 'siglas' || activeTab === 'tablas' || activeTab === 'figuras') && (
                                     <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm mb-4 flex items-center gap-6 animate-in fade-in slide-in-from-top-2">
                                         <div className="flex items-center gap-3">
-                                            <div className="p-2 rounded-full bg-[#691C32]/10 text-[#691C32]">
+                                            <div className="p-2 rounded-full bg-gob-guinda/10 text-gob-guinda">
                                                 {activeTab === 'bibliografia' ? <Book size={20} /> :
                                                     activeTab === 'glosario' ? <FileText size={20} /> :
                                                         activeTab === 'siglas' ? <Type size={20} /> :
@@ -2719,7 +2789,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 placeholder="Buscar..."
                                                 value={searchTerm}
                                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#691C32] bg-white text-gray-900"
+                                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-gob-guinda bg-white text-gray-900"
                                             />
                                         </div>
                                     </div>
@@ -2839,40 +2909,58 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                 <Ribbon />
 
                                 {/* Main Form Card */}
-                                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 md:p-8">
-                                    <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
-                                        <h2 className="text-xl font-bold text-[#691C32]">
-                                            {activeTab === 'metadatos' ? 'Editar Metadatos' : (editingRowIndex === null ? 'Nuevo Registro' : 'Editar Registro')}
-                                        </h2>
+                                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 md:p-8 relative">
+                                    <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100 sticky top-0 bg-white z-20 pt-2 -mt-2">
+                                        <div className="flex items-center gap-4">
+                                            <h2 className="text-xl font-bold text-gob-guinda">
+                                                {activeTab === 'metadatos' ? 'Editar Metadatos' : (editingRowIndex === null ? 'Nuevo Registro' : 'Editar Registro')}
+                                            </h2>
 
-                                        {/* Stats in Form Header (Secciones) */}
-                                        {activeTab === 'secciones' && editingRowIndex !== null && (
-                                            <div className="hidden md:flex gap-2 ml-4">
-                                                {(function () {
-                                                    const row = gridData[editingRowIndex];
-                                                    if (!row) return null;
-                                                    const stats = getSectionStats(row);
-                                                    if (!stats) return null;
-                                                    return (
-                                                        <>
-                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded border border-blue-100" title="Tablas en esta sección">
-                                                                <Table size={12} /> {stats.tableCount}
-                                                            </span>
-                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded border border-purple-100" title="Figuras en esta sección">
-                                                                <Image size={12} /> {stats.figureCount}
-                                                            </span>
-                                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded border border-gray-200" title="Ecuaciones en el texto">
-                                                                <Grid size={12} /> {stats.eqCount}
-                                                            </span>
-                                                        </>
-                                                    )
-                                                })()}
-                                            </div>
-                                        )}
+                                            {/* Stats in Form Header (Secciones) */}
+                                            {activeTab === 'secciones' && editingRowIndex !== null && (
+                                                <div className="hidden md:flex gap-2">
+                                                    {(function () {
+                                                        const row = gridData[editingRowIndex];
+                                                        if (!row) return null;
+                                                        const stats = getSectionStats(row);
+                                                        if (!stats) return null;
+                                                        return (
+                                                            <>
+                                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded border border-blue-100" title="Tablas en esta sección">
+                                                                    <Table size={12} /> {stats.tableCount}
+                                                                </span>
+                                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded border border-purple-100" title="Figuras en esta sección">
+                                                                    <Image size={12} /> {stats.figureCount}
+                                                                </span>
+                                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded border border-gray-200" title="Ecuaciones en el texto">
+                                                                    <Grid size={12} /> {stats.eqCount}
+                                                                </span>
+                                                            </>
+                                                        )
+                                                    })()}
+                                                </div>
+                                            )}
+                                        </div>
 
-                                        <Button variant="ghost" onClick={() => activeTab !== 'metadatos' && setViewMode('LIST')}>
-                                            Cancelar
-                                        </Button>
+                                        <div className="flex items-center gap-3">
+                                            <Button
+                                                variant="ghost"
+                                                onClick={() => activeTab !== 'metadatos' && setViewMode('LIST')}
+                                                className="text-gray-500 hover:text-gray-700"
+                                            >
+                                                Cancelar
+                                            </Button>
+                                            <Button
+                                                variant="burgundy"
+                                                size="lg" // Larger size
+                                                onClick={handleSaveForm}
+                                                isLoading={saving}
+                                                className="shadow-md hover:shadow-lg transform transition-all hover:-translate-y-0.5 active:translate-y-0 font-bold px-8"
+                                            >
+                                                <Save size={20} className="mr-2" />
+                                                Guardar Cambios
+                                            </Button>
+                                        </div>
                                     </div>
 
                                     <div className={clsx(
@@ -2897,7 +2985,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     <div key={i} className={colSpan + " space-y-1"}>
                                                         <label className="block text-sm font-medium text-gray-700">{header}</label>
                                                         <select
-                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900"
                                                             value={selected?.value}
                                                             onChange={(e) => {
                                                                 const newData = [...formData];
@@ -3188,7 +3276,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     return (
                                                         <div key={i} className={colSpan + " space-y-1"}>
                                                             <label className="block text-sm font-medium text-gray-700">{header}</label>
-                                                            <select className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                            <select className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900"
                                                                 value={currentValue}
                                                                 onChange={(e) => { const nd = [...formData]; nd[i] = e.target.value; setFormData(nd); }}
                                                             >
@@ -3277,7 +3365,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     <div key={i} className={colSpan + " space-y-1"}>
                                                         <label className="block text-sm font-medium text-gray-700">{header}</label>
                                                         <select
-                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900"
                                                             value={formData[i]?.toString().trim() || ''}
                                                             onChange={(e) => {
                                                                 const newSec = e.target.value;
@@ -3335,7 +3423,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                         <div className="relative">
                                                             <select
                                                                 disabled={!currentSectionId}
-                                                                className={clsx("w-full px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900", !currentSectionId && "bg-gray-100 text-gray-500 cursor-not-allowed")}
+                                                                className={clsx("w-full px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900", !currentSectionId && "bg-gray-100 text-gray-500 cursor-not-allowed")}
                                                                 value={formData[i] || ''}
                                                                 onChange={(e) => {
                                                                     const newData = [...formData];
@@ -3363,7 +3451,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     <div key={i} className={colSpan + " space-y-1"}>
                                                         <label className="block text-sm font-medium text-gray-700">{header}</label>
                                                         <select
-                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900"
                                                             value={current}
                                                             onChange={(e) => {
                                                                 const next = [...formData];
@@ -3385,7 +3473,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     <div className="flex gap-2">
                                                         <input
                                                             disabled={isDisabled}
-                                                            className={clsx("flex-1 px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32]", isDisabled ? "bg-gray-100 text-gray-500" : "bg-white text-gray-900 border-gray-300")}
+                                                            className={clsx("flex-1 px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda", isDisabled ? "bg-gray-100 text-gray-500" : "bg-white text-gray-900 border-gray-300")}
                                                             value={formData[i] || ''}
                                                             onChange={(e) => {
                                                                 const newData = [...formData];
@@ -3398,7 +3486,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                 type="button"
                                                                 variant="outline"
                                                                 size="sm"
-                                                                className="shrink-0 font-semibold transition-all duration-300 ease-in-out hover:shadow-md hover:bg-[#691C32] hover:text-white border-[#691C32] text-[#691C32] px-4 py-2 rounded-md h-auto gap-2"
+                                                                className="shrink-0 font-semibold transition-all duration-300 ease-in-out hover:shadow-md hover:bg-gob-guinda hover:text-white border-gob-guinda text-gob-guinda px-4 py-2 rounded-md h-auto gap-2"
                                                                 title="Abrir editor avanzado con formato"
                                                                 onClick={() => {
                                                                     setEditorModal({
@@ -3441,7 +3529,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                         <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 animate-in zoom-in duration-200">
                                             <div className="flex items-start justify-between gap-4 mb-3">
                                                 <div>
-                                                    <h3 className="text-lg font-bold text-[#691C32]">{equationModal.title}</h3>
+                                                    <h3 className="text-lg font-bold text-gob-guinda">{equationModal.title}</h3>
                                                     <p className="text-xs text-gray-500">Se insertará como etiqueta bien formada en el texto.</p>
                                                 </div>
                                                 <button className="text-gray-500 hover:text-gray-700" onClick={() => setEquationModal({ ...equationModal, open: false })}>
@@ -3489,7 +3577,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                             <div className="flex flex-wrap items-center gap-2 mb-2">
                                                 <div className="text-[11px] text-gray-600 mr-1">Símbolos:</div>
                                                 <select
-                                                    className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                    className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900"
                                                     value={equationPaletteGroup}
                                                     onChange={(e) => setEquationPaletteGroup(e.target.value as EquationSymbolGroup)}
                                                 >
@@ -3504,7 +3592,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 <div className="relative flex-1 min-w-[180px]">
                                                     <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
                                                     <input
-                                                        className="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                        className="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900"
                                                         value={equationPaletteQuery}
                                                         onChange={(e) => setEquationPaletteQuery(e.target.value)}
                                                         placeholder="Buscar (alpha, integral, <=, R, flecha...)"
@@ -3526,7 +3614,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                             <button
                                                                 key={`${s.group}:${s.latex}`}
                                                                 type="button"
-                                                                className="border border-gray-300 rounded-md px-2 py-1 text-left hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-[#691C32]"
+                                                                className="border border-gray-300 rounded-md px-2 py-1 text-left hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-gob-guinda"
                                                                 title={s.latex}
                                                                 onClick={() => insertIntoEquationModal(s.latex)}
                                                             >
@@ -3539,7 +3627,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
                                             <textarea
                                                 ref={equationModalTextareaRef}
-                                                className="w-full min-h-[180px] px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900"
+                                                className="w-full min-h-[180px] px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900"
                                                 value={equationModal.value}
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Tab') {
@@ -3570,7 +3658,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                         <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 animate-in zoom-in duration-200">
                                             <div className="flex items-start justify-between gap-4 mb-3">
                                                 <div>
-                                                    <h3 className="text-lg font-bold text-[#691C32]">Insertar Nota</h3>
+                                                    <h3 className="text-lg font-bold text-gob-guinda">Insertar Nota</h3>
                                                     <p className="text-xs text-gray-500">Agrega una nota explicativa o al pie.</p>
                                                 </div>
                                                 <button className="text-gray-500 hover:text-gray-700" onClick={() => setNoteModal({ ...noteModal, open: false })}>
@@ -3621,7 +3709,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
                                             <textarea
                                                 ref={noteContentTextareaRef}
-                                                className="w-full min-h-[150px] px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#691C32] bg-white text-gray-900 mb-4"
+                                                className="w-full min-h-[150px] px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900 mb-4"
                                                 value={noteModal.value}
                                                 onChange={(e) => setNoteModal({ ...noteModal, value: e.target.value })}
                                                 placeholder="Escribe el contenido de la nota..."
@@ -3643,7 +3731,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 md:p-8">
                                         <div className="flex justify-between items-center mb-4">
                                             <div className="flex items-center gap-2">
-                                                <Table className="text-[#691C32]" size={20} />
+                                                <Table className="text-gob-guinda" size={20} />
                                                 <h3 className="text-lg font-bold text-gray-900">Valores de la Tabla</h3>
                                             </div>
                                             <div className="flex gap-2">
@@ -3672,14 +3760,14 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                         <tbody className="bg-white divide-y divide-gray-200">
                                                             {nestedGridData.map((row, rIndex) => (
                                                                 <tr key={rIndex}>
-                                                                    <td className={clsx("px-2 py-2 text-[10px] font-mono select-none w-8 text-center border-r border-gray-200 transition-colors duration-200", focusedCell?.r === rIndex ? "bg-[#691C32] text-white font-bold" : "bg-gray-50 text-gray-400")}>
+                                                                    <td className={clsx("px-2 py-2 text-[10px] font-mono select-none w-8 text-center border-r border-gray-200 transition-colors duration-200", focusedCell?.r === rIndex ? "bg-gob-guinda text-white font-bold" : "bg-gray-50 text-gray-400")}>
                                                                         {rIndex + 1}
                                                                     </td>
                                                                     {row.map((cell, cIndex) => (
                                                                         <td key={cIndex} className="p-0 border-r border-gray-200 last:border-0 min-w-[120px]">
                                                                             <input
                                                                                 onFocus={() => setFocusedCell({ r: rIndex, c: cIndex })}
-                                                                                className={clsx("w-full h-full px-3 py-2 text-sm focus:outline-none border-none bg-transparent transition-colors duration-200 text-gray-900", rIndex === 0 ? (focusedCell?.c === cIndex ? "font-bold text-[#691C32] bg-red-50" : "font-bold text-gray-800 bg-gray-50") : "text-gray-900 focus:bg-blue-50", cIndex === 0 && rIndex !== 0 && "font-bold text-gray-900")}
+                                                                                className={clsx("w-full h-full px-3 py-2 text-sm focus:outline-none border-none bg-transparent transition-colors duration-200 text-gray-900", rIndex === 0 ? (focusedCell?.c === cIndex ? "font-bold text-gob-guinda bg-red-50" : "font-bold text-gray-800 bg-gray-50") : "text-gray-900 focus:bg-blue-50", cIndex === 0 && rIndex !== 0 && "font-bold text-gray-900")}
                                                                                 value={cell}
                                                                                 placeholder={rIndex === 0 ? "Encabezado" : ""}
                                                                                 onChange={(e) => {
@@ -3710,14 +3798,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                     </div>
                                 )}
 
-                                <div className="flex justify-end gap-3 pt-4">
-                                    {activeTab !== 'metadatos' && (
-                                        <Button variant="outline" onClick={() => setViewMode('LIST')}>Cancelar</Button>
-                                    )}
-                                    <Button variant="burgundy" onClick={handleSaveForm} isLoading={saving}>
-                                        <Save size={16} className="mr-2" /> Guardar Todo
-                                    </Button>
-                                </div>
+                                {/* Bottom actions removed as they are now in the sticky header */}
+                                {/* <div className="flex justify-end gap-3 pt-4">...</div> */}
                             </div>
                         )}
                     </div>
@@ -3728,12 +3810,12 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     <div className={clsx("fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in", editorModal.zenMode ? "p-0" : "p-4")}>
                         <div className={clsx("bg-white shadow-2xl w-full flex flex-col transition-all duration-300", editorModal.zenMode ? "h-full rounded-none" : "max-w-5xl max-h-[90vh] rounded-xl")}>
                             <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                                <h3 className="text-lg font-bold text-[#691C32] flex items-center gap-2">
+                                <h3 className="text-lg font-bold text-gob-guinda flex items-center gap-2">
                                     <Edit size={18} />
                                     {editorModal.title}
                                 </h3>
                                 <div className="flex items-center gap-2">
-                                    <button onClick={() => setEditorModal(prev => ({ ...prev, zenMode: !prev.zenMode }))} className="text-gray-400 hover:text-[#691C32] p-1 rounded hover:bg-gray-100 transition-colors" title={editorModal.zenMode ? "Salir de pantalla completa" : "Pantalla completa"}>
+                                    <button onClick={() => setEditorModal(prev => ({ ...prev, zenMode: !prev.zenMode }))} className="text-gray-400 hover:text-gob-guinda p-1 rounded hover:bg-gray-100 transition-colors" title={editorModal.zenMode ? "Salir de pantalla completa" : "Pantalla completa"}>
                                         {editorModal.zenMode ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
                                     </button>
                                     <button onClick={() => setEditorModal(prev => ({ ...prev, open: false }))} className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100 transition-colors">
@@ -3772,7 +3854,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                 <textarea
                                     ref={genericEditorRef}
                                     className={clsx(
-                                        "w-full p-6 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#691C32]/20 focus:border-[#691C32] outline-none resize-none font-mono text-sm leading-relaxed shadow-inner transition-all",
+                                        "w-full p-6 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gob-guinda/20 focus:border-gob-guinda outline-none resize-none font-mono text-sm leading-relaxed shadow-inner transition-all",
                                         editorModal.zenMode ? "h-[calc(100vh-280px)] text-base" : "h-96"
                                     )}
                                     value={editorModal.value}
