@@ -160,10 +160,10 @@
 % Comandos de tamaño rápido para Noto Sans
 \newcommand{\notosanssmall}{\fontsize{10.5pt}{12.6pt}\selectfont}
 \newcommand{\notosanscompact}{\fontsize{9.5pt}{11.2pt}\selectfont}
-\newcommand{\notosanstiny}{\fontsize{7.5pt}{9pt}\selectfont}
+\newcommand{\notosanstiny}{\fontsize{9.5pt}{11.5pt}\selectfont}
 \newcommand{\notosansmicro}{\fontsize{6.5pt}{7.8pt}\selectfont}
 \newcommand{\notosansnano}{\fontsize{6.0pt}{7.2pt}\selectfont}
-\newcommand{\notosanspico}{\fontsize{5.5pt}{6.6pt}\selectfont}
+\newcommand{\notosanspico}{\fontsize{6.5pt}{8.0pt}\selectfont}
 \newcommand{\notosansfemto}{\fontsize{5.0pt}{6.0pt}\selectfont}
 
 % ============================================================================
@@ -625,7 +625,7 @@
         % Dibujar número de página (rotado para leerse horizontalmente)
   % Posición ajustada para coincidir con el diseño vertical
   % Visual Bottom Right -> North East en TikZ rotate=90
-  \node[anchor=center, rotate=90, font=\bfseries\sffamily\small, color=black] 
+  \node[anchor=center, rotate=90, font=\bfseries\sffamily\scriptsize, color=black] 
     at ($(current page.north east) + (-1.3cm, -2.5cm)$) {\thepage};
            
         % Nombre Corto del Documento (Rotado)
@@ -692,7 +692,7 @@
           ($(current page.south west) + (2.5cm, 2cm)$) -- ($(current page.north west) + (2.5cm, -2.5cm)$);
   
         % Dibujar número de página (rotado para leerse horizontalmente)
-        \node[anchor=center, rotate=90, font=\bfseries\sffamily\small, color=black] 
+        \node[anchor=center, rotate=90, font=\bfseries\sffamily\scriptsize, color=black] 
           at ($(current page.north east) + (-1.3cm, -2.5cm)$) {\thepage};
 
         % Nombre Corto del Documento (Rotado)

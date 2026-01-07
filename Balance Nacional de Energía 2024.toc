@@ -9,7 +9,7 @@
 \contentsline {subsubsection}{\numberline {2.1.2}Transformación industrial}{18}{subsubsection.2.1.2}%
 \contentsline {subsubsection}{\numberline {2.1.3}Transporte, almacenamiento y distribución}{20}{subsubsection.2.1.3}%
 \contentsline {subsection}{\numberline {2.2}Infraestructura del Sector Eléctrico}{22}{subsection.2.2}%
-\contentsline {subsubsection}{\numberline {2.2.1}Capacidad de Generación de Energía Eléctrica}{22}{subsubsection.2.2.1}%
+\contentsline {subsubsection}{\numberline {2.2.1}Capacidad de Generación de Energía Eléctrica}{23}{subsubsection.2.2.1}%
 \contentsline {subsubsection}{\numberline {2.2.2}Transmisión y Disitribución}{24}{subsubsection.2.2.2}%
 \contentsline {subsubsection}{\numberline {2.2.3}Capacidad Instalada de Generación Distribuida}{25}{subsubsection.2.2.3}%
 \contentsline {subsection}{\numberline {2.3}Infraestructura de consumo final y aprovechamiento directo}{26}{subsection.2.3}%
@@ -37,6 +37,6 @@
 \contentsline {section}{\numberline {6}Balance Nacional de Energía }{74}{section.6}%
 \contentsline {subsection}{\numberline {6.1}Principales cuentas del Balance Nacional de Energía}{75}{subsection.6.1}%
 \contentsline {subsection}{\numberline {6.2}Matriz del Balance Nacional de Energía}{80}{subsection.6.2}%
-\contentsline {subsection}{\numberline {6.3}Principales flujos del Balance Nacional de Energía}{83}{subsection.6.3}%
-\contentsline {section}{Glosario}{85}{section*.13}%
-\contentsline {section}{Siglas y Acrónimos}{93}{section*.14}%
+\contentsline {subsection}{\numberline {6.3}Principales flujos del Balance Nacional de Energía}{85}{subsection.6.3}%
+\contentsline {section}{Glosario}{87}{section*.13}%
+\contentsline {section}{Siglas y Acrónimos}{95}{section*.14}%
