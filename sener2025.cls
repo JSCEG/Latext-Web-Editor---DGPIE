@@ -65,7 +65,7 @@
 \RequirePackage{lettrine}    % Letras capitales
 \RequirePackage{qrcode}      % Códigos QR
 \RequirePackage{marginnote}  % Notas al margen
-\RequirePackage[flushmargin,bottom]{footmisc} % Notas al pie al ras del margen
+\RequirePackage[flushmargin]{footmisc} % Notas al pie al ras del margen (sin opción bottom para evitar excesivo espacio blanco)
 \RequirePackage{rotating}    % Para figuras y tablas rotadas (sideways)
 \RequirePackage{pdflscape}   % Para páginas en formato horizontal (landscape)
 \RequirePackage{needspace}   % Para evitar cortes de página indeseados (\Needspace)
@@ -486,6 +486,17 @@
 \newlength{\anchoHorizontal}
 \newlength{\alturaDisponible}
 
+% Variable global para acumular notas horizontales
+\gdef\sener@notasHorizontales{}
+
+% Comando interno para capturar notas en modo horizontal
+\newcommand{\sener@capturarNotaHorizontal}[1]{%
+  \footnotemark% Marca normal (incrementa contador)
+  \g@addto@macro\sener@notasHorizontales{%
+    \textsuperscript{\thefootnote}#1\quad%
+  }%
+}
+
   % COMANDOS EXCLUSIVOS PARA MODO HORIZONTAL
   % Comando interno para renderizar el título horizontal con estilo personalizado
   \newcommand{\sener@renderTituloHorizontal}[2]{% #1=Estilo, #2=Texto
@@ -572,10 +583,15 @@
 \newenvironment{figuraespecial}{%
   \clearpage
   \sener@standardbgfalse % Desactivar fondo vertical global
-  % Inicializar offset de título en 0
+  % Inicializar variables
   \gdef\sener@offsetTitulo{0pt}%
-  % Resetear altura extra a 0 por defecto
   \gdef\sener@alturaExtra{0cm}%
+  \gdef\sener@notasHorizontales{}% Limpiar notas previas
+  
+  % Redefinir footnote para capturar en lugar de imprimir
+  \let\oldfootnote\footnote
+  \renewcommand{\footnote}[1]{\sener@capturarNotaHorizontal{##1}}
+
   % Márgenes optimizados para modo horizontal:
   % landscape geometry mapping:
   %   left   -> Visual Bottom (Espacio para pie de página)
@@ -639,6 +655,12 @@
           \draw[gobmxDorado, line width=0.4pt] 
             ($(tituloH.west) + (0, -0.2cm)$) -- ($(current page.south east) + (-1.3cm, 2cm)$);
           
+        % Renderizar notas al pie acumuladas
+        \ifx\sener@notasHorizontales\empty\else
+          \node[anchor=south west, rotate=90, font=\sffamily\notosansfemto, color=black, align=left, text width=0.85\textheight, inner sep=0pt] 
+            at ($(current page.south east) + (-2.0cm, 2.5cm)$) {\sener@notasHorizontales};
+        \fi
+
     \end{tikzpicture}%
   }%
   
@@ -661,6 +683,13 @@
 \newenvironment{tablaespecial}{%
   \clearpage
   \sener@standardbgfalse % Desactivar fondo vertical global
+  % Inicializar variables
+  \gdef\sener@notasHorizontales{}% Limpiar notas previas
+  
+  % Redefinir footnote para capturar en lugar de imprimir
+  \let\oldfootnote\footnote
+  \renewcommand{\footnote}[1]{\sener@capturarNotaHorizontal{##1}}
+
   % Margen base idéntico a figuraespecial para consistencia visual
   % landscape geometry mapping:
   %   left   -> Visual Bottom (Espacio para pie de página)
@@ -704,6 +733,12 @@
         \draw[gobmxDorado, line width=0.4pt] 
             ($(tituloH.west) + (0, -0.2cm)$) -- ($(current page.south east) + (-1.3cm, 2cm)$);
           
+        % Renderizar notas al pie acumuladas
+        \ifx\sener@notasHorizontales\empty\else
+          \node[anchor=south west, rotate=90, font=\sffamily\notosansfemto, color=black, align=left, text width=0.85\textheight, inner sep=0pt] 
+            at ($(current page.south east) + (-2.0cm, 2.5cm)$) {\sener@notasHorizontales};
+        \fi
+
     \end{tikzpicture}%
   }%
   

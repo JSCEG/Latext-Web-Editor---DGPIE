@@ -144,15 +144,30 @@ Los comandos de encabezado ya incluyen automáticamente el color de fondo para a
 - `\encabezadoverde{Texto}`: Fondo verde, texto blanco.
 - `\encabezadogris{Texto}`: Fondo gris, texto blanco.
 
-#### **E. Fuente Horizontal**
+#### **E. Fuente y Notas al Pie (Sistema Dual)**
+El sistema maneja las notas al pie de manera independiente según la orientación de la página para garantizar que los números de página permanezcan fijos en su posición correcta.
+
+**1. Notas en Modo Vertical (Estándar)**
+- Se comportan normalmente (`\footnote{...}`).
+- Se ubican al final del bloque de texto vertical.
+- **Importante**: No afectan la posición del número de página ni de la cinta decorativa.
+
+**2. Notas en Modo Horizontal (Capturadas)**
+Dentro de `figuraespecial` o `tablaespecial`, el comando `\footnote` se redefine automáticamente para:
+1.  **No imprimir** la nota al pie estándar (que rompería el diseño horizontal).
+2.  **Capturar** el texto de la nota.
+3.  **Renderizar** la nota manualmente usando TikZ en el margen lateral (visual inferior), justo encima de la línea dorada del pie de página.
+
+**Sintaxis:**
 ```latex
-\fuenteHorizontal{Texto de la fuente\footnotemark}
-\footnotetext{Texto de la nota al pie}
+\fuenteHorizontal{Texto de la fuente\footnote{Texto de la nota al pie horizontal.}}
 ```
-- Fuente: Patria 9pt itálica
-- Color: gobmxGris
-- Alineación: **Izquierda**
-- **Notas al Pie**: Debido a que la fuente está encapsulada en una caja (`parbox`), las notas al pie directas (`\footnote`) no funcionan correctamente. Se debe usar `\footnotemark` dentro de la fuente y `\footnotetext` justo después. - Posición: Ajuste vertical de -0.5cm (`vspace`) para acercar a la figura
+*Ya no es necesario usar `\footnotemark` y `\footnotetext` por separado. El sistema lo maneja automáticamente.*
+
+- **Posición**: Fija en la esquina inferior izquierda visual (South-East físico), alineada con la línea dorada.
+- **Estilo**: Fuente `Noto Sans Femto` (muy pequeña) para maximizar espacio.
+
+---
 
 ## 🧭 **Mapeo de Coordenadas TikZ en Landscape**
 
