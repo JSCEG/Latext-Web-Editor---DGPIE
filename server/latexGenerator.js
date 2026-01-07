@@ -489,40 +489,94 @@ function crearMapaPorSeccion(elementos) {
 }
 
 function generarFigura(figura) {
-    const rutaArchivo = figura['RutaArchivo'] || figura['Ruta de Imagen'] || '';
-    const caption = figura['Caption'] || figura['Título/Descripción'] || '';
+    const rutaArchivo = figura['RutaArchivo'] || figura['Ruta de Imagen'] || figura['RutaImagen'] || '';
+    const caption = figura['Caption'] || figura['Título/Descripción'] || figura['Titulo'] || figura['Descripción'] || figura['Descripcion'] || '';
     const fuente = figura['Fuente'] || '';
     const textoAlt = figura['TextoAlternativo'] || caption;
-    const ancho = figura['Ancho'] || '0.8';
+    const ancho = figura['Ancho'] || '1.0';
+    const forcedId = (figura['ID'] || '').toString();
+    const sec = (figura['SeccionOrden'] || '').toString();
+    const ord = (figura['Fig.'] || figura['OrdenFigura'] || figura['Orden'] || '').toString();
+    const id = forcedId || ((sec && ord) ? `FIG-${sec}-${ord}` : (ord ? `FIG-${ord}` : ''));
 
-    let tex = `\\begin{figure}[H]\n`;
-    tex += `  {\\centering\n`;
+    // Detectar flags especiales (Horizontal / Hoja Completa)
+    // Buscamos en múltiples variantes de nombres de columna para robustez
+    const rawOpciones = figura['Opciones'] || figura['Estilo'] || figura['Style'] || figura['Options'] || figura['Configuracion'] || figura['Configuración'] || '';
+    const opciones = rawOpciones.toString().toLowerCase();
 
-    // 1. Caption (Título) arriba
-    if (caption) {
-        tex += `  \\caption{${escaparLatex(caption)}}\n`;
-        tex += `  \\label{fig:${generarLabel(caption)}}\n`;
-    }
+    const rawHorizontal = figura['Horizontal'] || figura['Apaisado'] || figura['Landscape'] || '';
+    const flagHorizontal = rawHorizontal.toString().toLowerCase().includes('si') || rawHorizontal.toString().toLowerCase() === 'true';
 
-    // 2. Imagen
-    if (rutaArchivo) {
-        if (textoAlt) {
-            tex += `  % Texto alternativo para accesibilidad\n`;
-            tex += `  \\pdftooltip{\\includegraphics[width=${ancho}\\textwidth]{${rutaArchivo}}}{${escaparLatex(textoAlt)}}\n`;
-        } else {
-            tex += `  \\includegraphics[width=${ancho}\\textwidth]{${rutaArchivo}}\n`;
+    const rawHojaCompleta = figura['HojaCompleta'] || figura['Hoja Completa'] || figura['FullPage'] || figura['PaginaCompleta'] || figura['PáginaCompleta'] || '';
+    const flagHojaCompleta = rawHojaCompleta.toString().toLowerCase().includes('si') || rawHojaCompleta.toString().toLowerCase() === 'true';
+
+    const esHorizontal = opciones.includes('horizontal') || flagHorizontal;
+    const esHojaCompleta = opciones.includes('hoja_completa') || opciones.includes('hoja completa') || flagHojaCompleta;
+
+    console.log(`Procesando Figura ${id || caption}: Opciones="${opciones}", Horizontal=${esHorizontal}, HojaCompleta=${esHojaCompleta}`);
+
+    let tex = '';
+
+    if (esHorizontal) {
+        // CASO ESPECIAL: Figura Horizontal (Página Landscape) - ACTUALIZADO
+        tex += `\\begin{figuraespecial}\n`;
+        
+        // Usar los nuevos comandos específicos para modo horizontal
+        if (caption) {
+            tex += `  \\captionHorizontal{${escaparLatex(caption)}}\n`;
+        }
+        
+        if (rutaArchivo) {
+            tex += `  \\imagenHorizontal{${rutaArchivo}}{fig:${id || generarLabel(caption)}}\n`;
+        }
+        
+        // La fuente va al final usando el comando específico
+        if (fuente) {
+            tex += `  \\fuenteHorizontal{${procesarTextoFuente(fuente)}}\n`;
+        }
+
+        tex += `\\end{figuraespecial}\n`;
+
+    } else {
+        // CASO NORMAL: Figura Vertical
+        tex += `\\Needspace{18\\baselineskip}\n`;
+        tex += `\\begin{figure}[H]\n`;
+        // Agrupar \centering e imagen para que no afecte al caption
+        tex += `  {\\centering\n`;
+
+        if (rutaArchivo) {
+            if (textoAlt) {
+                // Con texto alternativo para accesibilidad
+                tex += `  % Texto alternativo para accesibilidad\n`;
+                tex += `  \\pdftooltip{\\includegraphics[width=${ancho}\\textwidth]{${rutaArchivo}}}{${escaparLatex(textoAlt)}}\n`;
+            } else {
+                // Sin texto alternativo
+                tex += `  \\includegraphics[width=${ancho}\\textwidth]{${rutaArchivo}}\n`;
+            }
+        }
+
+        // Cerrar el grupo con \par para finalizar el párrafo centrado
+        tex += `  \\par}\n`;
+
+        // Forzar alineación a la izquierda para el caption
+        tex += `  \\raggedright\n`;
+
+        // Caption va después de la imagen (abajo, alineado a la izquierda por configuración del cls)
+        if (caption) {
+            const capTxt = escaparLatex(caption);
+            tex += `  \\caption{${capTxt}}\n`;
+            tex += `  \\label{fig:${id || generarLabel(caption)}}\n`;
+        }
+
+        tex += `\\end{figure}\n`;
+
+        if (fuente) {
+            // FIX: Reducir espacio antes de fuente para pegarla más a la figura
+            tex += `\\vspace{-4pt}\n`;
+            tex += `\\fuente{${procesarTextoFuente(fuente)}}\n`;
         }
     }
-    tex += `  \\par}\n`;
-    tex += `  \\raggedright\n`;
 
-    tex += `\\end{figure}\n`;
-
-    // 3. Fuente abajo
-    if (fuente) {
-        tex += `\\vspace{-4pt}\n`;
-        tex += `\\fuente{${procesarTextoFuente(fuente)}}\n`;
-    }
     tex += `\n`;
     return tex;
 }
@@ -532,10 +586,23 @@ function generarTabla(tabla) {
     const fuente = tabla['Fuente'] || '';
     // Use the parsed data directly passed from backend fetcher
     const datos = tabla['ParsedData'] || [];
+    const forcedId = (tabla['ID'] || '').toString();
+    const sec = (tabla['SeccionOrden'] || tabla['ID_Seccion'] || '').toString();
+    const ord = (tabla['Orden'] || tabla['OrdenTabla'] || '').toString();
+    const id = forcedId || ((sec && ord) ? `TBL-${sec}-${ord}` : (ord ? `TBL-${ord}` : ''));
+
+    // Detectar flags especiales
+    const opciones = (tabla['Opciones'] || tabla['Estilo'] || '').toString().toLowerCase();
+    const esHorizontal = opciones.includes('horizontal') || (tabla['Horizontal'] || '').toString().toLowerCase().includes('si');
 
     // Fallback if data not parsed but reference exists
     if (datos.length === 0) {
-        return `\\begin{tabladoradoCorto}\n  \\caption{${escaparLatex(titulo)}}\n  \\label{tab:${generarLabel(titulo)}}\n  % Sin datos cargados\n\\end{tabladoradoCorto}\n\n`;
+        const capTxt = escaparLatex(titulo);
+        if (esHorizontal) {
+            return `\\begin{tablaespecial}\n  \\caption{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n  % Sin datos cargados\n\\end{tablaespecial}\n\n`;
+        } else {
+            return `\\begin{tabladoradoCorto}\n  \\caption{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n  % Sin datos cargados\n\\end{tabladoradoCorto}\n\n`;
+        }
     }
 
     let texInicio = '';
@@ -543,27 +610,58 @@ function generarTabla(tabla) {
     let tex = '';
     let esLarga = false;
 
-    const resultado = procesarDatosArray(datos, titulo);
+    // forzarLongtable = false
+    const resultado = procesarDatosArray(datos, titulo, false);
     esLarga = resultado.tipo === 'longtable';
 
-    if (esLarga) {
+    if (esHorizontal) {
+        // CASO HORIZONTAL: Usar tablaespecial
+        texInicio = `\\begin{tablaespecial}\n`;
+        // Añadir caption dentro del entorno
+        const capTxt = escaparLatex(titulo);
+        texInicio += `  \\caption{${capTxt}}\n`;
+        texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
+
+        if (esLarga) {
+            // Si era larga, procesarDatosArray devolvió longtable. 
+            // Pero longtable no funciona bien dentro de sidewaystable (flotante dentro de flotante).
+            // Solución: Recalcular como tabular compacta si es posible, o usar longtable si no queda otra
+            // pero longtable en sidewaystable es problemático.
+            // Forzamos tabular compacta (generarTablaCompacta) manualmente
+            texInicio += generarTablaCompacta(datos);
+        } else {
+            texInicio += resultado.contenido;
+        }
+
+        texFin = `\\end{tablaespecial}\n`;
+
+    } else if (esLarga) {
         // Para tablas largas: usar tabladoradoLargo (sin caption, va en longtable)
         texInicio = `\\begin{tabladoradoLargo}\n`;
         texFin = `\\end{tabladoradoLargo}\n`;
+        texInicio += resultado.contenido;
     } else {
         // FIX: Para tablas cortas: usar tabladoradoCorto (mismo estilo que longtable)
         texInicio = `\\begin{tabladoradoCorto}\n`;
         texInicio += `  \\caption{${escaparLatex(titulo)}}\n`;
-        texInicio += `  \\label{tab:${generarLabel(titulo)}}\n`;
+        texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
         texFin = `\\end{tabladoradoCorto}\n`;
+        texInicio += resultado.contenido;
     }
-    texInicio += resultado.contenido;
 
     tex = texInicio + texFin;
 
     if (fuente) {
-        tex += `\\vspace{-4pt}\n`;
-        tex += `\\fuente{${procesarTextoFuente(fuente)}}\n`;
+        if (esHorizontal) {
+            // Fuente dentro de tablaespecial (antes del end)
+            // Pero texFin tiene el end. Hay que inyectarlo antes.
+            // Truco: Reemplazar el end por fuente + end
+            tex = tex.replace(/\\end{tablaespecial}/, `  \\vspace{6pt}\n  \\fuente{${procesarTextoFuente(fuente)}}\n\\end{tablaespecial}`);
+        } else {
+            // Normal
+            tex += `\\vspace{-4pt}\n`;
+            tex += `\\fuente{${procesarTextoFuente(fuente)}}\n`;
+        }
     }
     tex += `\n`;
     return tex;

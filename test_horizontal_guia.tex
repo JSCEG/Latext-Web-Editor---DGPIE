@@ -1,0 +1,38 @@
+\documentclass{sener2025}
+\usepackage{lipsum}
+
+\begin{document}
+
+\section{Página Vertical Inicial}
+Esta es una página vertical normal con su encabezado y pie de página.
+\lipsum[1]
+
+\begin{figuraespecial}
+  % Título opcional para evitar orfandad en página anterior
+  \tituloHorizontal{Prueba de Imagen como Sección Horizontal con Nota al Pie\footnote{Nota al pie en el título para verificar posición.}}
+
+  % Contenido activo para prueba final
+  \captionHorizontal{Evolución del consumo energético nacional durante el periodo 2020-2024. Este texto debe aparecer alineado a la izquierda.}
+  \imagenHorizontal{img/figura_6_6.png}{fig:test}
+  \fuenteHorizontal{Fuente: SENER, Balance Nacional de Energía 2024. Elaboración propia con datos del Sistema de Información Energética.\footnotemark}
+  \footnotetext{Esta es una nota al pie de prueba para verificar su comportamiento en modo horizontal.}
+  
+  %\vspace*{\fill}
+\end{figuraespecial}
+
+\begin{figuraespecial}
+  % Título opcional
+  \subseccionHorizontal{Prueba de Subsección Numerada (Debe ser 0.1)}
+  \sinNotas % Maximizar altura al no tener notas al pie
+
+  % Contenido activo
+  \captionHorizontal{Misma imagen pero maximizada al no tener nota al pie en la fuente.}
+  \imagenHorizontal{img/figura_6_6.png}{fig:test2}
+  \fuenteHorizontal{Fuente: SENER, Balance Nacional de Energía 2024. Elaboración propia con datos del Sistema de Información Energética.}
+\end{figuraespecial}
+
+\section{Regreso a Página Vertical}
+Esta página debería tener nuevamente el encabezado y pie de página verticales normales, incluyendo el número de página.
+\lipsum[1-5]
+
+\end{document}
