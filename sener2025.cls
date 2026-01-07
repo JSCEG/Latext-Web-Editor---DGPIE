@@ -254,15 +254,33 @@
 \newif\ifsener@standardbg
 \sener@standardbgtrue
 
+% Booleano global para modo horizontal (multipage support)
+\newif\ifsener@horizontalmode
+\sener@horizontalmodefalse
+
+% Declaración anticipada de comandos de renderizado horizontal
+\newcommand{\sener@RenderHorizontalBackground}{}
+\newcommand{\sener@RenderHorizontalForeground}{}
+
 \AddToShipoutPictureBG{%
-  \ifsener@standardbg
-    \IfFileExists{img/foja_blanca.jpg}{%
-      \AtPageLowerLeft{%
-        \BeginAccSupp{method=escape,Alt={Membrete institucional de fondo}}%
-        \includegraphics[width=\paperwidth,height=\paperheight]{img/foja_blanca.jpg}%
-        \EndAccSupp{}%
-      }%
-    }{}%
+  \ifsener@horizontalmode
+    \sener@RenderHorizontalBackground
+  \else
+    \ifsener@standardbg
+      \IfFileExists{img/foja_blanca.jpg}{%
+        \AtPageLowerLeft{%
+          \BeginAccSupp{method=escape,Alt={Membrete institucional de fondo}}%
+          \includegraphics[width=\paperwidth,height=\paperheight]{img/foja_blanca.jpg}%
+          \EndAccSupp{}%
+        }%
+      }{}%
+    \fi
+  \fi
+}
+
+\AddToShipoutPictureFG{%
+  \ifsener@horizontalmode
+    \sener@RenderHorizontalForeground
   \fi
 }
 
@@ -579,43 +597,11 @@
     \label{#2}%
   }
 
-% Entorno para Figura Horizontal (Página completa, solo hoja horizontal limpia)
-\newenvironment{figuraespecial}{%
-  \clearpage
-  \sener@standardbgfalse % Desactivar fondo vertical global
-  % Inicializar variables
-  \gdef\sener@offsetTitulo{0pt}%
-  \gdef\sener@alturaExtra{0cm}%
-  \gdef\sener@notasHorizontales{}% Limpiar notas previas
+  % ============================================================================
+  % IMPLEMENTACIÓN DE RENDERIZADO HORIZONTAL GLOBAL (MULTIPAGE)
+  % ============================================================================
   
-  % Redefinir footnote para capturar en lugar de imprimir
-  \let\oldfootnote\footnote
-  \renewcommand{\footnote}[1]{\sener@capturarNotaHorizontal{##1}}
-
-  % Márgenes optimizados para modo horizontal:
-  % landscape geometry mapping:
-  %   left   -> Visual Bottom (Espacio para pie de página)
-  %   right  -> Visual Top    (Espacio para encabezado)
-  %   top    -> Visual Right  (Margen derecho visual)
-  %   bottom -> Visual Left   (Margen izquierdo visual)
-  %
-  % Configuración solicitada:
-  %   Visual Left (bottom) = 2.5cm (Aumentado para subir nota al pie y evitar cinta)
-  %   Visual Right (top)   = 2.5cm (Alineado con fin de línea dorada superior "Ganadora")
-  %   Visual Top (right)   = 3cm (Espacio seguro para encabezado)
-  %   Visual Bottom (left) = 2.5cm (Espacio para pie de página y notas)
-  \newgeometry{left=2.5cm,right=3cm,top=2.5cm,bottom=2cm} 
-  \begin{landscape}
-  \thispagestyle{empty} % Sin headers/footers
-  
-  % ANCHO EXCLUSIVO PARA MODO HORIZONTAL (Maximizado)
-  \setlength{\anchoHorizontal}{1.0\linewidth}
-  
-  % Configurar captions para usar el ancho horizontal exclusivo - alineado a la izquierda
-  \captionsetup{width=\anchoHorizontal,justification=raggedright}
-  
-  % Fondo horizontal institucional - imagen girada para landscape
-  \AddToShipoutPictureBG*{%
+  \renewcommand{\sener@RenderHorizontalBackground}{%
     \IfFileExists{img/hojahorizontal.jpg}{%
        \AtPageCenter{%
          \makebox(0,0){%
@@ -623,11 +609,9 @@
          }%
        }%
     }{}%
-  }%
+  }
 
-  % Elementos Visuales (Línea Dorada y Número de Página) con TikZ
-  % Usamos AddToShipoutPictureFG* para asegurar que se dibuje ENCIMA de todo
-  \AddToShipoutPictureFG*{%
+  \renewcommand{\sener@RenderHorizontalForeground}{%
     \begin{tikzpicture}[remember picture, overlay]
         % Línea Dorada (Encabezado) - Visual Top
         \draw[gobmxDorado, line width=1pt] 
@@ -671,18 +655,52 @@
         \fi
 
     \end{tikzpicture}%
-  }%
+  }
+
+% Entorno para Figura Horizontal (Página completa, solo hoja horizontal limpia)
+\newenvironment{figuraespecial}{%
+  \clearpage
+  \sener@standardbgfalse % Desactivar fondo vertical global
+  % Inicializar variables
+  \gdef\sener@offsetTitulo{0pt}%
+  \gdef\sener@alturaExtra{0cm}%
+  \gdef\sener@notasHorizontales{}% Limpiar notas previas
+  
+  % Redefinir footnote para capturar en lugar de imprimir
+  \let\oldfootnote\footnote
+  \renewcommand{\footnote}[1]{\sener@capturarNotaHorizontal{##1}}
+
+  % Márgenes optimizados para modo horizontal:
+  % landscape geometry mapping:
+  %   left   -> Visual Bottom (Espacio para pie de página)
+  %   right  -> Visual Top    (Espacio para encabezado)
+  %   top    -> Visual Right  (Margen derecho visual)
+  %   bottom -> Visual Left   (Margen izquierdo visual)
+  %
+  % Configuración solicitada:
+  %   Visual Left (bottom) = 2.5cm (Aumentado para subir nota al pie y evitar cinta)
+  %   Visual Right (top)   = 2.5cm (Alineado con fin de línea dorada superior "Ganadora")
+  %   Visual Top (right)   = 3cm (Espacio seguro para encabezado)
+  %   Visual Bottom (left) = 2.5cm (Espacio para pie de página y notas)
+  \newgeometry{left=2.5cm,right=3cm,top=2.5cm,bottom=2cm} 
+  \begin{landscape}
+  \pagestyle{empty} % Sin headers/footers estándar
+  \sener@horizontalmodetrue % MODO HORIZONTAL GLOBAL
+  
+  % ANCHO EXCLUSIVO PARA MODO HORIZONTAL (Maximizado)
+  \setlength{\anchoHorizontal}{1.0\linewidth}
+  
+  % Configurar captions para usar el ancho horizontal exclusivo - alineado a la izquierda
+  \captionsetup{width=\anchoHorizontal,justification=raggedright}
   
 }{%
   \vfill
   \end{landscape}
   \restoregeometry
+  \sener@horizontalmodefalse % DESACTIVAR MODO HORIZONTAL
   \sener@standardbgtrue % Reactivar fondo vertical global
   \clearpage % PRIMERO limpiamos la página horizontal saliente
   \pagestyle{fancy} % LUEGO restauramos el estilo vertical
-  % IMPORTANTE: El \null aquí era para forzar el estilo, pero si hay dos horizontales seguidas,
-  % este \null crea una página vacía "fantasma" entre ellas.
-  % Lo eliminamos para permitir encadenamiento limpio.
 }
 
 % Entorno para Tabla Horizontal (Página completa, márgenes ajustados)
@@ -704,77 +722,20 @@
   %   bottom -> Visual Left   (Margen izquierdo visual)
   \newgeometry{left=2.5cm,right=3cm,top=2.5cm,bottom=2cm} 
   \begin{landscape}
-  \thispagestyle{empty} % Ocultar headers/footers rotados
-  
-  % Fondo diferenciado para páginas horizontales
-  % NOTA: Rotamos 90 grados para alineación estándar landscape
-  \AddToShipoutPictureBG*{%
-    \IfFileExists{img/hojahorizontal.jpg}{%
-       \AtPageCenter{%
-         \makebox(0,0){%
-           \includegraphics[width=\paperheight,height=\paperwidth,angle=90]{img/hojahorizontal.jpg}%
-         }%
-       }%
-    }{}%
-  }%
-
-  % Elementos Visuales (Línea Dorada y Número de Página) con TikZ
-  % Copiado EXACTAMENTE de figuraespecial para consistencia total
-  \AddToShipoutPictureFG*{%
-    \begin{tikzpicture}[remember picture, overlay]
-        % Línea Dorada (Encabezado) - Visual Top
-        \draw[gobmxDorado, line width=1pt] 
-          ($(current page.south west) + (2.5cm, 2cm)$) -- ($(current page.north west) + (2.5cm, -2.5cm)$);
-  
-        % Lógica alternada para página Par/Impar en modo horizontal
-        \ifodd\value{page}
-          % --- PÁGINA IMPAR (ODD) --- Visual Bottom Right ---
-          % Número de página
-          \node[anchor=center, rotate=90, font=\bfseries\sffamily\scriptsize, color=black] 
-            at ($(current page.north east) + (-1.3cm, -2.5cm)$) {\thepage};
-             
-          % Nombre Corto del Documento (A la izquierda del número)
-          \node[anchor=east, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
-            at ($(current page.north east) + (-1.3cm, -3.2cm)$) {\DocumentoCorto};
-  
-          % Línea de Pie de Página (Hacia la izquierda)
-          \draw[gobmxDorado, line width=0.4pt] 
-            ($(tituloH.west) + (0, -0.2cm)$) -- ($(current page.south east) + (-1.3cm, 2cm)$);
-            
-        \else
-          % --- PÁGINA PAR (EVEN) --- Visual Bottom Left ---
-          % Número de página (Esquina inferior izquierda visual)
-          \node[anchor=center, rotate=90, font=\bfseries\sffamily\scriptsize, color=black] 
-            at ($(current page.south east) + (-1.3cm, 2.5cm)$) {\thepage};
-            
-          % Nombre Corto del Documento (A la derecha del número visualmente)
-          \node[anchor=west, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
-            at ($(current page.south east) + (-1.3cm, 3.2cm)$) {\DocumentoCorto};
-            
-          % Línea de Pie de Página (Hacia la derecha)
-          % Desde el final del título (Visual Right end -> east anchor rotated) hasta margen derecho visual
-          \draw[gobmxDorado, line width=0.4pt] 
-            ($(tituloH.east) + (0, 0.2cm)$) -- ($(current page.north east) + (-1.3cm, -2.5cm)$);
-        \fi
-
-        % Renderizar notas al pie acumuladas
-        \ifx\sener@notasHorizontales\empty\else
-          \node[anchor=south west, rotate=90, font=\sffamily\fontsize{8pt}{10pt}\selectfont\color{black}, align=justify, text width=22cm, inner sep=0pt] 
-            at ($(current page.south east) + (-2.0cm, 2.5cm)$) {\sener@notasHorizontales};
-        \fi
-
-    \end{tikzpicture}%
-  }%
+  \pagestyle{empty} % Sin headers/footers estándar
+  \sener@horizontalmodetrue % MODO HORIZONTAL GLOBAL
   
   % ANCHO EXCLUSIVO PARA MODO HORIZONTAL (Maximizado)
   \setlength{\anchoHorizontal}{1.0\linewidth}
-
+  
   % Configurar captions para usar el ancho horizontal exclusivo - alineado a la izquierda
   \captionsetup{width=\anchoHorizontal,justification=raggedright}
-
+  
 }{%
+  \vfill
   \end{landscape}
   \restoregeometry
+  \sener@horizontalmodefalse % DESACTIVAR MODO HORIZONTAL
   \sener@standardbgtrue % Reactivar fondo vertical global
   \clearpage % Asegurar que la siguiente página empiece limpia
   \pagestyle{fancy} % Forzar la restauración del estilo de página vertical (encabezado/pie)
