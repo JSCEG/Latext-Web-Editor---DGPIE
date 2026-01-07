@@ -700,7 +700,8 @@
   \sener@horizontalmodefalse % DESACTIVAR MODO HORIZONTAL
   \sener@standardbgtrue % Reactivar fondo vertical global
   \clearpage % PRIMERO limpiamos la página horizontal saliente
-  \pagestyle{fancy} % LUEGO restauramos el estilo vertical
+  \thispagestyle{fancy} % FORZAR estilo en la página actual (la nueva vertical)
+  \pagestyle{fancy} % LUEGO restauramos el estilo vertical permanente
 }
 
 % Entorno para Tabla Horizontal (Página completa, márgenes ajustados)
@@ -738,6 +739,7 @@
   \sener@horizontalmodefalse % DESACTIVAR MODO HORIZONTAL
   \sener@standardbgtrue % Reactivar fondo vertical global
   \clearpage % Asegurar que la siguiente página empiece limpia
+  \thispagestyle{fancy} % FORZAR estilo en la página actual (la nueva vertical)
   \pagestyle{fancy} % Forzar la restauración del estilo de página vertical (encabezado/pie)
 }
 
