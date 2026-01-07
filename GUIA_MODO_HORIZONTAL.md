@@ -165,7 +165,7 @@ Dentro de `figuraespecial` o `tablaespecial`, el comando `\footnote` se redefine
 *Ya no es necesario usar `\footnotemark` y `\footnotetext` por separado. El sistema lo maneja automáticamente.*
 
 - **Posición**: Fija en la esquina inferior izquierda visual (South-East físico), alineada con la línea dorada.
-- **Estilo**: Fuente `Noto Sans Femto` (muy pequeña) para maximizar espacio.
+- **Estilo**: Fuente `Noto Sans Light` 8pt/10pt, Color `gobmxGris` (Homologado con modo vertical).
 
 ---
 
@@ -202,8 +202,8 @@ Cuando se usa `pdflscape`, la página rota visualmente en el PDF, pero el sistem
     *   Desde `north east` (Visual Bottom-Right) hacia `south east` (Visual Bottom-Left).
     *   Offset X: `-1.25cm` (Alineado con la base del número de página).
     *   Inicio Visual Izquierdo: `2cm` del borde `south east` (**Configuración Ganadora**).
-    *   Fin Visual Derecho: `-3.0cm` del borde `north east` (Antes del número).
-    *   **Ancho**: `1pt`.
+    *   Fin Visual Derecho: `2.5cm` del borde `south west` (Margen izquierdo visual).
+    *   **Ancho**: `0.4pt` (Homologado con modo vertical).
 
 ## 📋 **Orden de Elementos**
 ```latex

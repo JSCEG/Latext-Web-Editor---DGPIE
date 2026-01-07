@@ -545,7 +545,7 @@
     \vspace{-0.5cm}% Ajuste fino: Subir ligeramente para acercar a la imagen sin empalmar
     \begin{center}%
     \parbox{\anchoHorizontal}{%
-      \raggedright\patriafont\fontsize{9pt}{10pt}\selectfont\color{gobmxGris}\textit{#1}%
+      \raggedright\notosanslight\fontsize{8pt}{10pt}\selectfont\color{gobmxGris}FUENTE:~#1%
     }%
     \end{center}%
   }
@@ -650,14 +650,14 @@
 
           % Línea de Pie de Página (Complemento a la cinta)
           % Ajuste fino: Se baja más (a -1.25cm) para alinearse con la base del número de página
-          % Se acorta por la izquierda (Visual Left) iniciando a 2cm del borde (Configuración Ganadora)
+          % Se extiende para cubrir todo el ancho horizontal disponible
           % Grosor ajustado a 0.4pt para coincidir con pie vertical
           \draw[gobmxDorado, line width=0.4pt] 
             ($(tituloH.west) + (0, -0.2cm)$) -- ($(current page.south east) + (-1.3cm, 2cm)$);
           
         % Renderizar notas al pie acumuladas
         \ifx\sener@notasHorizontales\empty\else
-          \node[anchor=south west, rotate=90, font=\sffamily\notosansfemto, color=black, align=left, text width=0.85\textheight, inner sep=0pt] 
+          \node[anchor=south west, rotate=90, font=\notosanslight\fontsize{8pt}{10pt}\selectfont\color{gobmxGris}, align=left, text width=0.85\textheight, inner sep=0pt] 
             at ($(current page.south east) + (-2.0cm, 2.5cm)$) {\sener@notasHorizontales};
         \fi
 
@@ -735,7 +735,7 @@
           
         % Renderizar notas al pie acumuladas
         \ifx\sener@notasHorizontales\empty\else
-          \node[anchor=south west, rotate=90, font=\sffamily\notosansfemto, color=black, align=left, text width=0.85\textheight, inner sep=0pt] 
+          \node[anchor=south west, rotate=90, font=\notosanslight\fontsize{8pt}{10pt}\selectfont\color{gobmxGris}, align=left, text width=0.85\textheight, inner sep=0pt] 
             at ($(current page.south east) + (-2.0cm, 2.5cm)$) {\sener@notasHorizontales};
         \fi
 
