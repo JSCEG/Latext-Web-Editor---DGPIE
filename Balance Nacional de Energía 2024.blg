@@ -1,9 +1,9 @@
 [0] Config.pm:328> INFO - This is Biber 2.21
 [0] Config.pm:331> INFO - Logfile is '.\Balance Nacional de Energía 2024.blg'
-[131] biber-MSWIN64:342> INFO - === 
-[174] Biber.pm:421> INFO - Reading '.\Balance Nacional de Energía 2024.bcf'
-[310] Biber.pm:1002> INFO - Found 0 citekeys in bib section 0
-[328] bbl.pm:676> INFO - Writing '.\Balance Nacional de Energía 2024.bbl' with encoding 'UTF-8'
-[328] bbl.pm:779> INFO - Output to .\Balance Nacional de Energía 2024.bbl
-[329] Biber.pm:132> WARN - The file '.\Balance Nacional de Energía 2024.bcf' does not contain any citations!
-[335] Biber.pm:134> INFO - WARNINGS: 1
+[148] biber-MSWIN64:342> INFO - === 
+[196] Biber.pm:421> INFO - Reading '.\Balance Nacional de Energía 2024.bcf'
+[344] Biber.pm:1002> INFO - Found 0 citekeys in bib section 0
+[372] bbl.pm:676> INFO - Writing '.\Balance Nacional de Energía 2024.bbl' with encoding 'UTF-8'
+[372] bbl.pm:779> INFO - Output to .\Balance Nacional de Energía 2024.bbl
+[373] Biber.pm:132> WARN - The file '.\Balance Nacional de Energía 2024.bcf' does not contain any citations!
+[380] Biber.pm:134> INFO - WARNINGS: 1

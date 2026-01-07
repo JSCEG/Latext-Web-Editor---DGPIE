@@ -628,14 +628,16 @@
   \node[anchor=center, rotate=90, font=\bfseries\sffamily\small, color=black] 
     at ($(current page.north east) + (-1.3cm, -2.5cm)$) {\thepage};
            
+        % Nombre Corto del Documento (Rotado)
+        \node[anchor=east, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
+          at ($(current page.north east) + (-1.3cm, -3.2cm)$) {\DocumentoCorto};
+
           % Línea de Pie de Página (Complemento a la cinta)
           % Ajuste fino: Se baja más (a -1.25cm) para alinearse con la base del número de página
           % Se acorta por la izquierda (Visual Left) iniciando a 2cm del borde (Configuración Ganadora)
-          % Coordenadas: 
-          %   Inicio (Derecha): NE + (-1.25cm, -3.0cm) -> Cerca del número
-          %   Fin (Izquierda): SE + (-1.25cm, 2cm) -> Donde inicia la cinta
-          \draw[gobmxDorado, line width=1pt] 
-            ($(current page.north east) + (-1.25cm, -3.0cm)$) -- ($(current page.south east) + (-1.25cm, 2cm)$);
+          % Grosor ajustado a 0.4pt para coincidir con pie vertical
+          \draw[gobmxDorado, line width=0.4pt] 
+            ($(tituloH.west) + (0, -0.2cm)$) -- ($(current page.south east) + (-1.3cm, 2cm)$);
           
     \end{tikzpicture}%
   }%
@@ -692,10 +694,15 @@
         % Dibujar número de página (rotado para leerse horizontalmente)
         \node[anchor=center, rotate=90, font=\bfseries\sffamily\small, color=black] 
           at ($(current page.north east) + (-1.3cm, -2.5cm)$) {\thepage};
+
+        % Nombre Corto del Documento (Rotado)
+        \node[anchor=east, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
+          at ($(current page.north east) + (-1.3cm, -3.2cm)$) {\DocumentoCorto};
            
         % Línea de Pie de Página (Complemento a la cinta)
-        \draw[gobmxDorado, line width=1pt] 
-            ($(current page.north east) + (-1.25cm, -3.0cm)$) -- ($(current page.south east) + (-1.25cm, 2cm)$);
+        % Grosor ajustado a 0.4pt para coincidir con pie vertical
+        \draw[gobmxDorado, line width=0.4pt] 
+            ($(tituloH.west) + (0, -0.2cm)$) -- ($(current page.south east) + (-1.3cm, 2cm)$);
           
     \end{tikzpicture}%
   }%
