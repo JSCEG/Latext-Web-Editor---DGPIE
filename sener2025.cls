@@ -657,7 +657,7 @@
           
         % Renderizar notas al pie acumuladas
         \ifx\sener@notasHorizontales\empty\else
-          \node[anchor=south west, rotate=90, font=\notosanslight\fontsize{8pt}{10pt}\selectfont\color{gobmxGris}, align=left, text width=0.85\textheight, inner sep=0pt] 
+          \node[anchor=south west, rotate=90, font=\sffamily\fontsize{8pt}{10pt}\selectfont\color{black}, align=justify, text width=23cm, inner sep=0pt] 
             at ($(current page.south east) + (-2.0cm, 2.5cm)$) {\sener@notasHorizontales};
         \fi
 
@@ -735,7 +735,7 @@
           
         % Renderizar notas al pie acumuladas
         \ifx\sener@notasHorizontales\empty\else
-          \node[anchor=south west, rotate=90, font=\notosanslight\fontsize{8pt}{10pt}\selectfont\color{gobmxGris}, align=left, text width=0.85\textheight, inner sep=0pt] 
+          \node[anchor=south west, rotate=90, font=\sffamily\fontsize{8pt}{10pt}\selectfont\color{black}, align=justify, text width=22cm, inner sep=0pt] 
             at ($(current page.south east) + (-2.0cm, 2.5cm)$) {\sener@notasHorizontales};
         \fi
 
