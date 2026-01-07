@@ -255,10 +255,44 @@ function procesarSecciones(secciones, figurasMap, tablasMap, figurasById, tablas
             return;
         }
 
-        contenido += generarComandoSeccion(nivel, titulo, anexosIniciados);
+        // --- LÓGICA DE TÍTULOS HORIZONTALES INTELIGENTES ---
+        // Verificar si el contenido empieza inmediatamente con una figura o tabla horizontal.
+        // Si es así, NO generamos el comando de sección aquí, sino que pasamos el título
+        // para que sea incrustado dentro del entorno horizontal (evitando huecos verticales).
 
-        // Pass maps to procesarContenido to allow inline replacement
-        contenido += procesarContenido(contenidoRaw, figurasById, tablasById);
+        let esInicioHorizontal = false;
+        const lineas = contenidoRaw.split('\n').map(l => l.trim()).filter(l => l !== '');
+
+        if (lineas.length > 0) {
+            const primeraLinea = lineas[0];
+            const matchFig = primeraLinea.match(/^\[\[figura:(.+?)\]\]$/i);
+            const matchTab = primeraLinea.match(/^\[\[tabla:(.+?)\]\]$/i);
+
+            if (matchFig) {
+                const fig = figurasById[matchFig[1]];
+                if (fig) {
+                    const opts = (fig['Opciones'] || fig['Estilo'] || '').toString().toLowerCase();
+                    const horiz = (fig['Horizontal'] || '').toString().toLowerCase().includes('si');
+                    if (opts.includes('horizontal') || horiz) esInicioHorizontal = true;
+                }
+            } else if (matchTab) {
+                const tab = tablasById[matchTab[1]];
+                if (tab) {
+                    const opts = (tab['Opciones'] || tab['Estilo'] || '').toString().toLowerCase();
+                    const horiz = (tab['Horizontal'] || '').toString().toLowerCase().includes('si');
+                    if (opts.includes('horizontal') || horiz) esInicioHorizontal = true;
+                }
+            }
+        }
+
+        if (esInicioHorizontal) {
+            // Pasamos el título para ser incrustado
+            contenido += procesarContenido(contenidoRaw, figurasById, tablasById, { nivel, titulo });
+        } else {
+            // Comportamiento estándar
+            contenido += generarComandoSeccion(nivel, titulo, anexosIniciados);
+            contenido += procesarContenido(contenidoRaw, figurasById, tablasById);
+        }
 
         // NOTE: We strictly follow WYSIWYG. 
         // We do NOT append unreferenced figures/tables at the end of the section anymore.
@@ -312,7 +346,7 @@ function limpiarPrefijoAnexoEnTitulo(titulo) {
     return tituloLimpio.trim();
 }
 
-function procesarContenido(contenidoRaw, figurasById = {}, tablasById = {}) {
+function procesarContenido(contenidoRaw, figurasById = {}, tablasById = {}, seccionPendiente = null) {
     const lineas = contenidoRaw.split('\n');
     let resultado = '';
     let enLista = false;
@@ -320,10 +354,31 @@ function procesarContenido(contenidoRaw, figurasById = {}, tablasById = {}) {
     let tipoBloque = '';
     let tituloBloque = '';
     let contenidoBloque = '';
+    let seccionIncrustada = false;
 
     for (let i = 0; i < lineas.length; i++) {
         const linea = lineas[i];
         const lineaTrim = linea.trim();
+
+        // Safety check: If we have pending section but encounter text/blocks before fig/table,
+        // we must output the section command first to avoid losing it.
+        // We only try to embed if the FIRST contentful line is the target.
+        if (seccionPendiente && !seccionIncrustada && lineaTrim !== '') {
+            const esFig = lineaTrim.startsWith('[[figura:');
+            const esTab = lineaTrim.startsWith('[[tabla:');
+
+            // If it is NOT a figure or table, we missed the opportunity to embed.
+            // Output standard section command immediately.
+            if (!esFig && !esTab) {
+                // However, we can't output it here easily because we are inside the string builder.
+                // But wait, the caller (procesarSecciones) decides whether to call generatingCommand.
+                // If the caller decided NOT to call it because it detected a horizontal figure,
+                // but here we find text first, we are in trouble.
+                // BUT: The caller's check was based on lineas[0] (ignoring empty).
+                // So the first non-empty line MUST be the figure/table.
+                // So this case shouldn't happen unless there's a block start `[[` that is not fig/tab.
+            }
+        }
 
         const inicioBloqueMatch = lineaTrim.match(/^\[\[(ejemplo|caja|alerta|info|destacado|recuadro)(?::\s*(.*))?\]\]$/i);
         if (inicioBloqueMatch) {
@@ -389,7 +444,13 @@ function procesarContenido(contenidoRaw, figurasById = {}, tablasById = {}) {
                         const id = match[1].trim();
                         const tabla = tablasById[id];
                         if (tabla) {
-                            resultado += generarTabla(tabla);
+                            // Pass pending section only if not yet embedded
+                            if (seccionPendiente && !seccionIncrustada) {
+                                resultado += generarTabla(tabla, seccionPendiente);
+                                seccionIncrustada = true;
+                            } else {
+                                resultado += generarTabla(tabla);
+                            }
                         } else {
                             resultado += `% ERROR: Tabla ${id} no encontrada\n\\textbf{\\textcolor{red}{[Error: Tabla ${escaparLatex(id)} no encontrada]}}\n`;
                         }
@@ -400,7 +461,13 @@ function procesarContenido(contenidoRaw, figurasById = {}, tablasById = {}) {
                         const id = match[1].trim();
                         const figura = figurasById[id];
                         if (figura) {
-                            resultado += generarFigura(figura);
+                            // Pass pending section only if not yet embedded
+                            if (seccionPendiente && !seccionIncrustada) {
+                                resultado += generarFigura(figura, seccionPendiente);
+                                seccionIncrustada = true;
+                            } else {
+                                resultado += generarFigura(figura);
+                            }
                         } else {
                             resultado += `% ERROR: Figura ${id} no encontrada\n\\textbf{\\textcolor{red}{[Error: Figura ${escaparLatex(id)} no encontrada]}}\n`;
                         }
@@ -489,7 +556,7 @@ function crearMapaPorSeccion(elementos) {
     return mapa;
 }
 
-function generarFigura(figura) {
+function generarFigura(figura, seccionInfo = null) {
     const rutaArchivo = figura['RutaArchivo'] || figura['Ruta de Imagen'] || figura['RutaImagen'] || '';
     const caption = figura['Caption'] || figura['Título/Descripción'] || figura['Titulo'] || figura['Descripción'] || figura['Descripcion'] || '';
     const fuente = figura['Fuente'] || '';
@@ -521,6 +588,21 @@ function generarFigura(figura) {
     if (esHorizontal) {
         // CASO ESPECIAL: Figura Horizontal (Página Landscape) - ACTUALIZADO
         tex += `\\begin{figuraespecial}\n`;
+
+        // INYECCIÓN DE TÍTULO DE SECCIÓN (Si existe)
+        if (seccionInfo) {
+            const nivel = seccionInfo.nivel.toLowerCase();
+            const tituloSafe = escaparLatex(seccionInfo.titulo);
+
+            if (nivel === 'subseccion' || nivel === 'subanexo') {
+                tex += `  \\subseccionHorizontal{${tituloSafe}}\n`;
+            } else if (nivel === 'seccion' || nivel === 'anexo') {
+                tex += `  \\seccionHorizontal{${tituloSafe}}\n`;
+            } else {
+                // Fallback para otros niveles (titulo simple)
+                tex += `  \\tituloHorizontal{${tituloSafe}}\n`;
+            }
+        }
 
         // Usar los nuevos comandos específicos para modo horizontal
         if (caption) {
@@ -582,7 +664,7 @@ function generarFigura(figura) {
     return tex;
 }
 
-function generarTabla(tabla) {
+function generarTabla(tabla, seccionInfo = null) {
     const titulo = tabla['Titulo'] || tabla['Título'] || '';
     const fuente = tabla['Fuente'] || '';
     // Use the parsed data directly passed from backend fetcher
@@ -600,7 +682,16 @@ function generarTabla(tabla) {
     if (datos.length === 0) {
         const capTxt = escaparLatex(titulo);
         if (esHorizontal) {
-            return `\\begin{tablaespecial}\n  \\caption{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n  % Sin datos cargados\n\\end{tablaespecial}\n\n`;
+            let tex = `\\begin{tablaespecial}\n`;
+            if (seccionInfo) {
+                const nivel = seccionInfo.nivel.toLowerCase();
+                const tituloSafe = escaparLatex(seccionInfo.titulo);
+                if (nivel === 'subseccion' || nivel === 'subanexo') tex += `  \\subseccionHorizontal{${tituloSafe}}\n`;
+                else if (nivel === 'seccion' || nivel === 'anexo') tex += `  \\seccionHorizontal{${tituloSafe}}\n`;
+                else tex += `  \\tituloHorizontal{${tituloSafe}}\n`;
+            }
+            tex += `  \\caption{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n  % Sin datos cargados\n\\end{tablaespecial}\n\n`;
+            return tex;
         } else {
             return `\\begin{tabladoradoCorto}\n  \\caption{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n  % Sin datos cargados\n\\end{tabladoradoCorto}\n\n`;
         }
@@ -618,6 +709,16 @@ function generarTabla(tabla) {
     if (esHorizontal) {
         // CASO HORIZONTAL: Usar tablaespecial
         texInicio = `\\begin{tablaespecial}\n`;
+
+        // INYECCIÓN DE TÍTULO DE SECCIÓN (Si existe)
+        if (seccionInfo) {
+            const nivel = seccionInfo.nivel.toLowerCase();
+            const tituloSafe = escaparLatex(seccionInfo.titulo);
+            if (nivel === 'subseccion' || nivel === 'subanexo') texInicio += `  \\subseccionHorizontal{${tituloSafe}}\n`;
+            else if (nivel === 'seccion' || nivel === 'anexo') texInicio += `  \\seccionHorizontal{${tituloSafe}}\n`;
+            else texInicio += `  \\tituloHorizontal{${tituloSafe}}\n`;
+        }
+
         // Añadir caption dentro del entorno (externo a la tabla en sí)
         const capTxt = escaparLatex(titulo);
         texInicio += `  \\captionHorizontal{${capTxt}}\n`;

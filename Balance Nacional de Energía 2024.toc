@@ -35,8 +35,8 @@
 \contentsline {subsection}{\numberline {5.6}Sector transporte}{66}{subsection.5.6}%
 \contentsline {subsection}{\numberline {5.7}Consumo no energético}{69}{subsection.5.7}%
 \contentsline {section}{\numberline {6}Balance Nacional de Energía }{73}{section.6}%
-\contentsline {subsection}{\numberline {6.1}Principales cuentas del Balance Nacional de Energía}{74}{subsection.6.1}%
-\contentsline {subsection}{\numberline {6.2}Matriz del Balance Nacional de Energía}{79}{subsection.6.2}%
-\contentsline {subsection}{\numberline {6.3}Principales flujos del Balance Nacional de Energía}{84}{subsection.6.3}%
-\contentsline {section}{Glosario}{86}{section*.11}%
-\contentsline {section}{Siglas y Acrónimos}{94}{section*.12}%
+\contentsline {subsection}{6.1\hspace {1em}Principales cuentas del Balance Nacional de Energía}{75}{subsection.6.1}%
+\contentsline {subsection}{6.2\hspace {1em}Matriz del Balance Nacional de Energía}{79}{subsection.6.2}%
+\contentsline {subsection}{6.3\hspace {1em}Principales flujos del Balance Nacional de Energía}{84}{subsection.6.3}%
+\contentsline {section}{Glosario}{85}{section*.11}%
+\contentsline {section}{Siglas y Acrónimos}{93}{section*.12}%

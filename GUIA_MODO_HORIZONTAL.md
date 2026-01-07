@@ -44,8 +44,32 @@ Para tablas:
 
 ### **3. Comandos Específicos Horizontales**
 
-#### **A. Títulos y Secciones**
-Para evitar "títulos huérfanos" en la página vertical anterior, **mueve** el comando de sección dentro del entorno `figuraespecial` o `tablaespecial` usando una de estas opciones:
+#### **A. Títulos y Secciones (Evitar Huecos Verticales)**
+Cuando una figura o tabla horizontal va precedida inmediatamente por un título de sección o subsección, **NO** debes colocar el título en la página vertical anterior, ya que esto generará un gran espacio en blanco (hueco) al final de esa página.
+
+**Solución:** Mueve el comando de título **DENTRO** del entorno horizontal. El sistema se encargará de renderizarlo correctamente en la página apaisada, ajustando automáticamente el espacio disponible para la imagen.
+
+**Ejemplo Incorrecto (Genera hueco):**
+```latex
+\section{Principales flujos...} % Se queda solo en la página vertical
+\begin{figuraespecial}
+  ...
+\end{figuraespecial}
+```
+
+**Ejemplo Correcto (Optimizado):**
+```latex
+\begin{figuraespecial}
+  % El título se renderiza dentro de la página horizontal
+  \seccionHorizontal{Principales flujos...} 
+  
+  \captionHorizontal{Diagrama de flujo...}
+  \imagenHorizontal{img/sankey.png}{fig:sankey}
+  ...
+\end{figuraespecial}
+```
+
+**Comandos Disponibles:**
 
 1.  **Título Simple (Solo visual)**
     ```latex
@@ -65,7 +89,7 @@ Para evitar "títulos huérfanos" en la página vertical anterior, **mueve** el 
     ```
     *Efecto*: Numera (ej. "6.1 Cuentas..."), añade al índice y muestra el título estilo Subsección (Patria 14pt, Rojo Claro).
 
-**Nota**: Todos estos comandos reducen automáticamente la altura disponible para dar cabida al título sin saltar de página.
+**Nota**: Todos estos comandos reducen automáticamente la altura disponible de la imagen para dar cabida al título sin saltar de página.
 
 #### **B. Caption Horizontal**
 ```latex
