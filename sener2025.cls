@@ -630,34 +630,43 @@
   \AddToShipoutPictureFG*{%
     \begin{tikzpicture}[remember picture, overlay]
         % Línea Dorada (Encabezado) - Visual Top
-        % Mapeo observado: South West = Visual Top Left, North West = Visual Top Right
-        % Ancho ajustado a 1pt para coincidir con el header vertical estándar
-        % Longitud ajustada para coincidir con la línea del pie de página:
-        %   Inicio Visual Izquierdo (South): 2cm (Igual que pie de página)
-        %   Fin Visual Derecho (North): -2.5cm (Configuración Ganadora)
         \draw[gobmxDorado, line width=1pt] 
           ($(current page.south west) + (2.5cm, 2cm)$) -- ($(current page.north west) + (2.5cm, -2.5cm)$);
   
-        % Dibujar número de página (rotado para leerse horizontalmente)
-  % Posición ajustada para coincidir con el diseño vertical
-  % Visual Bottom Right -> North East en TikZ rotate=90
-  \node[anchor=center, rotate=90, font=\bfseries\sffamily\scriptsize, color=black] 
-    at ($(current page.north east) + (-1.3cm, -2.5cm)$) {\thepage};
-           
-        % Nombre Corto del Documento (Rotado)
-        \node[anchor=east, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
-          at ($(current page.north east) + (-1.3cm, -3.2cm)$) {\DocumentoCorto};
-
-          % Línea de Pie de Página (Complemento a la cinta)
-          % Ajuste fino: Se baja más (a -1.25cm) para alinearse con la base del número de página
-          % Se extiende para cubrir todo el ancho horizontal disponible
-          % Grosor ajustado a 0.4pt para coincidir con pie vertical
+        % Lógica alternada para página Par/Impar en modo horizontal
+        \ifodd\value{page}
+          % --- PÁGINA IMPAR (ODD) --- Visual Bottom Right ---
+          % Número de página
+          \node[anchor=center, rotate=90, font=\bfseries\sffamily\scriptsize, color=black] 
+            at ($(current page.north east) + (-1.3cm, -2.5cm)$) {\thepage};
+             
+          % Nombre Corto del Documento (A la izquierda del número)
+          \node[anchor=east, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
+            at ($(current page.north east) + (-1.3cm, -3.2cm)$) {\DocumentoCorto};
+  
+          % Línea de Pie de Página (Hacia la izquierda)
           \draw[gobmxDorado, line width=0.4pt] 
             ($(tituloH.west) + (0, -0.2cm)$) -- ($(current page.south east) + (-1.3cm, 2cm)$);
-          
-        % Renderizar notas al pie acumuladas
+            
+        \else
+          % --- PÁGINA PAR (EVEN) --- Visual Bottom Left ---
+          % Número de página (Esquina inferior izquierda visual)
+          \node[anchor=center, rotate=90, font=\bfseries\sffamily\scriptsize, color=black] 
+            at ($(current page.south east) + (-1.3cm, 2.5cm)$) {\thepage};
+            
+          % Nombre Corto del Documento (A la derecha del número visualmente)
+          \node[anchor=west, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
+            at ($(current page.south east) + (-1.3cm, 3.2cm)$) {\DocumentoCorto};
+            
+          % Línea de Pie de Página (Hacia la derecha)
+          % Desde el final del título (Visual Right end -> east anchor rotated) hasta margen derecho visual
+          \draw[gobmxDorado, line width=0.4pt] 
+            ($(tituloH.east) + (0, 0.2cm)$) -- ($(current page.north east) + (-1.3cm, -2.5cm)$);
+        \fi
+
+        % Renderizar notas al pie acumuladas (Siempre alineadas a la izquierda visual)
         \ifx\sener@notasHorizontales\empty\else
-          \node[anchor=south west, rotate=90, font=\sffamily\fontsize{8pt}{10pt}\selectfont\color{black}, align=justify, text width=23cm, inner sep=0pt] 
+          \node[anchor=south west, rotate=90, font=\sffamily\fontsize{8pt}{10pt}\selectfont\color{black}, align=justify, text width=22cm, inner sep=0pt] 
             at ($(current page.south east) + (-2.0cm, 2.5cm)$) {\sener@notasHorizontales};
         \fi
 
@@ -671,12 +680,9 @@
   \sener@standardbgtrue % Reactivar fondo vertical global
   \clearpage % PRIMERO limpiamos la página horizontal saliente
   \pagestyle{fancy} % LUEGO restauramos el estilo vertical
-  % IMPORTANTE: No usar otro \clearpage aquí inmediatamente si no hay contenido,
-  % pero necesitamos asegurar que la siguiente página vertical "arranque" con el estilo correcto.
-  % El problema del número faltante suele ser que LaTeX renderiza la primera página vertical 
-  % todavía pensando que está en transición.
-  % Forzamos un comando invisible para asentar el estilo si es necesario, 
-  % pero lo más limpio es simplemente asegurar que el pagestyle se aplique al NUEVO contenido.
+  % IMPORTANTE: El \null aquí era para forzar el estilo, pero si hay dos horizontales seguidas,
+  % este \null crea una página vacía "fantasma" entre ellas.
+  % Lo eliminamos para permitir encadenamiento limpio.
 }
 
 % Entorno para Tabla Horizontal (Página completa, márgenes ajustados)
@@ -720,19 +726,37 @@
         \draw[gobmxDorado, line width=1pt] 
           ($(current page.south west) + (2.5cm, 2cm)$) -- ($(current page.north west) + (2.5cm, -2.5cm)$);
   
-        % Dibujar número de página (rotado para leerse horizontalmente)
-        \node[anchor=center, rotate=90, font=\bfseries\sffamily\scriptsize, color=black] 
-          at ($(current page.north east) + (-1.3cm, -2.5cm)$) {\thepage};
-
-        % Nombre Corto del Documento (Rotado)
-        \node[anchor=east, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
-          at ($(current page.north east) + (-1.3cm, -3.2cm)$) {\DocumentoCorto};
-           
-        % Línea de Pie de Página (Complemento a la cinta)
-        % Grosor ajustado a 0.4pt para coincidir con pie vertical
-        \draw[gobmxDorado, line width=0.4pt] 
+        % Lógica alternada para página Par/Impar en modo horizontal
+        \ifodd\value{page}
+          % --- PÁGINA IMPAR (ODD) --- Visual Bottom Right ---
+          % Número de página
+          \node[anchor=center, rotate=90, font=\bfseries\sffamily\scriptsize, color=black] 
+            at ($(current page.north east) + (-1.3cm, -2.5cm)$) {\thepage};
+             
+          % Nombre Corto del Documento (A la izquierda del número)
+          \node[anchor=east, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
+            at ($(current page.north east) + (-1.3cm, -3.2cm)$) {\DocumentoCorto};
+  
+          % Línea de Pie de Página (Hacia la izquierda)
+          \draw[gobmxDorado, line width=0.4pt] 
             ($(tituloH.west) + (0, -0.2cm)$) -- ($(current page.south east) + (-1.3cm, 2cm)$);
-          
+            
+        \else
+          % --- PÁGINA PAR (EVEN) --- Visual Bottom Left ---
+          % Número de página (Esquina inferior izquierda visual)
+          \node[anchor=center, rotate=90, font=\bfseries\sffamily\scriptsize, color=black] 
+            at ($(current page.south east) + (-1.3cm, 2.5cm)$) {\thepage};
+            
+          % Nombre Corto del Documento (A la derecha del número visualmente)
+          \node[anchor=west, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
+            at ($(current page.south east) + (-1.3cm, 3.2cm)$) {\DocumentoCorto};
+            
+          % Línea de Pie de Página (Hacia la derecha)
+          % Desde el final del título (Visual Right end -> east anchor rotated) hasta margen derecho visual
+          \draw[gobmxDorado, line width=0.4pt] 
+            ($(tituloH.east) + (0, 0.2cm)$) -- ($(current page.north east) + (-1.3cm, -2.5cm)$);
+        \fi
+
         % Renderizar notas al pie acumuladas
         \ifx\sener@notasHorizontales\empty\else
           \node[anchor=south west, rotate=90, font=\sffamily\fontsize{8pt}{10pt}\selectfont\color{black}, align=justify, text width=22cm, inner sep=0pt] 
@@ -752,8 +776,8 @@
   \end{landscape}
   \restoregeometry
   \sener@standardbgtrue % Reactivar fondo vertical global
-  \pagestyle{fancy} % Forzar la restauración del estilo de página vertical (encabezado/pie)
   \clearpage % Asegurar que la siguiente página empiece limpia
+  \pagestyle{fancy} % Forzar la restauración del estilo de página vertical (encabezado/pie)
 }
 
 % ============================================================================
