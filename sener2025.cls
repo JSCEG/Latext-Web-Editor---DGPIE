@@ -325,9 +325,9 @@
 % Configuración base de captions (Global)
 \captionsetup{
   format=plain,
-  font={normalsize,color=gobmxGris},
-  labelfont={normalsize,color=gobmxGris},
-  textfont={normalsize,color=gobmxGris},
+  font={normalsize,color=gobmxGuinda},
+  labelfont={normalsize,color=gobmxGuinda},
+  textfont={normalsize,color=gobmxGuinda},
   labelsep=empty,
   justification=raggedright,
   singlelinecheck=false,
@@ -414,7 +414,7 @@
 \newcolumntype{H}[1]{>{\raggedright\arraybackslash\bfseries\color{gobmxGris}}p{#1}} % Gris Bold
 
 % Tipos de columna flexibles (estilo X)
-\newcolumntype{v}{>{\raggedright\arraybackslash}X}
+\newcolumntype{v}{>{\centering\arraybackslash}X}
 \newcolumntype{V}{>{\raggedright\arraybackslash\bfseries}X}
 \newcolumntype{Y}{>{\raggedright\arraybackslash\bfseries}X}
 \newcolumntype{Z}{>{\raggedright\arraybackslash}X} % Left (Alias de v, usado en tablas legacy)
@@ -428,7 +428,7 @@
 
 % Ancho de primera columna para tablas complejas
 \newlength{\SENERLongTableFirstColWidth}
-\setlength{\SENERLongTableFirstColWidth}{0.32\textwidth}
+\setlength{\SENERLongTableFirstColWidth}{0.18\textwidth}
 \newcolumntype{S}{>{\raggedright\arraybackslash}p{\SENERLongTableFirstColWidth}}
 \newcolumntype{Q}{>{\raggedright\arraybackslash\bfseries}p{\SENERLongTableFirstColWidth}}
 

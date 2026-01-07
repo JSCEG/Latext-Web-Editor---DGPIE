@@ -67,8 +67,12 @@ const ORDEN_COL_VARIANTS = ['Orden', 'OrdenTabla', 'Numero', 'Fig.', 'Figura', '
 const DOC_ID_VARIANTS = ['DocumentoID', 'ID Documento', 'ID', 'DocID'];
 const TITLE_VARIANTS = ['Titulo', 'Título', 'Nombre'];
 const NIVEL_VARIANTS = ['Nivel', 'level'];
+const AGRADECIMIENTOS_VARIANTS = ['Agradecimientos', 'Agradecimiento', 'Acknowledgements'];
 const CONTENIDO_VARIANTS = ['Contenido', 'content', 'texto', 'cuerpo'];
 const CLAVE_VARIANTS = ['Clave', 'Key', 'ID'];
+const OPCIONES_COL_VARIANTS = ['Opciones', 'Estilo', 'Style', 'Options', 'Configuracion'];
+const HORIZONTAL_COL_VARIANTS = ['Horizontal', 'Apaisado', 'Landscape'];
+const HOJA_COMPLETA_COL_VARIANTS = ['HojaCompleta', 'Hoja Completa', 'FullPage', 'PaginaCompleta'];
 
 type SectionLevelOption = {
     value: string;
@@ -2945,7 +2949,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                         {viewMode === 'FORM' && (
                             <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
 
-                                <Ribbon />
+                                {/* <Ribbon /> Removed as per user request */}
 
                                 {/* Main Form Card */}
                                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 md:p-8 relative">
@@ -3013,8 +3017,106 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                             const isOrden = ORDEN_COL_VARIANTS.includes(header);
                                             const isNivel = activeTab === 'secciones' && findColumnIndex([header], NIVEL_VARIANTS) !== -1;
                                             const isContenido = activeTab === 'secciones' && findColumnIndex([header], CONTENIDO_VARIANTS) !== -1;
-                                            const colSpan = ((activeTab === 'tablas' || activeTab === 'figuras') && !isSeccion && !isOrden) ? "col-span-2" : "col-span-1";
+                                            const isOpciones = (activeTab === 'tablas' || activeTab === 'figuras') && findColumnIndex([header], OPCIONES_COL_VARIANTS) !== -1;
+                                            const isHorizontal = (activeTab === 'tablas' || activeTab === 'figuras') && findColumnIndex([header], HORIZONTAL_COL_VARIANTS) !== -1;
+                                            const isHojaCompleta = (activeTab === 'tablas' || activeTab === 'figuras') && findColumnIndex([header], HOJA_COMPLETA_COL_VARIANTS) !== -1;
+                                            const colSpan = ((activeTab === 'tablas' || activeTab === 'figuras') && !isSeccion && !isOrden && !isOpciones && !isHorizontal && !isHojaCompleta) ? "col-span-2" : "col-span-1";
                                             const isTipoBiblio = activeTab === 'bibliografia' && header.trim().toLowerCase() === 'tipo';
+
+                                            // --- Editor de Opciones (Horizontal / Hoja Completa) ---
+                                            if (isOpciones) {
+                                                const currentVal = (formData[i] || '').toString().toLowerCase();
+                                                const hasHorizontal = currentVal.includes('horizontal');
+                                                const hasFullPage = currentVal.includes('hoja_completa') || currentVal.includes('hoja completa');
+
+                                                const updateOpciones = (add: boolean, key: string) => {
+                                                    let parts = currentVal.split(',').map(s => s.trim()).filter(s => s);
+                                                    // Remove key and aliases roughly
+                                                    const keyClean = key.toLowerCase();
+                                                    parts = parts.filter(p => !p.includes(keyClean) && !p.includes(keyClean.replace('_', ' ')));
+
+                                                    if (add) parts.push(key);
+
+                                                    const newData = [...formData];
+                                                    newData[i] = parts.join(', ');
+                                                    setFormData(newData);
+                                                };
+
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-2 bg-gray-50 p-3 rounded-md border border-gray-200"}>
+                                                        <label className="block text-sm font-bold text-gray-700 mb-2">{header}</label>
+                                                        <div className="flex flex-col sm:flex-row gap-4">
+                                                            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={hasHorizontal}
+                                                                    onChange={e => updateOpciones(e.target.checked, 'horizontal')}
+                                                                    className="w-4 h-4 text-gob-guinda border-gray-300 rounded focus:ring-gob-guinda"
+                                                                />
+                                                                <span className="text-sm text-gray-700">Horizontal (Rotado)</span>
+                                                            </label>
+                                                            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={hasFullPage}
+                                                                    onChange={e => updateOpciones(e.target.checked, 'hoja_completa')}
+                                                                    className="w-4 h-4 text-gob-guinda border-gray-300 rounded focus:ring-gob-guinda"
+                                                                />
+                                                                <span className="text-sm text-gray-700">Hoja Completa</span>
+                                                            </label>
+                                                        </div>
+                                                        <p className="text-xs text-gray-500 mt-1">
+                                                            Permite rotar la página para elementos anchos o maximizar el tamaño.
+                                                        </p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            // --- Editor Individual Horizontal ---
+                                            if (isHorizontal) {
+                                                const isChecked = (formData[i] || '').toString().toLowerCase().includes('si');
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                        <label className="inline-flex items-center gap-2 cursor-pointer select-none p-2 border rounded-md bg-white w-full">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isChecked}
+                                                                onChange={e => {
+                                                                    const newData = [...formData];
+                                                                    newData[i] = e.target.checked ? 'si' : 'no';
+                                                                    setFormData(newData);
+                                                                }}
+                                                                className="w-4 h-4 text-gob-guinda border-gray-300 rounded focus:ring-gob-guinda"
+                                                            />
+                                                            <span className="text-sm text-gray-700">Activar orientación horizontal</span>
+                                                        </label>
+                                                    </div>
+                                                );
+                                            }
+
+                                            // --- Editor Individual Hoja Completa ---
+                                            if (isHojaCompleta) {
+                                                const isChecked = (formData[i] || '').toString().toLowerCase().includes('si');
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                        <label className="inline-flex items-center gap-2 cursor-pointer select-none p-2 border rounded-md bg-white w-full">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isChecked}
+                                                                onChange={e => {
+                                                                    const newData = [...formData];
+                                                                    newData[i] = e.target.checked ? 'si' : 'no';
+                                                                    setFormData(newData);
+                                                                }}
+                                                                className="w-4 h-4 text-gob-guinda border-gray-300 rounded focus:ring-gob-guinda"
+                                                            />
+                                                            <span className="text-sm text-gray-700">Maximizar a hoja completa</span>
+                                                        </label>
+                                                    </div>
+                                                );
+                                            }
 
                                             if (activeTab === 'secciones' && isNivel) {
                                                 const current = normalizeLevelValue(formData[i] || '');

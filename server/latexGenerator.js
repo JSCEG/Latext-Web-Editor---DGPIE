@@ -136,12 +136,13 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     }
 
     // --- Acknowledgments ---
-    if (datosDoc['Agradecimientos'] && datosDoc['Agradecimientos'].toString().trim()) {
+    const agradecimientosRaw = datosDoc['Agradecimientos'] || datosDoc['Agradecimiento'] || datosDoc['Acknowledgements'];
+    if (agradecimientosRaw && agradecimientosRaw.toString().trim()) {
         tex += `\\clearpage\n`;
         tex += `\\begin{center}\n`;
         tex += `{\\Large\\patriafont\\bfseries\\color{gobmxGuinda}Agradecimientos}\\\\[1cm]\n`;
         tex += `\\end{center}\n\n`;
-        tex += `${procesarConEtiquetas(datosDoc['Agradecimientos'])}\n\n`;
+        tex += `${procesarConEtiquetas(agradecimientosRaw)}\n\n`;
     }
 
     // --- Presentation ---
@@ -520,16 +521,16 @@ function generarFigura(figura) {
     if (esHorizontal) {
         // CASO ESPECIAL: Figura Horizontal (Página Landscape) - ACTUALIZADO
         tex += `\\begin{figuraespecial}\n`;
-        
+
         // Usar los nuevos comandos específicos para modo horizontal
         if (caption) {
             tex += `  \\captionHorizontal{${escaparLatex(caption)}}\n`;
         }
-        
+
         if (rutaArchivo) {
             tex += `  \\imagenHorizontal{${rutaArchivo}}{fig:${id || generarLabel(caption)}}\n`;
         }
-        
+
         // La fuente va al final usando el comando específico
         if (fuente) {
             tex += `  \\fuenteHorizontal{${procesarTextoFuente(fuente)}}\n`;

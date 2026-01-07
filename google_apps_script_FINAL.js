@@ -1509,7 +1509,11 @@ function generarTabla(tabla, ss) {
     const ord = (tabla['Orden'] || tabla['OrdenTabla'] || '').toString();
     const id = forcedId || ((sec && ord) ? `TBL-${sec}-${ord}` : (ord ? `TBL-${ord}` : ''));
 
-    log(`  📊 Tabla detectada: ${previewTexto(titulo, 40)}...`);
+    // Detectar flags especiales
+    const opciones = (tabla['Opciones'] || tabla['Estilo'] || '').toString().toLowerCase();
+    const esHorizontal = opciones.includes('horizontal') || (tabla['Horizontal'] || '').toString().toLowerCase().includes('si');
+
+    log(`  📊 Tabla detectada: ${previewTexto(titulo, 40)}... ${esHorizontal ? '[HORIZONTAL]' : ''}`);
 
     let esLarga = false;
     let texInicio = '';
@@ -1554,56 +1558,102 @@ function generarTabla(tabla, ss) {
             if (hojaDatos) {
                 const datosTabla = hojaDatos.getRange(rango).getValues();
                 log(`    ✅ Datos leídos: ${datosTabla.length} filas`);
+                
+                // Si es horizontal, NO usar longtable (usar tabular dentro de sidewaystable)
+                // forzarLongtable = false
                 const resultado = procesarDatosArray(datosTabla, titulo, false, id);
                 esLarga = resultado.tipo === 'longtable';
-                if (esLarga) {
-                    // Para tablas largas: usar tabladoradoLargo (sin caption, va en longtable)
+                
+                if (esHorizontal) {
+                    // CASO HORIZONTAL: Usar tablaespecial
+                    texInicio = `\\begin{tablaespecial}\n`;
+                    // Añadir caption dentro del entorno
+                    const capTxt = escaparLatex(titulo);
+                    texInicio += `  \\caption{${capTxt}}\n`;
+                    texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
+                    
+                    if (esLarga) {
+                        // Si era larga, procesarDatosArray devolvió longtable. 
+                        // Pero longtable no funciona bien dentro de sidewaystable (flotante dentro de flotante).
+                        // Solución: Recalcular como tabular compacta si es posible, o usar longtable si no queda otra
+                        // pero longtable en sidewaystable es problemático.
+                        // Forzamos tabular compacta (generarTablaCompacta) manualmente
+                        texInicio += generarTablaCompacta(datosTabla);
+                    } else {
+                        texInicio += resultado.contenido;
+                    }
+                    
+                    texFin = `\\end{tablaespecial}\n`;
+
+                } else if (esLarga) {
+                    // CASO NORMAL LARGO
                     texInicio = `\\begin{tabladoradoLargo}\n`;
                     texFin = `\\end{tabladoradoLargo}\n`;
+                    texInicio += resultado.contenido;
                 } else {
-                    // FIX: Para tablas cortas: usar tabladoradoCorto (mismo estilo que longtable)
+                    // CASO NORMAL CORTO
                     texInicio = `\\begin{tabladoradoCorto}\n`;
                     const capTxt = escaparLatex(titulo);
                     texInicio += `  \\caption{${capTxt}}\n`;
                     texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
                     texFin = `\\end{tabladoradoCorto}\n`;
+                    texInicio += resultado.contenido;
                 }
-                texInicio += resultado.contenido;
+                
             } else {
                 log(`    ⚠️ No se encontró la hoja: "${nombreHoja}"`);
-                // FIX: Cachear lista de hojas para evitar llamadas repetidas
                 if (!this._hojasDisponiblesCache) {
                     this._hojasDisponiblesCache = ss.getSheets().map(s => s.getName()).join(', ');
                 }
                 log(`    💡 Hojas disponibles: ${this._hojasDisponiblesCache}`);
-                // No inyectamos una tabla de error al PDF; dejamos el diagnóstico en comentarios del .tex.
                 tex += `  % ERROR: No se encontró la hoja "${nombreHoja}"\n`;
                 tex += `  % Hojas disponibles: ${this._hojasDisponiblesCache}\n`;
             }
         } catch (e) {
             log(`    ❌ Error al leer rango: ${e.toString()}`);
-            // Igual: evitamos meter “tablas de error” dentro del documento.
             tex += `  % ERROR: ${e.toString()}\n`;
         }
     } else {
         // Datos CSV directos
-        texInicio += procesarDatosCSV(datosRef);
+        if (esHorizontal) {
+             texInicio = `\\begin{tablaespecial}\n`;
+             const capTxt = escaparLatex(titulo);
+             texInicio += `  \\caption{${capTxt}}\n`;
+             texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
+             texInicio += procesarDatosCSV(datosRef);
+             texFin = `\\end{tablaespecial}\n`;
+        } else {
+             texInicio += procesarDatosCSV(datosRef);
+        }
     }
 
     if (!texInicio) {
-        // FIX: Fallback: usar tabladoradoCorto para tablas simples (estilo consistente)
+        // Fallback
         const capTxt = escaparLatex(titulo);
-        texInicio = `\\begin{tabladoradoCorto}\n  \\caption{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n`;
-        texFin = `\\end{tabladoradoCorto}\n`;
+        if (esHorizontal) {
+            texInicio = `\\begin{tablaespecial}\n  \\caption{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n`;
+            texFin = `\\end{tablaespecial}\n`;
+        } else {
+            texInicio = `\\begin{tabladoradoCorto}\n  \\caption{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n`;
+            texFin = `\\end{tabladoradoCorto}\n`;
+        }
     }
+    
     if (tex === '') {
         tex = texInicio + texFin;
     }
 
     if (fuente) {
-        // FIX: Reducir espacio antes de fuente para pegarla más a la tabla
-        tex += `\\vspace{-4pt}\n`;
-        tex += `\\fuente{${procesarTextoFuente(fuente)}}\n`;
+        if (esHorizontal) {
+             // Fuente dentro de tablaespecial (antes del end)
+             // Pero texFin tiene el end. Hay que inyectarlo antes.
+             // Truco: Reemplazar el end por fuente + end
+             tex = tex.replace(/\\end{tablaespecial}/, `  \\vspace{6pt}\n  \\fuente{${procesarTextoFuente(fuente)}}\n\\end{tablaespecial}`);
+        } else {
+             // Normal
+             tex += `\\vspace{-4pt}\n`;
+             tex += `\\fuente{${procesarTextoFuente(fuente)}}\n`;
+        }
     }
 
     tex += `\n`;
