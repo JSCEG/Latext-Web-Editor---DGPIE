@@ -1,22 +1,31 @@
-# 📐 Guía Completa: Modo Horizontal para Figuras SENER
+# 📐 Guía Completa: Modo Horizontal para Figuras y Tablas SENER
 
 ## 🎯 **Objetivo**
-Implementar figuras en modo horizontal (landscape) que maximicen el uso del espacio disponible, manteniendo la identidad institucional SENER y garantizando que todo el contenido (caption + figura + fuente) quepa en una sola página.
+Implementar figuras y tablas en modo horizontal (landscape) que maximicen el uso del espacio disponible, manteniendo la identidad institucional SENER y garantizando que todo el contenido (caption + figura/tabla + fuente) quepa en una sola página.
 
 ## 🏗️ **Arquitectura del Sistema**
 
-### **1. Entorno Principal: `figuraespecial`**
+### **1. Entorno Principal: `figuraespecial` y `tablaespecial`**
+
+Para figuras:
 ```latex
 \begin{figuraespecial}
-  % Contenido horizontal optimizado
+  % Contenido de figura horizontal optimizado
 \end{figuraespecial}
 ```
 
-**Características:**
+Para tablas:
+```latex
+\begin{tablaespecial}
+  % Contenido de tabla horizontal optimizado
+\end{tablaespecial}
+```
+
+**Características Comunes:**
 - Cambia a modo landscape automáticamente (`pdflscape`)
 - **Márgenes Rotados (Geometry) - Configuración Final:**
     - `right=3.0cm` → **Visual Top** (Espacio para encabezado y línea dorada)
-    - `left=1.5cm` → **Visual Bottom** (Espacio para pie de página y número)
+    - `left=2.5cm` → **Visual Bottom** (Espacio para pie de página y número)
     - `top=2.5cm` → **Visual Right** (Alineado con fin de línea dorada superior)
     - `bottom=2.0cm` → **Visual Left** (Alineado con inicio de líneas doradas)
 - Fondo institucional: `img/hojahorizontal.jpg` rotado 90°
@@ -36,7 +45,7 @@ Implementar figuras en modo horizontal (landscape) que maximicen el uso del espa
 ### **3. Comandos Específicos Horizontales**
 
 #### **A. Títulos y Secciones**
-Para evitar "títulos huérfanos" en la página vertical anterior, **mueve** el comando de sección dentro del entorno `figuraespecial` usando una de estas opciones:
+Para evitar "títulos huérfanos" en la página vertical anterior, **mueve** el comando de sección dentro del entorno `figuraespecial` o `tablaespecial` usando una de estas opciones:
 
 1.  **Título Simple (Solo visual)**
     ```latex
@@ -56,7 +65,7 @@ Para evitar "títulos huérfanos" en la página vertical anterior, **mueve** el 
     ```
     *Efecto*: Numera (ej. "6.1 Cuentas..."), añade al índice y muestra el título estilo Subsección (Patria 14pt, Rojo Claro).
 
-**Nota**: Todos estos comandos reducen automáticamente la altura de la imagen para dar cabida al título sin saltar de página.
+**Nota**: Todos estos comandos reducen automáticamente la altura disponible para dar cabida al título sin saltar de página.
 
 #### **B. Caption Horizontal**
 ```latex
@@ -78,7 +87,64 @@ Para evitar "títulos huérfanos" en la página vertical anterior, **mueve** el 
 - **Alineación**: Izquierda
 - **Estiramiento**: Forzado (sin `keepaspectratio`)
 
-#### **D. Fuente Horizontal**
+#### **D. Tablas Horizontales (NUEVO)**
+
+Para tablas que ocupan todo el ancho horizontal, se recomienda usar `tabularx` (una página) o `xltabular` (multipágina) con ancho `\linewidth`.
+
+**Ejemplo de Tabla Corta (Una página):**
+```latex
+\begin{tablaespecial}
+  \tituloHorizontal{Tabla Corta Horizontal}
+  \begin{tabladoradoCorto}
+    % Usar \linewidth para ocupar todo el ancho disponible
+    \begin{tabularx}{\linewidth}{V Z C{4cm}}
+      \toprule
+      \encabezadodorado{Columna 1} & \encabezadodorado{Columna 2} & \encabezadodorado{Columna 3} \\
+      \midrule
+      Dato Largo... & Dato Largo... & Dato Corto \\
+      \bottomrule
+    \end{tabularx}
+  \end{tabladoradoCorto}
+  \fuenteHorizontal{Fuente: Elaboración propia.}
+\end{tablaespecial}
+```
+
+**Ejemplo de Tabla Larga (Multipágina):**
+```latex
+\begin{tablaespecial}
+  \tituloHorizontal{Tabla Larga Horizontal}
+  \begin{tabladoradoLargo}
+    % xltabular combina longtable + tabularx
+    \begin{xltabular}{\linewidth}{V Z C{3cm}}
+      \toprule
+      \encabezadodorado{Columna 1} & \encabezadodorado{Columna 2} & \encabezadodorado{Columna 3} \\
+      \midrule
+      \endhead % Repite encabezados en cada página
+      
+      % Contenido de la tabla...
+      
+      \bottomrule
+    \end{xltabular}
+  \end{tabladoradoLargo}
+  \fuenteHorizontal{Fuente: Elaboración propia.}
+\end{tablaespecial}
+```
+
+**Tipos de Columna Disponibles (sener2025.cls):**
+- `V`: Columna tipo `X` (ajustable), negrita, alineada a la izquierda.
+- `Z`: Columna tipo `X` (ajustable), normal, alineada a la izquierda.
+- `C{ancho}`: Columna centrada de ancho fijo.
+- `L{ancho}`: Columna izquierda de ancho fijo.
+- `R{ancho}`: Columna derecha de ancho fijo.
+
+**Encabezados de Tabla (Fondo Coloreado Automático):**
+Los comandos de encabezado ya incluyen automáticamente el color de fondo para asegurar la legibilidad del texto blanco.
+- `\encabezadodorado{Texto}`: Fondo dorado, texto blanco.
+- `\encabezadoguinda{Texto}`: Fondo guinda, texto blanco.
+- `\encabezadoverde{Texto}`: Fondo verde, texto blanco.
+- `\encabezadogris{Texto}`: Fondo gris, texto blanco.
+
+#### **E. Fuente Horizontal**
 ```latex
 \fuenteHorizontal{Texto de la fuente\footnotemark}
 \footnotetext{Texto de la nota al pie}
@@ -86,7 +152,7 @@ Para evitar "títulos huérfanos" en la página vertical anterior, **mueve** el 
 - Fuente: Patria 9pt itálica
 - Color: gobmxGris
 - Alineación: **Izquierda**
-- **Notas al Pie**: Debido a que la fuente está encapsulada en una caja (`parbox`), las notas al pie directas (`\footnote`) no funcionan correctamente. Se debe usar `\footnotemark` dentro de la fuente y `\footnotetext` justo después.63. - Posición: Ajuste vertical de -0.5cm (`vspace`) para acercar a la figura
+- **Notas al Pie**: Debido a que la fuente está encapsulada en una caja (`parbox`), las notas al pie directas (`\footnote`) no funcionan correctamente. Se debe usar `\footnotemark` dentro de la fuente y `\footnotetext` justo después. - Posición: Ajuste vertical de -0.5cm (`vspace`) para acercar a la figura
 
 ## 🧭 **Mapeo de Coordenadas TikZ en Landscape**
 
@@ -135,8 +201,8 @@ Cuando se usa `pdflscape`, la página rota visualmente en el PDF, pero el sistem
 
 ## 🔄 **Flujo de Trabajo**
 1. **Google Sheets**: Columna "Opciones" → `horizontal`.
-2. **Generación**: Detecta flag y usa entorno `figuraespecial`.
+2. **Generación**: Detecta flag y usa entorno `figuraespecial` o `tablaespecial`.
 3. **Compilación**: XeLaTeX aplica rotación y coordenadas TikZ corregidas.
 
 ---
-**Actualizado**: Enero 2026 - Calibración final de coordenadas.
+**Actualizado**: Enero 2026 - Calibración final de coordenadas y soporte para tablas.

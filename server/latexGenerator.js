@@ -612,29 +612,26 @@ function generarTabla(tabla) {
     let esLarga = false;
 
     // forzarLongtable = false
-    const resultado = procesarDatosArray(datos, titulo, false);
+    const resultado = procesarDatosArray(datos, titulo, false, esHorizontal);
     esLarga = resultado.tipo === 'longtable';
 
     if (esHorizontal) {
         // CASO HORIZONTAL: Usar tablaespecial
         texInicio = `\\begin{tablaespecial}\n`;
-        // Añadir caption dentro del entorno
+        // Añadir caption dentro del entorno (externo a la tabla en sí)
         const capTxt = escaparLatex(titulo);
-        texInicio += `  \\caption{${capTxt}}\n`;
+        texInicio += `  \\captionHorizontal{${capTxt}}\n`;
         texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
 
         if (esLarga) {
-            // Si era larga, procesarDatosArray devolvió longtable. 
-            // Pero longtable no funciona bien dentro de sidewaystable (flotante dentro de flotante).
-            // Solución: Recalcular como tabular compacta si es posible, o usar longtable si no queda otra
-            // pero longtable en sidewaystable es problemático.
-            // Forzamos tabular compacta (generarTablaCompacta) manualmente
-            texInicio += generarTablaCompacta(datos);
+            texInicio += `\\begin{tabladoradoLargo}\n`;
+            texFin = `\\end{tabladoradoLargo}\n`;
         } else {
-            texInicio += resultado.contenido;
+            texInicio += `\\begin{tabladoradoCorto}\n`;
+            texFin = `\\end{tabladoradoCorto}\n`;
         }
-
-        texFin = `\\end{tablaespecial}\n`;
+        texInicio += resultado.contenido;
+        texFin += `\\end{tablaespecial}\n`;
 
     } else if (esLarga) {
         // Para tablas largas: usar tabladoradoLargo (sin caption, va en longtable)
@@ -657,7 +654,7 @@ function generarTabla(tabla) {
             // Fuente dentro de tablaespecial (antes del end)
             // Pero texFin tiene el end. Hay que inyectarlo antes.
             // Truco: Reemplazar el end por fuente + end
-            tex = tex.replace(/\\end{tablaespecial}/, `  \\vspace{6pt}\n  \\fuente{${procesarTextoFuente(fuente)}}\n\\end{tablaespecial}`);
+            tex = tex.replace(/\\end{tablaespecial}/, `  \\fuenteHorizontal{${procesarTextoFuente(fuente)}}\n\\end{tablaespecial}`);
         } else {
             // Normal
             tex += `\\vspace{-4pt}\n`;
@@ -668,7 +665,7 @@ function generarTabla(tabla) {
     return tex;
 }
 
-function procesarDatosArray(datos, tituloTabla, forzarLongtable = false) {
+function procesarDatosArray(datos, tituloTabla, forzarLongtable = false, esHorizontal = false) {
     if (!datos || datos.length === 0) {
         return { tipo: 'tabular', contenido: `  \\begin{tabular}{lc}\n    % Sin datos\n  \\end{tabular}\n` };
     }
@@ -687,14 +684,14 @@ function procesarDatosArray(datos, tituloTabla, forzarLongtable = false) {
     if (numCols <= MAX_COLS_POR_TABLA) {
         const numFilas = Math.max(0, datosNormalizados.length - 1);
         if (numFilas <= MAX_FILAS_COMPACTA && !forzarLongtable) {
-            return { tipo: 'tabular', contenido: generarTablaCompacta(datosNormalizados) };
+            return { tipo: 'tabular', contenido: generarTablaCompacta(datosNormalizados, esHorizontal) };
         }
         if (numFilas > MAX_FILAS_POR_PARTE) {
-            return { tipo: 'longtable', contenido: dividirTablaPorFilas(datosNormalizados, MAX_FILAS_POR_PARTE, tituloTabla) };
+            return { tipo: 'longtable', contenido: dividirTablaPorFilas(datosNormalizados, MAX_FILAS_POR_PARTE, tituloTabla, esHorizontal) };
         }
-        return { tipo: 'longtable', contenido: generarTablaSimple(datosNormalizados, tituloTabla) };
+        return { tipo: 'longtable', contenido: generarTablaSimple(datosNormalizados, tituloTabla, esHorizontal) };
     }
-    return { tipo: 'longtable', contenido: dividirTabla(datosNormalizados, MAX_COLS_POR_TABLA, tituloTabla) };
+    return { tipo: 'longtable', contenido: dividirTabla(datosNormalizados, MAX_COLS_POR_TABLA, tituloTabla, esHorizontal) };
 }
 
 // Helper para asegurar consistencia en columnas
@@ -732,13 +729,18 @@ function senerLongtableHeaderRow(celdasEncabezadoProcesadas) {
         .join(' & ');
 }
 
-function generarTablaSimple(datos, tituloTabla) {
+function generarTablaSimple(datos, tituloTabla, esHorizontal = false) {
     const numCols = datos[0].length;
     const especCols = senerLongtableSpec(numCols);
+    const anchoTabla = esHorizontal ? '\\linewidth' : '\\textwidth';
 
     let tex = senerLongtablePreamble();
-    tex += `  \\begin{xltabular}{\\textwidth}{${especCols}}\n`;
-    if (tituloTabla) tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+    tex += `  \\begin{xltabular}{${anchoTabla}}{${especCols}}\n`;
+
+    // Si NO es horizontal, el caption va dentro. Si es horizontal, ya se puso fuera.
+    if (tituloTabla && !esHorizontal) {
+        tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+    }
 
     // Encabezado para la primera página
     tex += `    \\toprule\n`;
@@ -771,10 +773,11 @@ function generarTablaSimple(datos, tituloTabla) {
     return tex;
 }
 
-function generarTablaCompacta(datos) {
+function generarTablaCompacta(datos, esHorizontal = false) {
     const numCols = datos[0].length;
     const especCols = 'V' + ('v'.repeat(numCols - 1));
-    let tex = `  \\begin{tabularx}{\\textwidth}{${especCols}}\n`;
+    const anchoTabla = esHorizontal ? '\\linewidth' : '\\textwidth';
+    let tex = `  \\begin{tabularx}{${anchoTabla}}{${especCols}}\n`;
     tex += `    \\toprule\n`;
     const encabezados = procesarCeldasFila(datos[0], true, false).map(c => `\\encabezadodorado{${c}}`).join(' & ');
     tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
@@ -788,12 +791,13 @@ function generarTablaCompacta(datos) {
     return tex;
 }
 
-function dividirTabla(datos, maxCols, tituloTabla) {
+function dividirTabla(datos, maxCols, tituloTabla, esHorizontal = false) {
     const numCols = datos[0].length;
     let tex = '';
     let parte = 1;
     const colsPorParte = maxCols - 1;
     let colInicio = 1;
+    const anchoTabla = esHorizontal ? '\\linewidth' : '\\textwidth';
 
     while (colInicio < numCols) {
         const colFin = Math.min(colInicio + colsPorParte, numCols);
@@ -809,8 +813,11 @@ function dividirTabla(datos, maxCols, tituloTabla) {
         const especCols = senerLongtableSpec(numColsTabla);
 
         tex += senerLongtablePreamble();
-        tex += `  \\begin{xltabular}{\\textwidth}{${especCols}}\n`;
-        if (tituloTabla && parte === 1) tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+        tex += `  \\begin{xltabular}{${anchoTabla}}{${especCols}}\n`;
+
+        if (tituloTabla && parte === 1 && !esHorizontal) {
+            tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+        }
 
         const celdasEncabezado = colsEnEstaParte.map(colIdx => datos[0][colIdx]);
         const encabezados = senerLongtableHeaderRow(procesarCeldasFila(celdasEncabezado, true, true));
@@ -845,9 +852,10 @@ function dividirTabla(datos, maxCols, tituloTabla) {
     return tex;
 }
 
-function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla) {
+function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla, esHorizontal = false) {
     const numCols = datos[0].length;
     const especCols = senerLongtableSpec(numCols);
+    const anchoTabla = esHorizontal ? '\\linewidth' : '\\textwidth';
     let tex = '';
     let inicio = 1;
     let parte = 1;
@@ -855,8 +863,11 @@ function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla) {
         const fin = Math.min(inicio + maxFilasParte, datos.length);
 
         tex += senerLongtablePreamble();
-        tex += `  \\begin{xltabular}{\\textwidth}{${especCols}}\n`;
-        if (tituloTabla && parte === 1) tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+        tex += `  \\begin{xltabular}{${anchoTabla}}{${especCols}}\n`;
+
+        if (tituloTabla && parte === 1 && !esHorizontal) {
+            tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
+        }
 
         tex += `    \\toprule\n`;
         const encabezados = senerLongtableHeaderRow(procesarCeldasFila(datos[0], true, true));

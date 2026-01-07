@@ -440,10 +440,10 @@
 \AtBeginEnvironment{xltabular}{\SENERLongTableFont}
 
 % Comandos de formato para encabezados de tabla
-\newcommand{\encabezadoguinda}[1]{\textcolor{white}{\centering\arraybackslash\bfseries #1}}
-\newcommand{\encabezadoverde}[1]{\textcolor{white}{\centering\arraybackslash\bfseries #1}}
-\newcommand{\encabezadodorado}[1]{\textcolor{white}{\centering\arraybackslash\bfseries #1}}
-\newcommand{\encabezadogris}[1]{\textcolor{white}{\centering\arraybackslash\bfseries #1}}
+\newcommand{\encabezadoguinda}[1]{\cellcolor{gobmxGuinda}\textcolor{white}{\centering\arraybackslash\bfseries #1}}
+\newcommand{\encabezadoverde}[1]{\cellcolor{gobmxVerde}\textcolor{white}{\centering\arraybackslash\bfseries #1}}
+\newcommand{\encabezadodorado}[1]{\cellcolor{gobmxDorado}\textcolor{white}{\centering\arraybackslash\bfseries #1}}
+\newcommand{\encabezadogris}[1]{\cellcolor{gobmxGris}\textcolor{white}{\centering\arraybackslash\bfseries #1}}
 \newcommand{\encabezadotabla}[1]{\encabezadoguinda{#1}} % Alias
 
 % --- Entornos de Tablas ---
@@ -485,6 +485,88 @@
 % Definición global de longitudes para modo horizontal
 \newlength{\anchoHorizontal}
 \newlength{\alturaDisponible}
+
+  % COMANDOS EXCLUSIVOS PARA MODO HORIZONTAL
+  % Comando interno para renderizar el título horizontal con estilo personalizado
+  \newcommand{\sener@renderTituloHorizontal}[2]{% #1=Estilo, #2=Texto
+    \vspace*{0.8cm} % Bajar el título para evitar encabezado
+    \noindent\parbox{\linewidth}{%
+      \raggedright#1#2%
+    }\par%
+    \vspace{0.5cm}% Espacio después
+    % Reservar espacio fijo para la imagen
+    \gdef\sener@offsetTitulo{3.0cm}%
+  }
+
+  % 1. Título Horizontal Simple (Solo visual, estilo Sección)
+  \newcommand{\tituloHorizontal}[1]{%
+    \sener@renderTituloHorizontal{\patriafont\bfseries\fontsize{17pt}{20pt}\selectfont\color{senerGuindaOscuro}}{#1}%
+  }
+
+  % 2. Sección Horizontal (Numerada, TOC, estilo Sección)
+  \newcommand{\seccionHorizontal}[1]{%
+    \refstepcounter{section}%
+    \addcontentsline{toc}{section}{\thesection\hspace{1em}#1}%
+    \sener@renderTituloHorizontal{\patriafont\bfseries\fontsize{17pt}{20pt}\selectfont\color{senerGuindaOscuro}}{\thesection\hspace{0.5em}#1}%
+  }
+
+  % 3. Subsección Horizontal (Numerada, TOC, estilo Subsección)
+  \newcommand{\subseccionHorizontal}[1]{%
+    \refstepcounter{subsection}%
+    \addcontentsline{toc}{subsection}{\thesubsection\hspace{1em}#1}%
+    \sener@renderTituloHorizontal{\patriafont\bfseries\fontsize{14pt}{17pt}\selectfont\color{senerRojoClaro}}{\thesubsection\hspace{0.5em}#1}%
+  }
+
+  % Caption personalizado para modo horizontal - alineado a la izquierda
+  \newcommand{\captionHorizontal}[1]{%
+    \vspace{0.05cm}% espacio ultra pequeño antes del caption
+    \begin{center}%
+    \parbox{\anchoHorizontal}{%
+      \raggedright%
+      {\patriafont\fontsize{10pt}{11pt}\selectfont\color{gobmxGuinda}#1}%
+    }%
+    \end{center}%
+    \vspace{0.05cm}% espacio ultra pequeño después del caption
+  }
+  
+  % Fuente personalizada para modo horizontal - subida más para evitar cinta amarilla
+  \newcommand{\fuenteHorizontal}[1]{%
+    \vspace{-0.5cm}% Ajuste fino: Subir ligeramente para acercar a la imagen sin empalmar
+    \begin{center}%
+    \parbox{\anchoHorizontal}{%
+      \raggedright\patriafont\fontsize{9pt}{10pt}\selectfont\color{gobmxGris}\textit{#1}%
+    }%
+    \end{center}%
+  }
+  
+  % Comando auxiliar para ajustar altura extra dinámicamente
+  % Por defecto es 0cm (altura estándar con margen seguro de 4.5cm).
+  % Si se usa \sinNotas, agregamos altura extra SIN mover márgenes de página.
+  \gdef\sener@alturaExtra{0cm}
+  
+  \newcommand{\sinNotas}{%
+    \gdef\sener@alturaExtra{2.5cm}% Agregamos 2.5cm extra para maximizar altura al límite
+  }
+
+  % Imagen específica para modo horizontal - reservando espacio dinámico
+  \newcommand{\imagenHorizontal}[2]{%
+    % Calcular altura disponible: textheight menos espacio estimado para caption/fuente
+    % Margen base fijo de 4.5cm (seguro para maquetación)
+    % Se suma \sener@alturaExtra para hacer la imagen más alta hacia abajo (ocupando el espacio de las notas ausentes)
+    % Se resta adicionalmente el \sener@offsetTitulo si existe
+    \setlength{\alturaDisponible}{\dimexpr\textheight-4.5cm+\sener@alturaExtra-\sener@offsetTitulo\relax}%
+    % Eliminamos \begin{center}...\end{center} para que respete la alineación izquierda
+    % Usamos width=\linewidth explícitamente para forzar el ancho completo disponible (coincidente con líneas doradas)
+    % IMPORTANTE: Eliminamos 'keepaspectratio' para FORZAR que se estire al ancho completo, aunque se deforme un poco
+    % Si se prefiere recortar en lugar de deformar, habría que usar 'adjustbox' con 'min width=\linewidth'
+    % Aquí asumimos estiramiento ("estirarla al ancho de la línea dorada")
+    \noindent\includegraphics[width=\linewidth,height=\alturaDisponible]{#1}%
+    % Crear un punto de anclaje invisible para el label sin usar caption
+    \phantomsection%
+    \addtocounter{figure}{1}%
+    \def\@currentlabelname{Figura Horizontal}%
+    \label{#2}%
+  }
 
 % Entorno para Figura Horizontal (Página completa, solo hoja horizontal limpia)
 \newenvironment{figuraespecial}{%
@@ -558,88 +640,6 @@
     \end{tikzpicture}%
   }%
   
-  % COMANDOS EXCLUSIVOS PARA MODO HORIZONTAL
-  % Comando interno para renderizar el título horizontal con estilo personalizado
-  \newcommand{\sener@renderTituloHorizontal}[2]{% #1=Estilo, #2=Texto
-    \vspace*{0.8cm} % Bajar el título para evitar encabezado
-    \noindent\parbox{\linewidth}{%
-      \raggedright##1##2%
-    }\par%
-    \vspace{0.5cm}% Espacio después
-    % Reservar espacio fijo para la imagen
-    \gdef\sener@offsetTitulo{3.0cm}%
-  }
-
-  % 1. Título Horizontal Simple (Solo visual, estilo Sección)
-  \newcommand{\tituloHorizontal}[1]{%
-    \sener@renderTituloHorizontal{\patriafont\bfseries\fontsize{17pt}{20pt}\selectfont\color{senerGuindaOscuro}}{##1}%
-  }
-
-  % 2. Sección Horizontal (Numerada, TOC, estilo Sección)
-  \newcommand{\seccionHorizontal}[1]{%
-    \refstepcounter{section}%
-    \addcontentsline{toc}{section}{\thesection\hspace{1em}##1}%
-    \sener@renderTituloHorizontal{\patriafont\bfseries\fontsize{17pt}{20pt}\selectfont\color{senerGuindaOscuro}}{\thesection\hspace{0.5em}##1}%
-  }
-
-  % 3. Subsección Horizontal (Numerada, TOC, estilo Subsección)
-  \newcommand{\subseccionHorizontal}[1]{%
-    \refstepcounter{subsection}%
-    \addcontentsline{toc}{subsection}{\thesubsection\hspace{1em}##1}%
-    \sener@renderTituloHorizontal{\patriafont\bfseries\fontsize{14pt}{17pt}\selectfont\color{senerRojoClaro}}{\thesubsection\hspace{0.5em}##1}%
-  }
-
-  % Caption personalizado para modo horizontal - alineado a la izquierda
-  \newcommand{\captionHorizontal}[1]{%
-    \vspace{0.05cm}% espacio ultra pequeño antes del caption
-    \begin{center}%
-    \parbox{\anchoHorizontal}{%
-      \raggedright%
-      {\patriafont\fontsize{10pt}{11pt}\selectfont\color{gobmxGuinda}##1}%
-    }%
-    \end{center}%
-    \vspace{0.05cm}% espacio ultra pequeño después del caption
-  }
-  
-  % Fuente personalizada para modo horizontal - subida más para evitar cinta amarilla
-  \newcommand{\fuenteHorizontal}[1]{%
-    \vspace{-0.5cm}% Ajuste fino: Subir ligeramente para acercar a la imagen sin empalmar
-    \begin{center}%
-    \parbox{\anchoHorizontal}{%
-      \raggedright\patriafont\fontsize{9pt}{10pt}\selectfont\color{gobmxGris}\textit{##1}%
-    }%
-    \end{center}%
-  }
-  
-  % Comando auxiliar para ajustar altura extra dinámicamente
-  % Por defecto es 0cm (altura estándar con margen seguro de 4.5cm).
-  % Si se usa \sinNotas, agregamos altura extra SIN mover márgenes de página.
-  \gdef\sener@alturaExtra{0cm}
-  
-  \newcommand{\sinNotas}{%
-    \gdef\sener@alturaExtra{2.5cm}% Agregamos 2.5cm extra para maximizar altura al límite
-  }
-
-  % Imagen específica para modo horizontal - reservando espacio dinámico
-  \newcommand{\imagenHorizontal}[2]{%
-    % Calcular altura disponible: textheight menos espacio estimado para caption/fuente
-    % Margen base fijo de 4.5cm (seguro para maquetación)
-    % Se suma \sener@alturaExtra para hacer la imagen más alta hacia abajo (ocupando el espacio de las notas ausentes)
-    % Se resta adicionalmente el \sener@offsetTitulo si existe
-    \setlength{\alturaDisponible}{\dimexpr\textheight-4.5cm+\sener@alturaExtra-\sener@offsetTitulo\relax}%
-    % Eliminamos \begin{center}...\end{center} para que respete la alineación izquierda
-    % Usamos width=\linewidth explícitamente para forzar el ancho completo disponible (coincidente con líneas doradas)
-    % IMPORTANTE: Eliminamos 'keepaspectratio' para FORZAR que se estire al ancho completo, aunque se deforme un poco
-    % Si se prefiere recortar en lugar de deformar, habría que usar 'adjustbox' con 'min width=\linewidth'
-    % Aquí asumimos estiramiento ("estirarla al ancho de la línea dorada")
-    \noindent\includegraphics[width=\linewidth,height=\alturaDisponible]{##1}%
-    % Crear un punto de anclaje invisible para el label sin usar caption
-    \phantomsection%
-    \addtocounter{figure}{1}%
-    \def\@currentlabelname{Figura Horizontal}%
-    \label{##2}%
-  }
-  
 }{%
   \vfill
   \end{landscape}
@@ -659,8 +659,13 @@
 \newenvironment{tablaespecial}{%
   \clearpage
   \sener@standardbgfalse % Desactivar fondo vertical global
-  % Ajustamos márgenes: top=4.5cm para bajar contenido bajo el logo, laterales 1.2cm para maximizar ancho
-  \newgeometry{left=1.2cm,right=1.2cm,top=4.5cm,bottom=2.5cm} 
+  % Margen base idéntico a figuraespecial para consistencia visual
+  % landscape geometry mapping:
+  %   left   -> Visual Bottom (Espacio para pie de página)
+  %   right  -> Visual Top    (Espacio para encabezado)
+  %   top    -> Visual Right  (Margen derecho visual)
+  %   bottom -> Visual Left   (Margen izquierdo visual)
+  \newgeometry{left=2.5cm,right=3cm,top=2.5cm,bottom=2cm} 
   \begin{landscape}
   \thispagestyle{empty} % Ocultar headers/footers rotados
   
@@ -677,49 +682,31 @@
   }%
 
   % Elementos Visuales (Línea Dorada y Número de Página) con TikZ
-   \begin{tikzpicture}[remember picture, overlay]
-       % CONFIGURACIÓN FINAL (Lógica West=Top, East=Bottom):
-       % Basada en:
-       % 1. PageNum en South-West salió a la Izquierda (South=Visual Left).
-       % 2. GoldenLine en North desapareció (North=Visual Right).
-       % Por tanto:
-       % West  = Visual Top
-       % East  = Visual Bottom
-       % South = Visual Left
-       % North = Visual Right
-       
-       % Línea Dorada (Encabezado) - Visual Top (Physical West)
-       % Dibujamos paralela al borde West.
-       % Desde South West (Visual Top-Left) a North West (Visual Top-Right).
-       % Offset X: +2.8cm (Bajar visualmente desde Top/West).
-       % Offset Y: Ajuste de márgenes (South=+1cm, North=-1cm).
-       % Ancho ajustado a 1pt para coincidir con el header vertical estándar
-       \draw[gobmxDorado, line width=1pt] 
-         ($(current page.south west) + (2.8cm, 1cm)$) -- ($(current page.north west) + (2.8cm, -1cm)$);
- 
-       % Número de Página - Visual Bottom Right (Physical North East)
-       % Visual Bottom = East.
-       % Visual Right  = North.
-       % Posición: North East.
-       % Offset X: -2.0cm (Subir visualmente desde Bottom/East).
-       % Offset Y: -2.0cm (Entrar visualmente desde Right/North).
-       % Rotación: 90 grados (Texto corre de Visual Left a Right = Physical South a North).
-       \node[anchor=center, rotate=90, font=\bfseries\sffamily\small, color=gobmxGuinda] 
-         at ($(current page.north east) + (-2.0cm, -2.0cm)$) {\thepage};
-   \end{tikzpicture}
+  % Copiado EXACTAMENTE de figuraespecial para consistencia total
+  \AddToShipoutPictureFG*{%
+    \begin{tikzpicture}[remember picture, overlay]
+        % Línea Dorada (Encabezado) - Visual Top
+        \draw[gobmxDorado, line width=1pt] 
+          ($(current page.south west) + (2.5cm, 2cm)$) -- ($(current page.north west) + (2.5cm, -2.5cm)$);
   
-  % Configuración local de captions para figuras especiales
-  \captionsetup{
-    width=0.9\linewidth, % Ancho máximo del 90%
-    font={small, color=gobmxGris}, % Fuente más pequeña
-    labelfont={bf, color=gobmxGuinda},
-    justification=centering
-  }
+        % Dibujar número de página (rotado para leerse horizontalmente)
+        \node[anchor=center, rotate=90, font=\bfseries\sffamily\small, color=black] 
+          at ($(current page.north east) + (-1.3cm, -2.5cm)$) {\thepage};
+           
+        % Línea de Pie de Página (Complemento a la cinta)
+        \draw[gobmxDorado, line width=1pt] 
+            ($(current page.north east) + (-1.25cm, -3.0cm)$) -- ($(current page.south east) + (-1.25cm, 2cm)$);
+          
+    \end{tikzpicture}%
+  }%
+  
+  % ANCHO EXCLUSIVO PARA MODO HORIZONTAL (Maximizado)
+  \setlength{\anchoHorizontal}{1.0\linewidth}
 
-  \begin{table}[H]
-  \centering
+  % Configurar captions para usar el ancho horizontal exclusivo - alineado a la izquierda
+  \captionsetup{width=\anchoHorizontal,justification=raggedright}
+
 }{%
-  \end{table}
   \end{landscape}
   \restoregeometry
   \sener@standardbgtrue % Reactivar fondo vertical global
