@@ -138,11 +138,12 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     // --- Acknowledgments ---
     const agradecimientosRaw = datosDoc['Agradecimientos'] || datosDoc['Agradecimiento'] || datosDoc['Acknowledgements'];
     if (agradecimientosRaw && agradecimientosRaw.toString().trim()) {
+        console.log('Procesando Agradecimientos...');
         tex += `\\clearpage\n`;
         tex += `\\begin{center}\n`;
         tex += `{\\Large\\patriafont\\bfseries\\color{gobmxGuinda}Agradecimientos}\\\\[1cm]\n`;
         tex += `\\end{center}\n\n`;
-        tex += `${procesarConEtiquetas(agradecimientosRaw)}\n\n`;
+        tex += `${procesarContenido(agradecimientosRaw, figurasById, tablasById)}\n\n`;
     }
 
     // --- Presentation ---
@@ -154,7 +155,7 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
         tex += `\\begin{center}\n`;
         tex += `{\\Large\\patriafont\\bfseries\\color{gobmxGuinda}Presentación}\\\\[1cm]\n`;
         tex += `\\end{center}\n\n`;
-        tex += `${procesarConEtiquetas(presentacionRaw)}\n\n`;
+        tex += `${procesarContenido(presentacionRaw, figurasById, tablasById)}\n\n`;
     }
 
     // --- Executive Summary ---
@@ -163,7 +164,7 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
         tex += `\\begin{center}\n`;
         tex += `{\\Large\\patriafont\\bfseries\\color{gobmxGuinda}Resumen Ejecutivo}\\\\[1cm]\n`;
         tex += `\\end{center}\n\n`;
-        tex += `${procesarConEtiquetas(datosDoc['ResumenEjecutivo'])}\n\n`;
+        tex += `${procesarContenido(datosDoc['ResumenEjecutivo'], figurasById, tablasById)}\n\n`;
     }
 
     // --- Key Data ---
@@ -406,7 +407,7 @@ function procesarContenido(contenidoRaw, figurasById = {}, tablasById = {}, secc
             continue;
         }
 
-        const esItemLista = lineaTrim.match(/^[-*•]\s+(.*)/);
+        const esItemLista = lineaTrim.match(/^[-*•]\s*(.*)/);
 
         if (esItemLista) {
             if (!enLista) {

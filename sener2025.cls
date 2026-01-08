@@ -220,8 +220,8 @@
   \fancyhead[R]{}
   
   % Pie de página alternado (Par a la izquierda, Impar a la derecha)
-  \fancyfoot[LE]{\makebox[\headwidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{gobmxGuinda}{\DocumentoCorto}\ \textcolor{gobmxDorado}{\hrulefill}}}
-  \fancyfoot[RO]{\makebox[\headwidth][r]{\scriptsize\textcolor{gobmxDorado}{\hrulefill}\ \textcolor{gobmxGuinda}{\DocumentoCorto}\quad\bfseries\thepage}}
+  \fancyfoot[LE]{\makebox[\textwidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{gobmxGuinda}{\DocumentoCorto}\ \textcolor{gobmxDorado}{\hrulefill}}}
+  \fancyfoot[RO]{\makebox[\textwidth][r]{\scriptsize\textcolor{gobmxDorado}{\hrulefill}\ \textcolor{gobmxGuinda}{\DocumentoCorto}\quad\bfseries\thepage}}
   
   \renewcommand{\headrulewidth}{1pt}
   \renewcommand{\headrule}{\vspace{10pt}{\color{gobmxDorado}\hrule width\headwidth height\headrulewidth}}
@@ -684,7 +684,7 @@
   %   Visual Bottom (left) = 2.5cm (Espacio para pie de página y notas)
   \newgeometry{left=2.5cm,right=3cm,top=2.5cm,bottom=2cm} 
   \begin{landscape}
-  \pagestyle{empty} % Sin headers/footers estándar
+  \thispagestyle{empty} % Sin headers/footers estándar
   \sener@horizontalmodetrue % MODO HORIZONTAL GLOBAL
   
   % ANCHO EXCLUSIVO PARA MODO HORIZONTAL (Maximizado)
@@ -697,6 +697,8 @@
   \vfill
   \end{landscape}
   \restoregeometry
+  \setlength{\headwidth}{\textwidth} % Re-sincronizar ancho de encabezado
+  \fancyhfoffset[LE,RO]{0pt}
   \sener@horizontalmodefalse % DESACTIVAR MODO HORIZONTAL
   \sener@standardbgtrue % Reactivar fondo vertical global
   \clearpage % PRIMERO limpiamos la página horizontal saliente
@@ -723,7 +725,7 @@
   %   bottom -> Visual Left   (Margen izquierdo visual)
   \newgeometry{left=2.5cm,right=3cm,top=2.5cm,bottom=2cm} 
   \begin{landscape}
-  \pagestyle{empty} % Sin headers/footers estándar
+  \thispagestyle{empty} % Sin headers/footers estándar
   \sener@horizontalmodetrue % MODO HORIZONTAL GLOBAL
   
   % ANCHO EXCLUSIVO PARA MODO HORIZONTAL (Maximizado)
@@ -736,6 +738,8 @@
   \vfill
   \end{landscape}
   \restoregeometry
+  \setlength{\headwidth}{\textwidth} % Re-sincronizar ancho de encabezado
+  \fancyhfoffset[LE,RO]{0pt}
   \sener@horizontalmodefalse % DESACTIVAR MODO HORIZONTAL
   \sener@standardbgtrue % Reactivar fondo vertical global
   \clearpage % Asegurar que la siguiente página empiece limpia
