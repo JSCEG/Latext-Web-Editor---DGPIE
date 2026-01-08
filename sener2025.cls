@@ -226,6 +226,7 @@
   \renewcommand{\headrulewidth}{1pt}
   \renewcommand{\headrule}{\vspace{10pt}{\color{gobmxDorado}\hrule width\headwidth height\headrulewidth}}
   \renewcommand{\footrulewidth}{0pt}
+  \renewcommand{\footrule}{\vspace{-10pt}{\color{gobmxDorado}\hrule width\headwidth height 0pt}} % Asegurar 0pt
 }
 
 % Estilo de página para secciones simples (plain)
@@ -238,6 +239,7 @@
   \renewcommand{\headrulewidth}{1pt}
   \renewcommand{\headrule}{\vspace{-35pt}{\color{gobmxDorado}\hrule width\headwidth height\headrulewidth}}
   \renewcommand{\footrulewidth}{0pt}
+  \renewcommand{\footrule}{\vspace{-10pt}{\color{gobmxDorado}\hrule width\headwidth height 0pt}} % Asegurar 0pt
 }
 
 % Estilo vacío para portadas
@@ -606,18 +608,26 @@
 
   % Imagen específica para modo horizontal - reservando espacio dinámico
   \newcommand{\imagenHorizontal}[2]{%
-    % Calcular altura disponible: textheight menos espacio estimado para caption/fuente
-    % Margen base fijo de 4.5cm (seguro para maquetación)
-    % Se suma \sener@alturaExtra para hacer la imagen más alta hacia abajo (ocupando el espacio de las notas ausentes)
-    % Se resta adicionalmente el \sener@offsetTitulo si existe
-    \setlength{\alturaDisponible}{\dimexpr\textheight-4.5cm+\sener@alturaExtra-\sener@offsetTitulo\relax}%
-    % Eliminamos \begin{center}...\end{center} para que respete la alineación izquierda
-    % Usamos width=\linewidth explícitamente para forzar el ancho completo disponible (coincidente con líneas doradas)
-    % IMPORTANTE: Eliminamos 'keepaspectratio' para FORZAR que se estire al ancho completo, aunque se deforme un poco
-    % Si se prefiere recortar en lugar de deformar, habría que usar 'adjustbox' con 'min width=\linewidth'
-    % Aquí asumimos estiramiento ("estirarla al ancho de la línea dorada")
+    % 1. Definir reserva base para Caption y Fuente (2.2cm)
+    \def\sener@reserveBottom{2.2cm}
+    
+    % 2. Si hay notas al pie capturadas, aumentar la reserva (+1.2cm)
+    \ifx\sener@notasHorizontales\empty\else
+      \edef\sener@reserveBottom{\the\dimexpr\sener@reserveBottom+1.2cm\relax}
+    \fi
+
+    % 3. Calcular altura máxima disponible para la imagen
+    % Altura = textheight - ReservaInferior - OffsetTitulo
+    % (sener@offsetTitulo es 0pt si no hay título, o 3.0cm si lo hay)
+    \setlength{\alturaDisponible}{\dimexpr\textheight-\sener@reserveBottom-\sener@offsetTitulo\relax}%
+
+    % 4. Renderizar imagen
+    % Usamos width=\linewidth para ocupar todo el ancho.
+    % Eliminamos 'keepaspectratio' para FORZAR que se estire al ancho completo, aunque se deforme un poco.
+    % Esto asegura que la imagen llene el espacio horizontal reservado.
     \noindent\includegraphics[width=\linewidth,height=\alturaDisponible]{#1}%
-    % Crear un punto de anclaje invisible para el label sin usar caption
+    
+    % 5. Etiquetas y contadores
     \phantomsection%
     \addtocounter{figure}{1}%
     \def\@currentlabelname{Figura Horizontal}%
@@ -640,7 +650,8 @@
 
   \renewcommand{\sener@RenderHorizontalForeground}{%
     \begin{tikzpicture}[remember picture, overlay]
-        % Línea Dorada (Encabezado) - Visual Top
+        % Línea Dorada (Encabezado) - Visual Top - ELIMINADA POR REDUNDANCIA
+        % Esta línea causaba el problema de la raya vertical a la derecha en páginas de continuación
         \draw[gobmxDorado, line width=1pt] 
           ($(current page.south west) + (2.5cm, 2cm)$) -- ($(current page.north west) + (2.5cm, -2.5cm)$);
   
@@ -732,6 +743,7 @@
   \thispagestyle{fancy} % FORZAR estilo en la página actual (la nueva vertical)
   \pagestyle{fancy} % LUEGO restauramos el estilo vertical permanente
   \renewcommand{\footrulewidth}{0pt} % Asegurar que no haya línea extraña
+  \renewcommand{\headrulewidth}{1pt} % Restaurar ancho de línea de encabezado
   \global\sener@forcefootertrue % ACTIVAR PARCHE VISUAL PARA ESTA PÁGINA
 }
 
@@ -775,6 +787,7 @@
   \thispagestyle{fancy} % FORZAR estilo en la página actual (la nueva vertical)
   \pagestyle{fancy} % Forzar la restauración del estilo de página vertical (encabezado/pie)
   \renewcommand{\footrulewidth}{0pt}
+  \renewcommand{\headrulewidth}{1pt} % Restaurar ancho de línea de encabezado
   \global\sener@forcefootertrue % ACTIVAR PARCHE VISUAL PARA ESTA PÁGINA
 }
 
