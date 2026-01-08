@@ -258,6 +258,10 @@
 \newif\ifsener@horizontalmode
 \sener@horizontalmodefalse
 
+% Booleano para forzar el pie de página en primer plano (fix para transición H->V)
+\newif\ifsener@forcefooter
+\sener@forcefooterfalse
+
 % Declaración anticipada de comandos de renderizado horizontal
 \newcommand{\sener@RenderHorizontalBackground}{}
 \newcommand{\sener@RenderHorizontalForeground}{}
@@ -281,6 +285,29 @@
 \AddToShipoutPictureFG{%
   \ifsener@horizontalmode
     \sener@RenderHorizontalForeground
+  \else
+    \ifsener@forcefooter
+      \begin{tikzpicture}[remember picture, overlay]
+        % Definir ancho efectivo (Carta 21.59cm - 2.5cm izq - 2.5cm der = 16.59cm)
+        \pgfmathsetmacro{\miAncho}{\paperwidth-5cm} 
+        
+        \ifodd\value{page}
+          % IMPAR: Alineado a la derecha
+          % Ajuste vertical: 1.1cm desde el borde inferior para bajarlo un poco más (antes 1.2cm)
+          \node[anchor=south east, inner sep=0pt, text width=\miAncho pt] 
+            at ($(current page.south east) + (-2.5cm, 1.1cm)$) {
+              \makebox[\linewidth][r]{\scriptsize\textcolor{gobmxDorado}{\hrulefill}\ \textcolor{gobmxGuinda}{\DocumentoCorto}\quad\bfseries\thepage}
+            };
+        \else
+          % PAR: Alineado a la izquierda
+          \node[anchor=south west, inner sep=0pt, text width=\miAncho pt] 
+            at ($(current page.south west) + (2.5cm, 1.1cm)$) {
+              \makebox[\linewidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{gobmxGuinda}{\DocumentoCorto}\ \textcolor{gobmxDorado}{\hrulefill}}
+            };
+        \fi
+      \end{tikzpicture}
+      \global\sener@forcefooterfalse
+    \fi
   \fi
 }
 
@@ -704,6 +731,8 @@
   \clearpage % PRIMERO limpiamos la página horizontal saliente
   \thispagestyle{fancy} % FORZAR estilo en la página actual (la nueva vertical)
   \pagestyle{fancy} % LUEGO restauramos el estilo vertical permanente
+  \renewcommand{\footrulewidth}{0pt} % Asegurar que no haya línea extraña
+  \global\sener@forcefootertrue % ACTIVAR PARCHE VISUAL PARA ESTA PÁGINA
 }
 
 % Entorno para Tabla Horizontal (Página completa, márgenes ajustados)
@@ -745,6 +774,8 @@
   \clearpage % Asegurar que la siguiente página empiece limpia
   \thispagestyle{fancy} % FORZAR estilo en la página actual (la nueva vertical)
   \pagestyle{fancy} % Forzar la restauración del estilo de página vertical (encabezado/pie)
+  \renewcommand{\footrulewidth}{0pt}
+  \global\sener@forcefootertrue % ACTIVAR PARCHE VISUAL PARA ESTA PÁGINA
 }
 
 % ============================================================================

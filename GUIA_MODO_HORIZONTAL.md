@@ -206,6 +206,21 @@ Cuando se usa `pdflscape`, la página rota visualmente en el PDF, pero el sistem
 | `.south east` | **Esquina Inferior Izquierda** | - |
 | `.north east` | **Esquina Inferior Derecha** | **Número de Página** |
 
+---
+
+## 🛠️ **Solución de Transición (Fix de Página Vertical)**
+
+**Problema**: Al salir del modo horizontal (`figuraespecial` o `tablaespecial`) y volver a vertical, la primera página vertical a veces pierde el pie de página (número y línea dorada) porque el fondo de página (`img/foja_blanca.jpg`) se dibuja **encima** de los elementos estándar de LaTeX en ese ciclo de renderizado específico.
+
+**Solución Implementada (Automática)**:
+El sistema activa automáticamente un "parche visual" (`\sener@forcefootertrue`) justo en la transición. Esto fuerza al motor gráfico a dibujar una réplica exacta del pie de página en la capa superior (**Foreground**), garantizando su visibilidad.
+
+**Detalles Técnicos:**
+- **Posición Vertical**: `1.1cm` desde el borde inferior físico (ajustado para no chocar con la cinta dorada del fondo).
+- **Mecanismo**: `\AddToShipoutPictureFG` con lógica condicional que se autodestruye después de usarse una vez (`\global\sener@forcefooterfalse`).
+
+---
+
 ### **Configuración Final Implementada:**
 
 1.  **Línea Dorada (Encabezado):**
