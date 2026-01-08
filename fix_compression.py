@@ -61,20 +61,20 @@ def restore_and_recompress():
                     
                     # Estrategia según tamaño original
                     if size_mb > 10:  # Imágenes muy grandes
-                        quality = 85
-                        max_width = 1800
+                        quality = 90
+                        max_width = 3000
                         print(f"   🔥 Imagen muy grande - Compresión agresiva")
                     elif size_mb > 5:  # Imágenes grandes
-                        quality = 88
-                        max_width = 2000
+                        quality = 92
+                        max_width = 3200
                         print(f"   📊 Imagen grande - Compresión moderada")
                     elif size_mb > 1:  # Imágenes medianas
-                        quality = 90
-                        max_width = 2400
+                        quality = 95
+                        max_width = 3840
                         print(f"   📈 Imagen mediana - Compresión suave")
                     else:  # Imágenes pequeñas
-                        quality = 92
-                        max_width = 3000
+                        quality = 98
+                        max_width = 4000
                         print(f"   📋 Imagen pequeña - Compresión mínima")
                     
                     # Redimensionar si es necesario

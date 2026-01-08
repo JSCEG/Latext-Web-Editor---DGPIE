@@ -152,9 +152,9 @@ def main():
         print("❌ No se encontró la carpeta 'img'")
         return
     
-    # Primer intento con calidad alta (85)
-    print("\n🔄 Iniciando compresión con calidad alta (85%)...")
-    compress_images_in_folder(img_folder, backup_folder, quality=85)
+    # Primer intento con calidad alta (92)
+    print("\n🔄 Iniciando compresión con calidad alta (92%)...")
+    compress_images_in_folder(img_folder, backup_folder, quality=92)
     
     # Calcular tamaño total actual
     total_size = sum(get_file_size_mb(f) for f in img_folder.rglob('*') if f.is_file())

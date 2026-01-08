@@ -35,15 +35,15 @@ def compress_all_images():
                     if img.mode != 'RGB':
                         img = img.convert('RGB')
                     
-                    # Redimensionar si es muy grande (máximo 1200px de ancho)
-                    if img.width > 1200:
-                        ratio = 1200 / img.width
+                    # Redimensionar si es muy grande (máximo 3000px de ancho)
+                    if img.width > 3000:
+                        ratio = 3000 / img.width
                         new_height = int(img.height * ratio)
-                        img = img.resize((1200, new_height), Image.Resampling.LANCZOS)
+                        img = img.resize((3000, new_height), Image.Resampling.LANCZOS)
                     
                     # Guardar como JPG con buena calidad
                     new_path = file_path.with_suffix('.jpg')
-                    img.save(new_path, 'JPEG', quality=80, optimize=True)
+                    img.save(new_path, 'JPEG', quality=90, optimize=True)
                     
                     # Eliminar original si era PNG
                     if file_path.suffix.lower() == '.png' and new_path != file_path:

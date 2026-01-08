@@ -30,7 +30,7 @@ Para tablas:
     - `bottom=2.0cm` → **Visual Left** (Alineado con inicio de líneas doradas)
 - Fondo institucional: `img/hojahorizontal.jpg` rotado 90°
 - Línea dorada institucional posicionada manualmente con TikZ
-- Sin headers/footers (`\thispagestyle{empty}`)
+- Sin headers/footers estándar (importante en multipágina): `\thispagestyle{empty}` + `\pagestyle{empty}`
 
 ### **2. Variable de Ancho Exclusiva**
 ```latex
@@ -243,6 +243,21 @@ El sistema activa automáticamente un "parche visual" (`\sener@forcefootertrue`)
     *   Inicio Visual Izquierdo: `2cm` del borde `south east` (**Configuración Ganadora**).
     *   Fin Visual Derecho: `2.5cm` del borde `south west` (Margen izquierdo visual).
     *   **Ancho**: `0.4pt` (Homologado con modo vertical).
+
+---
+
+## 🧩 **Bug conocido: línea dorada vertical a la derecha en tablas grandes**
+
+**Síntoma**
+- En `tablaespecial` con tablas multipágina (por ejemplo usando `xltabular`), la **segunda y siguientes páginas horizontales** muestran una línea dorada vertical a la derecha de grosor ~`1pt`.
+
+**Causa**
+- El modo horizontal se renderiza con `\begin{landscape}` (pdflscape), pero `\thispagestyle{empty}` solo afecta a **la primera página**.
+- Cuando `xltabular` salta de página, LaTeX vuelve a aplicar el `\pagestyle{fancy}` global del documento.
+- En SENER, el `fancyhdr` tiene `\headrulewidth=1pt`, así que esa línea de encabezado se dibuja en las páginas siguientes y, al estar la página rotada, se percibe como una línea vertical a la derecha.
+
+**Solución implementada**
+- Dentro de `figuraespecial` y `tablaespecial` se fuerza `\pagestyle{empty}` además de `\thispagestyle{empty}`, para que **todas** las páginas generadas dentro del bloque horizontal queden sin encabezado/pie estándar, dejando solo los elementos manuales (fondo y líneas TikZ).
 
 ## 📋 **Orden de Elementos**
 ```latex

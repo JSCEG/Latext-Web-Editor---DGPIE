@@ -213,6 +213,9 @@
 % 5. CONFIGURACIÓN DE PÁGINA (ENCABEZADOS, PIES Y FONDO)
 % ============================================================================
 
+\newdimen\sener@verticalfooterraise
+\sener@verticalfooterraise=-1.5mm
+
 % Estilo de página estandarizado (fancy)
 \fancypagestyle{fancy}{
   \fancyhf{}
@@ -220,8 +223,8 @@
   \fancyhead[R]{}
   
   % Pie de página alternado (Par a la izquierda, Impar a la derecha)
-  \fancyfoot[LE]{\makebox[\textwidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{gobmxGuinda}{\DocumentoCorto}\ \textcolor{gobmxDorado}{\hrulefill}}}
-  \fancyfoot[RO]{\makebox[\textwidth][r]{\scriptsize\textcolor{gobmxDorado}{\hrulefill}\ \textcolor{gobmxGuinda}{\DocumentoCorto}\quad\bfseries\thepage}}
+  \fancyfoot[LE]{\raisebox{\sener@verticalfooterraise}{\makebox[\textwidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{gobmxGuinda}{\DocumentoCorto}\ \textcolor{gobmxDorado}{\hrulefill}}}}
+  \fancyfoot[RO]{\raisebox{\sener@verticalfooterraise}{\makebox[\textwidth][r]{\scriptsize\textcolor{gobmxDorado}{\hrulefill}\ \textcolor{gobmxGuinda}{\DocumentoCorto}\quad\bfseries\thepage}}}
   
   \renewcommand{\headrulewidth}{1pt}
   \renewcommand{\headrule}{\vspace{10pt}{\color{gobmxDorado}\hrule width\headwidth height\headrulewidth}}
@@ -234,8 +237,8 @@
   \fancyhf{}
   \fancyhead[L]{}
   \fancyhead[R]{}
-  \fancyfoot[LE]{\makebox[\headwidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{gobmxGuinda}{\DocumentoCorto}\ \textcolor{gobmxDorado}{\hrulefill}}}
-  \fancyfoot[RO]{\makebox[\headwidth][r]{\scriptsize\textcolor{gobmxDorado}{\hrulefill}\ \textcolor{gobmxGuinda}{\DocumentoCorto}\quad\bfseries\thepage}}
+  \fancyfoot[LE]{\raisebox{\sener@verticalfooterraise}{\makebox[\headwidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{gobmxGuinda}{\DocumentoCorto}\ \textcolor{gobmxDorado}{\hrulefill}}}}
+  \fancyfoot[RO]{\raisebox{\sener@verticalfooterraise}{\makebox[\headwidth][r]{\scriptsize\textcolor{gobmxDorado}{\hrulefill}\ \textcolor{gobmxGuinda}{\DocumentoCorto}\quad\bfseries\thepage}}}
   \renewcommand{\headrulewidth}{1pt}
   \renewcommand{\headrule}{\vspace{-35pt}{\color{gobmxDorado}\hrule width\headwidth height\headrulewidth}}
   \renewcommand{\footrulewidth}{0pt}
@@ -264,9 +267,22 @@
 \newif\ifsener@forcefooter
 \sener@forcefooterfalse
 
+% Booleano para dibujar la línea dorada solo en la primera página horizontal
+\newif\ifsener@hfirstpage
+\sener@hfirstpagefalse
+
 % Declaración anticipada de comandos de renderizado horizontal
 \newcommand{\sener@RenderHorizontalBackground}{}
 \newcommand{\sener@RenderHorizontalForeground}{}
+
+\newdimen\sener@bgbleed
+\sener@bgbleed=1.5mm
+\newcommand{\sener@FullPageGraphic}[1]{%
+  \hspace*{-\sener@bgbleed}%
+  \raisebox{-\sener@bgbleed}{%
+    \includegraphics[width=\dimexpr\paperwidth+2\sener@bgbleed\relax,height=\dimexpr\paperheight+2\sener@bgbleed\relax]{#1}%
+  }%
+}
 
 \AddToShipoutPictureBG{%
   \ifsener@horizontalmode
@@ -276,7 +292,7 @@
       \IfFileExists{img/foja_blanca.jpg}{%
         \AtPageLowerLeft{%
           \BeginAccSupp{method=escape,Alt={Membrete institucional de fondo}}%
-          \includegraphics[width=\paperwidth,height=\paperheight]{img/foja_blanca.jpg}%
+          \sener@FullPageGraphic{img/foja_blanca.jpg}%
           \EndAccSupp{}%
         }%
       }{}%
@@ -297,13 +313,13 @@
           % IMPAR: Alineado a la derecha
           % Ajuste vertical: 1.1cm desde el borde inferior para bajarlo un poco más (antes 1.2cm)
           \node[anchor=south east, inner sep=0pt, text width=\miAncho pt] 
-            at ($(current page.south east) + (-2.5cm, 1.1cm)$) {
+            at ($(current page.south east) + (-2.5cm, \dimexpr1.1cm+\sener@verticalfooterraise\relax)$) {
               \makebox[\linewidth][r]{\scriptsize\textcolor{gobmxDorado}{\hrulefill}\ \textcolor{gobmxGuinda}{\DocumentoCorto}\quad\bfseries\thepage}
             };
         \else
           % PAR: Alineado a la izquierda
           \node[anchor=south west, inner sep=0pt, text width=\miAncho pt] 
-            at ($(current page.south west) + (2.5cm, 1.1cm)$) {
+            at ($(current page.south west) + (2.5cm, \dimexpr1.1cm+\sener@verticalfooterraise\relax)$) {
               \makebox[\linewidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{gobmxGuinda}{\DocumentoCorto}\ \textcolor{gobmxDorado}{\hrulefill}}
             };
         \fi
@@ -650,10 +666,13 @@
 
   \renewcommand{\sener@RenderHorizontalForeground}{%
     \begin{tikzpicture}[remember picture, overlay]
-        % Línea Dorada (Encabezado) - Visual Top - ELIMINADA POR REDUNDANCIA
-        % Esta línea causaba el problema de la raya vertical a la derecha en páginas de continuación
-        \draw[gobmxDorado, line width=1pt] 
-          ($(current page.south west) + (2.5cm, 2cm)$) -- ($(current page.north west) + (2.5cm, -2.5cm)$);
+        % Línea Dorada (Encabezado) - Visual Top
+        % Solo se dibuja en la PRIMERA página de la secuencia horizontal
+        \ifsener@hfirstpage
+          \draw[gobmxDorado, line width=1pt] 
+            ($(current page.south west) + (2.5cm, 2cm)$) -- ($(current page.north west) + (2.5cm, -2.5cm)$);
+         % \global\sener@hfirstpagefalse % Apagar para las siguientes páginas
+        \fi
   
         % Lógica alternada para página Par/Impar en modo horizontal
         \ifodd\value{page}
@@ -707,6 +726,8 @@
   % Redefinir footnote para capturar en lugar de imprimir
   \let\oldfootnote\footnote
   \renewcommand{\footnote}[1]{\sener@capturarNotaHorizontal{##1}}
+  
+  \global\sener@hfirstpagetrue % Activar dibujo de línea dorada en la primera página
 
   % Márgenes optimizados para modo horizontal:
   % landscape geometry mapping:
@@ -715,14 +736,15 @@
   %   top    -> Visual Right  (Margen derecho visual)
   %   bottom -> Visual Left   (Margen izquierdo visual)
   %
-  % Configuración solicitada:
-  %   Visual Left (bottom) = 2.5cm (Aumentado para subir nota al pie y evitar cinta)
-  %   Visual Right (top)   = 2.5cm (Alineado con fin de línea dorada superior "Ganadora")
-  %   Visual Top (right)   = 3cm (Espacio seguro para encabezado)
-  %   Visual Bottom (left) = 2.5cm (Espacio para pie de página y notas)
-  \newgeometry{left=2.5cm,right=3cm,top=2.5cm,bottom=2cm} 
+  % Configuración solicitada en GUIA_MODO_HORIZONTAL.md:
+  %   Visual Top (right en guía, left en código) = 3cm (Espacio seguro para encabezado)
+  %   Visual Bottom (left en guía, right en código) = 2.5cm (Espacio para pie de página)
+  %   Visual Right (top)   = 2.5cm (Alineado con fin de línea dorada superior)
+  %   Visual Left (bottom) = 2.0cm (Alineado con inicio de líneas doradas)
+  \newgeometry{left=3cm,right=2.5cm,top=2.5cm,bottom=2cm} 
   \begin{landscape}
   \thispagestyle{empty} % Sin headers/footers estándar
+  \pagestyle{empty}
   \sener@horizontalmodetrue % MODO HORIZONTAL GLOBAL
   
   % ANCHO EXCLUSIVO PARA MODO HORIZONTAL (Maximizado)
@@ -758,15 +780,17 @@
   \let\oldfootnote\footnote
   \renewcommand{\footnote}[1]{\sener@capturarNotaHorizontal{##1}}
 
-  % Margen base idéntico a figuraespecial para consistencia visual
-  % landscape geometry mapping:
-  %   left   -> Visual Bottom (Espacio para pie de página)
-  %   right  -> Visual Top    (Espacio para encabezado)
-  %   top    -> Visual Right  (Margen derecho visual)
-  %   bottom -> Visual Left   (Margen izquierdo visual)
-  \newgeometry{left=2.5cm,right=3cm,top=2.5cm,bottom=2cm} 
+  \global\sener@hfirstpagetrue % Activar dibujo de línea dorada en la primera página
+
+  % Configuración solicitada en GUIA_MODO_HORIZONTAL.md:
+  %   Visual Top (right en guía, left en código) = 3cm (Espacio seguro para encabezado)
+  %   Visual Bottom (left en guía, right en código) = 2.5cm (Espacio para pie de página)
+  %   Visual Right (top)   = 2.5cm (Alineado con fin de línea dorada superior)
+  %   Visual Left (bottom) = 2.0cm (Alineado con inicio de líneas doradas)
+  \newgeometry{left=3cm,right=2.5cm,top=2.5cm,bottom=2cm} 
   \begin{landscape}
   \thispagestyle{empty} % Sin headers/footers estándar
+  \pagestyle{empty}
   \sener@horizontalmodetrue % MODO HORIZONTAL GLOBAL
   
   % ANCHO EXCLUSIVO PARA MODO HORIZONTAL (Maximizado)
@@ -948,7 +972,7 @@
   \begin{titlepage}
     \thispagestyle{portada}
     \IfFileExists{img/portada.png}{%
-      \AddToShipoutPictureBG*{ \AtPageLowerLeft{ \includegraphics[width=\paperwidth,height=\paperheight]{img/portada.png} } }%
+      \AddToShipoutPictureBG*{ \AtPageLowerLeft{ \sener@FullPageGraphic{img/portada.png} } }%
     }{}
     \begin{center}
       \vspace*{3.5cm}
@@ -967,7 +991,7 @@
   \begin{titlepage}
     \thispagestyle{portada}
     \IfFileExists{#1}{%
-      \AddToShipoutPictureBG*{ \AtPageLowerLeft{ \includegraphics[width=\paperwidth,height=\paperheight]{#1} } }%
+      \AddToShipoutPictureBG*{ \AtPageLowerLeft{ \sener@FullPageGraphic{#1} } }%
     }{ \AddToShipoutPictureBG*{ \AtPageLowerLeft{ \color{gobmxGuinda}\rule{\paperwidth}{\paperheight} } } }
     \vfill\null
   \end{titlepage}
@@ -979,7 +1003,7 @@
   \clearpage\thispagestyle{empty}
   \begingroup\color{white}
     \IfFileExists{img/fondo_guinda.png}{%
-      \AddToShipoutPictureBG*{ \AtPageLowerLeft{ \includegraphics[width=\paperwidth,height=\paperheight]{img/fondo_guinda.png} } }%
+      \AddToShipoutPictureBG*{ \AtPageLowerLeft{ \sener@FullPageGraphic{img/fondo_guinda.png} } }%
     }{}
     \vspace*{\fill}
     \begin{center}
@@ -1005,7 +1029,7 @@
   \begin{center} \color{gobmxGris} {\small \textcolor{gobmxGris}{\@date} } \end{center}
   \vspace*{-1.5cm}\clearpage
   \thispagestyle{empty}
-  \IfFileExists{#1}{ \AddToShipoutPictureBG*{ \AtPageLowerLeft{ \includegraphics[width=\paperwidth,height=\paperheight]{#1} } } }{}
+  \IfFileExists{#1}{ \AddToShipoutPictureBG*{ \AtPageLowerLeft{ \sener@FullPageGraphic{#1} } } }{}
   \null\clearpage
 }
 
