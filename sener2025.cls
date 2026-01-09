@@ -217,14 +217,17 @@
 \sener@verticalfooterraise=-1.5mm
 
 % Estilo de página estandarizado (fancy)
+\newcommand{\senerhrulefill}{\leavevmode\leaders\hrule height 3.7pt depth -2.7pt \hfill\kern0pt}
+
 \fancypagestyle{fancy}{
   \fancyhf{}
   \fancyhead[L]{}
   \fancyhead[R]{}
   
   % Pie de página alternado (Par a la izquierda, Impar a la derecha)
-  \fancyfoot[LE]{\raisebox{\sener@verticalfooterraise}{\makebox[\textwidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{gobmxGuinda}{\DocumentoCorto}\ \textcolor{gobmxDorado}{\hrulefill}}}}
-  \fancyfoot[RO]{\raisebox{\sener@verticalfooterraise}{\makebox[\textwidth][r]{\scriptsize\textcolor{gobmxDorado}{\hrulefill}\ \textcolor{gobmxGuinda}{\DocumentoCorto}\quad\bfseries\thepage}}}
+  % Pie de página alternado (Par a la izquierda, Impar a la derecha)
+  \fancyfoot[LE]{\raisebox{\sener@verticalfooterraise}{\makebox[\textwidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{senerGuindaOscuro}{\footnotesize\patriafont\DocumentoCorto}\ \textcolor{gobmxDorado}{\senerhrulefill}}}}
+  \fancyfoot[RO]{\raisebox{\sener@verticalfooterraise}{\makebox[\textwidth][r]{\scriptsize\textcolor{gobmxDorado}{\senerhrulefill}\ \textcolor{senerGuindaOscuro}{\footnotesize\patriafont\DocumentoCorto}\quad\bfseries\thepage}}}
   
   \renewcommand{\headrulewidth}{1pt}
   \renewcommand{\headrule}{\vspace{10pt}{\color{gobmxDorado}\hrule width\headwidth height\headrulewidth}}
@@ -237,8 +240,8 @@
   \fancyhf{}
   \fancyhead[L]{}
   \fancyhead[R]{}
-  \fancyfoot[LE]{\raisebox{\sener@verticalfooterraise}{\makebox[\headwidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{gobmxGuinda}{\DocumentoCorto}\ \textcolor{gobmxDorado}{\hrulefill}}}}
-  \fancyfoot[RO]{\raisebox{\sener@verticalfooterraise}{\makebox[\headwidth][r]{\scriptsize\textcolor{gobmxDorado}{\hrulefill}\ \textcolor{gobmxGuinda}{\DocumentoCorto}\quad\bfseries\thepage}}}
+  \fancyfoot[LE]{\raisebox{\sener@verticalfooterraise}{\makebox[\headwidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{senerGuindaOscuro}{\footnotesize\patriafont\DocumentoCorto}\ \textcolor{gobmxDorado}{\senerhrulefill}}}}
+  \fancyfoot[RO]{\raisebox{\sener@verticalfooterraise}{\makebox[\headwidth][r]{\scriptsize\textcolor{gobmxDorado}{\senerhrulefill}\ \textcolor{senerGuindaOscuro}{\footnotesize\patriafont\DocumentoCorto}\quad\bfseries\thepage}}}
   \renewcommand{\headrulewidth}{1pt}
   \renewcommand{\headrule}{\vspace{-35pt}{\color{gobmxDorado}\hrule width\headwidth height\headrulewidth}}
   \renewcommand{\footrulewidth}{0pt}
@@ -289,13 +292,7 @@
     \sener@RenderHorizontalBackground
   \else
     \ifsener@standardbg
-      \IfFileExists{img/foja_blanca.jpg}{%
-        \AtPageLowerLeft{%
-          \BeginAccSupp{method=escape,Alt={Membrete institucional de fondo}}%
-          \sener@FullPageGraphic{img/foja_blanca.jpg}%
-          \EndAccSupp{}%
-        }%
-      }{}%
+      % Fondo vertical desactivado
     \fi
   \fi
 }
@@ -314,13 +311,13 @@
           % Ajuste vertical: 1.1cm desde el borde inferior para bajarlo un poco más (antes 1.2cm)
           \node[anchor=south east, inner sep=0pt, text width=\miAncho pt] 
             at ($(current page.south east) + (-2.5cm, \dimexpr1.1cm+\sener@verticalfooterraise\relax)$) {
-              \makebox[\linewidth][r]{\scriptsize\textcolor{gobmxDorado}{\hrulefill}\ \textcolor{gobmxGuinda}{\DocumentoCorto}\quad\bfseries\thepage}
+              \makebox[\linewidth][r]{\scriptsize\textcolor{gobmxDorado}{\senerhrulefill}\ \textcolor{senerGuindaOscuro}{\footnotesize\patriafont\DocumentoCorto}\quad\bfseries\thepage}
             };
         \else
           % PAR: Alineado a la izquierda
           \node[anchor=south west, inner sep=0pt, text width=\miAncho pt] 
             at ($(current page.south west) + (2.5cm, \dimexpr1.1cm+\sener@verticalfooterraise\relax)$) {
-              \makebox[\linewidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{gobmxGuinda}{\DocumentoCorto}\ \textcolor{gobmxDorado}{\hrulefill}}
+              \makebox[\linewidth][l]{\scriptsize\bfseries\thepage\quad\textcolor{senerGuindaOscuro}{\footnotesize\patriafont\DocumentoCorto}\ \textcolor{gobmxDorado}{\senerhrulefill}}
             };
         \fi
       \end{tikzpicture}
@@ -655,13 +652,7 @@
   % ============================================================================
   
   \renewcommand{\sener@RenderHorizontalBackground}{%
-    \IfFileExists{img/hojahorizontal.jpg}{%
-       \AtPageCenter{%
-         \makebox(0,0){%
-           \includegraphics[width=\paperheight,height=\paperwidth,angle=90]{img/hojahorizontal.jpg}%
-         }%
-       }%
-    }{}%
+    % Fondo horizontal desactivado
   }
 
   \renewcommand{\sener@RenderHorizontalForeground}{%
@@ -682,11 +673,11 @@
             at ($(current page.north east) + (-1.3cm, -2.5cm)$) {\thepage};
              
           % Nombre Corto del Documento (A la izquierda del número)
-          \node[anchor=east, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
+          \node[anchor=east, rotate=90, font=\footnotesize\patriafont, color=senerGuindaOscuro, inner sep=0pt] (tituloH)
             at ($(current page.north east) + (-1.3cm, -3.2cm)$) {\DocumentoCorto};
   
           % Línea de Pie de Página (Hacia la izquierda)
-          \draw[gobmxDorado, line width=0.4pt] 
+          \draw[gobmxDorado, line width=1pt] 
             ($(tituloH.west) + (0, -0.2cm)$) -- ($(current page.south east) + (-1.3cm, 2cm)$);
             
         \else
@@ -696,12 +687,12 @@
             at ($(current page.south east) + (-1.3cm, 2.5cm)$) {\thepage};
             
           % Nombre Corto del Documento (A la derecha del número visualmente)
-          \node[anchor=west, rotate=90, font=\scriptsize\sffamily, color=gobmxGuinda, inner sep=0pt] (tituloH)
+          \node[anchor=west, rotate=90, font=\footnotesize\patriafont, color=senerGuindaOscuro, inner sep=0pt] (tituloH)
             at ($(current page.south east) + (-1.3cm, 3.2cm)$) {\DocumentoCorto};
             
           % Línea de Pie de Página (Hacia la derecha)
           % Desde el final del título (Visual Right end -> east anchor rotated) hasta margen derecho visual
-          \draw[gobmxDorado, line width=0.4pt] 
+          \draw[gobmxDorado, line width=1pt] 
             ($(tituloH.east) + (0, 0.2cm)$) -- ($(current page.north east) + (-1.3cm, -2.5cm)$);
         \fi
 
