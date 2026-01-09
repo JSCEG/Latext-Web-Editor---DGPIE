@@ -27,7 +27,7 @@
   right=2.5cm,
   top=3.5cm,
   bottom=3.5cm,
-  headheight=45pt, % Ajustado para encabezados con logo
+  headheight=2.2cm, % Ajustado para encabezados con logo grande
   headsep=1cm,
   footskip=2.3cm
 ]{geometry}
@@ -222,6 +222,7 @@
 \fancypagestyle{fancy}{
   \fancyhf{}
   \fancyhead[L]{}
+  \fancyhead[C]{\includegraphics[height=2.0cm]{img/logo_gob.png}}
   \fancyhead[R]{}
   
   % Pie de página alternado (Par a la izquierda, Impar a la derecha)
@@ -662,6 +663,10 @@
         \ifsener@hfirstpage
           \draw[gobmxDorado, line width=1pt] 
             ($(current page.south west) + (2.5cm, 2cm)$) -- ($(current page.north west) + (2.5cm, -2.5cm)$);
+          \node[anchor=center, rotate=90, inner sep=0pt] 
+            at ($(current page.west) + (1.25cm, 0)$) {
+              \includegraphics[height=2.0cm]{img/logo_gob.png}
+            };
          % \global\sener@hfirstpagefalse % Apagar para las siguientes páginas
         \fi
   
