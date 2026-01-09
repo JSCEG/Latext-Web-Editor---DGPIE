@@ -375,8 +375,8 @@
 \RequirePackage{subcaption}
 
 % Estilos de fuente para captions
-\DeclareCaptionFont{senerTableFont}{\patriafont\bfseries\fontsize{12pt}{14pt}\selectfont}
-\DeclareCaptionFont{senerDescFont}{\patriafont\bfseries\fontsize{16pt}{19pt}\selectfont\color{gobmxGuinda}}
+\DeclareCaptionFont{senerTableFont}{\patriafont\bfseries\fontsize{13pt}{16pt}\selectfont}
+\DeclareCaptionFont{senerDescFont}{\patriafont\bfseries\fontsize{17pt}{20pt}\selectfont\color{gobmxGuinda}}
 
 % Formato de lista vacío para suprimir números en LOF y LOT
 \DeclareCaptionListFormat{senerEmpty}{}
@@ -594,7 +594,7 @@
     \begin{center}%
     \parbox{\anchoHorizontal}{%
       \raggedright%
-      {\patriafont\fontsize{10pt}{11pt}\selectfont\color{gobmxGuinda}#1}%
+      {\patriafont\fontsize{14pt}{17pt}\selectfont\color{gobmxGuinda}#1}%
     }%
     \end{center}%
     \vspace{0.05cm}% espacio ultra pequeño después del caption
@@ -1114,9 +1114,10 @@
 \newcommand{\entradaSigla}[2]{\par\noindent{\notosanssmall\textbf{#1} -- #2}\par}
 
 % --- Listas personalizadas (Compactas) ---
-\setlist{noitemsep, topsep=0.15em, parsep=0pt, partopsep=0pt, leftmargin=*}
-\setlist[itemize,1]{label=\textbullet, leftmargin=*}
-\setlist[itemize,2]{label=--, leftmargin=2em}
+% --- Listas personalizadas (Compactas) ---
+\setlist{noitemsep, topsep=0.15em, parsep=0pt, partopsep=0pt}
+\setlist[itemize,1]{label=\textbullet, leftmargin=2.5em, labelsep=0.5em}
+\setlist[itemize,2]{label=--, leftmargin=2em, labelsep=0.5em}
 
 % Final de la clase
 \endinput

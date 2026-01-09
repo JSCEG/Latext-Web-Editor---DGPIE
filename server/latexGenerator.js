@@ -139,11 +139,15 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     const agradecimientosRaw = datosDoc['Agradecimientos'] || datosDoc['Agradecimiento'] || datosDoc['Acknowledgements'];
     if (agradecimientosRaw && agradecimientosRaw.toString().trim()) {
         console.log('Procesando Agradecimientos...');
+        // HOTFIX: Unir líneas rotas específicas de (CONADESUCA) que rompen la indentación
+        const agradecimientosClean = agradecimientosRaw.toString()
+            .replace(/Azúcar\s*\n\s*\(CONADESUCA\)/gi, 'Azúcar (CONADESUCA)');
+
         tex += `\\clearpage\n`;
         tex += `\\begin{center}\n`;
         tex += `{\\Large\\patriafont\\bfseries\\color{gobmxGuinda}Agradecimientos}\\\\[1cm]\n`;
         tex += `\\end{center}\n\n`;
-        tex += `${procesarContenido(agradecimientosRaw, figurasById, tablasById)}\n\n`;
+        tex += `${procesarContenido(agradecimientosClean, figurasById, tablasById)}\n\n`;
     }
 
     // --- Presentation ---
@@ -1006,7 +1010,7 @@ function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla, esHorizontal = 
 }
 
 function generarGlosario(glosario) {
-    let tex = `\\section*{Glosario}\n\\phantomsection\n\\addcontentsline{toc}{section}{Glosario}\n\n`;
+    let tex = `\\clearpage\n\\section*{Glosario}\n\\phantomsection\n\\addcontentsline{toc}{section}{Glosario}\n\n`;
     glosario.sort((a, b) => (a['Termino'] || '').toString().toLowerCase().localeCompare((b['Termino'] || '').toString().toLowerCase()));
     glosario.forEach(entrada => {
         const termino = entrada['Termino'] || '';
@@ -1018,7 +1022,7 @@ function generarGlosario(glosario) {
 }
 
 function generarSiglas(siglas) {
-    let tex = `\\section*{Siglas y Acrónimos}\n\\phantomsection\n\\addcontentsline{toc}{section}{Siglas y Acrónimos}\n\n`;
+    let tex = `\\clearpage\n\\section*{Siglas y Acrónimos}\n\\phantomsection\n\\addcontentsline{toc}{section}{Siglas y Acrónimos}\n\n`;
     siglas.sort((a, b) => (a['Sigla'] || '').toString().toLowerCase().localeCompare((b['Sigla'] || '').toString().toLowerCase()));
     siglas.forEach(entrada => {
         const sigla = entrada['Sigla'] || '';
