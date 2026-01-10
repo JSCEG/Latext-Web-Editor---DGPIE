@@ -1,4 +1,4 @@
-%!TEX TS-program = xelatex
+%!TEX TS-program = xelatex uiltimo cmabio 09/01/2026
 % ============================================================================
 % CLASE: sener2025.cls
 % PROPÓSITO: Plantilla institucional SENER - Versión completa 2025
