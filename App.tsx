@@ -2,23 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { Dashboard, type DocumentCard } from './components/Dashboard';
 import { SheetEditor } from './components/SheetEditor';
+import { WorkbookDashboard } from './components/WorkbookDashboard';
 import { Spreadsheet, AppView } from './types';
-import { createSpreadsheet, fetchSpreadsheet, fetchSpreadsheetProperties, appendRow } from './services/sheetsService';
+import { createSpreadsheet, fetchSpreadsheet, fetchSpreadsheetProperties, appendRow, fetchCollaborators, fetchLastModifiedTime, copySpreadsheet, deleteFile, type Collaborator } from './services/sheetsService';
 import { Button } from './components/Button';
-import { ShieldAlert, HelpCircle, PlayCircle, HelpCircle as HelpIcon, LogOut, X, User, ChevronDown, Settings } from 'lucide-react';
-import { GOOGLE_SCOPES } from './config';
+import { Modal } from './components/Modal';
+import { ShieldAlert, PlayCircle, LogOut, X, User, ChevronDown, Settings, Trash2 } from 'lucide-react';
+import { GOOGLE_SCOPES, TEMPLATE_SPREADSHEET_ID } from './config';
 import type { NewDocumentData } from './components/Dashboard';
 import { socketService } from './services/socketService';
 import { UserActivityTracker } from './components/UserActivityTracker';
+import { authorizedUsers } from './auth';
 
 const AVAILABLE_SPREADSHEETS = [
   { id: '1HpvaN82xj75IhTg0ZyeGOBWluivCQdQh9OuDL-nnGgI', name: 'Documentos Principales', description: 'Balance Nacional de Energía y documentos centrales' },
   { id: '1B_WUmGxy6cg-DOz_JbxX7W37VQ_vuN97pkka84V5-qg', name: 'Nuevos Documentos', description: 'Espacio para nuevos reportes y análisis' },
-  { id: '1yZtmdCe2VvV-RXtmEhbg-nFhbz-x280K1w8bp8u-fh4', name: 'Documentos Adicionales', description: 'Repositorio extra de documentos' }
+  { id: '1yZtmdCe2VvV-RXtmEhbg-nFhbz-x280K1w8bp8u-fh4', name: 'Documentos Adicionales', description: 'Repositorio extra de documentos' },
+  { id: '1lDm596Zmvdlqf-KGq0Iooa1Y5N2UjHhTb-Wr9IV06iY', name: 'Recuperando nombre...', description: 'El nombre del documento se actualizará automáticamente una vez conectado.' }
 ];
 
 const App: React.FC = () => {
   const [token, setToken] = useState<string>('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [selectedSpreadsheetId, setSelectedSpreadsheetId] = useState<string | null>(null);
@@ -28,14 +34,29 @@ const App: React.FC = () => {
     const cached = localStorage.getItem('spreadsheet_metadata_cache');
     return cached ? JSON.parse(cached) : {};
   });
+  const [collaboratorsMap, setCollaboratorsMap] = useState<Record<string, Collaborator[]>>({});
+  const [lastModifiedMap, setLastModifiedMap] = useState<Record<string, string>>({});
   const [dashboardDocuments, setDashboardDocuments] = useState<DocumentCard[]>([]);
+  const [customSpreadsheets, setCustomSpreadsheets] = useState<{ id: string, name: string, description: string }[]>(() => {
+    const saved = localStorage.getItem('custom_spreadsheets');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [initialDocId, setInitialDocId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showHelp, setShowHelp] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; photo?: string } | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = React.useRef<HTMLDivElement>(null);
+
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Modals State
+  const [isCreateModalOpen, setCreateModalOpen] = useState(false);
+  const [newDocName, setNewDocName] = useState('Nuevo Documento');
+
+  const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string, name: string } | null>(null);
+
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -59,6 +80,24 @@ const App: React.FC = () => {
     .trim()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
+
+  const formatRelativeTime = (isoString: string) => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffSecs < 60) return 'Hace un momento';
+    if (diffMins < 60) return `Hace ${diffMins} minuto${diffMins !== 1 ? 's' : ''}`;
+    if (diffHours < 24) return `Hace ${diffHours} hora${diffHours !== 1 ? 's' : ''}`;
+    if (diffDays === 1) return 'Ayer';
+    if (diffDays < 7) return `Hace ${diffDays} días`;
+    return date.toLocaleDateString('es-MX');
+  };
 
   const extractDocuments = (spreadsheet: Spreadsheet) => {
     const docsSheet = spreadsheet.sheets.find(s => normalize(s.properties.title) === 'documentos') || spreadsheet.sheets[0];
@@ -104,21 +143,37 @@ const App: React.FC = () => {
       if (!isAuthenticated || token === 'DEMO') return;
 
       const metadata: Record<string, string> = {};
+      const collabs: Record<string, Collaborator[]> = {};
+      const modified: Record<string, string> = {};
+
       for (const sheet of AVAILABLE_SPREADSHEETS) {
         try {
+          // Fetch Metadata
           const props = await fetchSpreadsheetProperties(sheet.id, token);
           if (props && props.title) {
             metadata[sheet.id] = props.title;
           }
+
+          // Fetch Collaborators
+          const users = await fetchCollaborators(sheet.id, token);
+          collabs[sheet.id] = users;
+
+          // Fetch Last Modified
+          const modTime = await fetchLastModifiedTime(sheet.id, token);
+          modified[sheet.id] = modTime;
+
         } catch (e) {
-          console.error(`Failed to fetch metadata for ${sheet.id}`, e);
+          console.error(`Failed to fetch metadata/collabs for ${sheet.id}`, e);
         }
       }
+
       setSpreadsheetMetadata(prev => {
         const updated = { ...prev, ...metadata };
         localStorage.setItem('spreadsheet_metadata_cache', JSON.stringify(updated));
         return updated;
       });
+      setCollaboratorsMap(prev => ({ ...prev, ...collabs }));
+      setLastModifiedMap(prev => ({ ...prev, ...modified }));
     };
 
     fetchMetadata();
@@ -153,7 +208,6 @@ const App: React.FC = () => {
     if (savedToken) {
       setToken(savedToken);
       setIsAuthenticated(true);
-      // Try to connect socket if possible (would need user info, using dummy for reload)
       const savedUser = localStorage.getItem('user_profile');
       let userData = {
         name: 'Usuario (Reconectado)',
@@ -173,37 +227,23 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleEmailPasswordLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    let finalToken = token.trim();
-
-    // Feature: Remove wrapping quotes if user copied them accidentally (e.g. "ya29...")
-    if ((finalToken.startsWith('"') && finalToken.endsWith('"')) ||
-      (finalToken.startsWith("'") && finalToken.endsWith("'"))) {
-      finalToken = finalToken.slice(1, -1);
-    }
-
-    // Feature: Auto-extract token if user pastes the full JSON response
-    if (finalToken.startsWith('{')) {
-      try {
-        const json = JSON.parse(finalToken);
-        if (json.access_token) {
-          finalToken = json.access_token;
-        }
-      } catch (e) {
-        console.log("Not a JSON object, treating as raw string");
-      }
-    }
-
-    if (finalToken.length > 10) {
-      localStorage.setItem('sheet_token', finalToken);
-      setToken(finalToken); // Update state to cleaned token
+    if (authorizedUsers.includes(email.toLowerCase())) {
+      // NOTE: This is a placeholder auth system.
+      // In a real scenario, you would call a backend endpoint to verify credentials
+      // and get a JWT or session token. For now, we'll grant access like a demo user.
+      setToken('DEMO'); // Use 'DEMO' token for placeholder access
       setIsAuthenticated(true);
       setError(null);
+      const registeredUser = { name: email.split('@')[0], email: email };
+      setCurrentUser(registeredUser);
+      socketService.connect(registeredUser);
     } else {
-      setError("Por favor, ingresa un token de acceso válido.");
+      setError("El correo electrónico no está registrado o la contraseña es incorrecta.");
     }
   };
+
 
   const handleDemoLogin = () => {
     setToken('DEMO');
@@ -223,7 +263,6 @@ const App: React.FC = () => {
         setIsAuthenticated(true);
         setError(null);
 
-        // Fetch user info for socket
         try {
           const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
             headers: { Authorization: `Bearer ${accessToken}` }
@@ -231,13 +270,12 @@ const App: React.FC = () => {
           const profile = await res.json();
           const userData = {
             name: profile.name || 'Usuario Google',
-            email: profile.email || 'google@gob.mx'
+            email: profile.email || 'google@gob.mx',
+            photo: profile.picture
           };
 
-          // Save profile for reload persistence
           localStorage.setItem('user_profile', JSON.stringify(userData));
           setCurrentUser(userData);
-
           socketService.connect(userData);
         } catch (e) {
           const fallbackUser = { name: 'Usuario Google', email: 'google@gob.mx' };
@@ -259,6 +297,8 @@ const App: React.FC = () => {
     localStorage.removeItem('user_profile');
     setIsAuthenticated(false);
     setToken('');
+    setEmail('');
+    setPassword('');
     setCurrentSpreadsheet(null);
     setSelectedSpreadsheetId(null);
     setCurrentUser(null);
@@ -273,13 +313,9 @@ const App: React.FC = () => {
       msg.includes('UNAUTHENTICATED') ||
       msg.includes('invalid authentication credentials')
     ) {
-      // Token expired - Force logout so user can re-enter it
-      localStorage.removeItem('sheet_token');
-      setToken('');
-      setIsAuthenticated(false);
-      setError("Token inválido o expirado. Por favor genera uno nuevo en Google OAuth Playground y asegúrate de copiar solo el 'access_token'.");
+      handleLogout();
+      setError("La sesión ha expirado o es inválida. Por favor, inicie sesión de nuevo.");
     } else {
-      // Show other errors (403, 404, etc) in the UI
       setError(msg || "Ocurrió un error inesperado al cargar el documento.");
     }
   };
@@ -304,32 +340,14 @@ const App: React.FC = () => {
     setError(null);
     try {
       const spreadsheetId = token === 'DEMO' ? 'demo-latex-gov' : selectedSpreadsheetId!;
-
-      // Order must match the sheet columns: 
-      // ID, Titulo, Subtitulo, Autor, Fecha, Institucion, Unidad, NombreCorto, PalabrasClave, Version, 
-      // Agradecimientos, Presentacion, ResumenEjecutivo, DatosClave, PortadaRuta, ContraportadaRuta
       const rowValues = [
-        data.id,
-        data.title,
-        data.subtitle,
-        data.author,
-        data.date,
-        data.institution,
-        data.unit,
-        data.shortName,
-        data.keywords,
-        data.version,
-        data.acknowledgments,
-        data.presentation,
-        data.executiveSummary,
-        data.keyData,
-        data.coverPath,
-        data.backCoverPath
+        data.id, data.title, data.subtitle, data.author, data.date, data.institution,
+        data.unit, data.shortName, data.keywords, data.version, data.acknowledgments,
+        data.presentation, data.executiveSummary, data.keyData, data.coverPath, data.backCoverPath
       ];
 
       await appendRow(spreadsheetId, 'Documentos', rowValues, token);
 
-      // Refresh dashboard to show the new document
       const sheetData = await fetchSpreadsheet(spreadsheetId, token);
       let docs = extractDocuments(sheetData).map(d => ({ ...d, sheetId: spreadsheetId }));
       setDashboardDocuments(docs);
@@ -341,106 +359,163 @@ const App: React.FC = () => {
     }
   };
 
-  // Auth Screen
+  const handleCreateFromTemplate = () => {
+    if (!isAuthenticated || token === '') return;
+    setNewDocName('Nuevo Documento');
+    setCreateModalOpen(true);
+  };
+
+  const confirmCreateDocument = async () => {
+    if (!newDocName.trim()) return;
+
+    setCreateModalOpen(false);
+    setLoading(true);
+    try {
+      const newSheet = await copySpreadsheet(TEMPLATE_SPREADSHEET_ID, newDocName, token);
+
+      const newCustomSheet = {
+        id: newSheet.spreadsheetId,
+        name: newDocName,
+        description: 'Documento creado desde Plantilla Web LaTeX'
+      };
+
+      const updatedCustom = [...customSpreadsheets, newCustomSheet];
+      setCustomSpreadsheets(updatedCustom);
+      localStorage.setItem('custom_spreadsheets', JSON.stringify(updatedCustom));
+
+      // Select it immediately
+      setSelectedSpreadsheetId(newSheet.spreadsheetId);
+
+    } catch (err: any) {
+      handleError(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSpreadsheet = (e: React.MouseEvent, id: string, name: string) => {
+    e.stopPropagation();
+    setItemToDelete({ id, name });
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDeleteDocument = async () => {
+    if (!itemToDelete) return;
+    setDeleteModalOpen(false);
+
+    setLoading(true);
+    try {
+      await deleteFile(itemToDelete.id, token);
+
+      const updatedCustom = customSpreadsheets.filter(s => s.id !== itemToDelete.id);
+      setCustomSpreadsheets(updatedCustom);
+      localStorage.setItem('custom_spreadsheets', JSON.stringify(updatedCustom));
+
+    } catch (err: any) {
+      handleError(err);
+    } finally {
+      setLoading(false);
+      setItemToDelete(null);
+    }
+  };
+
+  const filteredSpreadsheets = [...AVAILABLE_SPREADSHEETS, ...customSpreadsheets].filter(sheet => {
+    const metadata = spreadsheetMetadata[sheet.id] || sheet.name;
+    const description = sheet.description;
+    const query = searchQuery.toLowerCase();
+    return metadata.toLowerCase().includes(query) || description.toLowerCase().includes(query);
+  });
+
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
-        <div className="bg-white max-w-md w-full rounded-lg shadow-xl p-8 border-t-4 border-[#691C32]">
-          <div className="text-center mb-6">
-            <h2 className="text-[#691C32] font-bold text-lg uppercase tracking-widest mb-1">Gobierno de México</h2>
-            <div className="h-px w-24 bg-[#BC955C] mx-auto mb-4"></div>
-            <h1 className="text-2xl font-bold text-gray-800">Acceso Editor LatexT</h1>
-            <p className="text-gray-500 mt-2 text-sm">Ingrese su Token de Google Sheets</p>
-          </div>
+      <div className="bg-gray-50 flex flex-col items-center justify-center p-4 transition-colors duration-300 min-h-screen font-sans">
+        <main className="w-full max-w-[400px] bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200/50">
+          <div className="h-1.5 w-full bg-[#6A1B31]"></div>
+          <div className="px-8 pt-10 pb-12 flex flex-col items-center">
+            <div className="text-center mb-8">
+              <span className="block text-[10px] tracking-[0.2em] font-bold text-[#6A1B31] mb-1 uppercase">Gobierno de México</span>
+              <div className="w-12 h-0.5 bg-[#6A1B31]/20 mx-auto mb-4"></div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Acceso Editor LatexT</h1>
+              <p className="text-sm text-gray-500">Inicie sesión para acceder a su cuenta</p>
+            </div>
 
-          <div className="mb-6 space-y-4">
             <Button
-              type="button"
               onClick={() => googleLogin()}
-              className="w-full flex items-center justify-center gap-2 bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors shadow-sm"
-              size="lg"
+              className="w-full flex items-center justify-center gap-2 bg-white border border-gray-200 py-3.5 px-4 rounded-xl shadow-sm active:scale-[0.98] transition-all hover:bg-gray-50"
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  fill="#4285F4"
-                />
-                <path
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  fill="#34A853"
-                />
-                <path
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  fill="#FBBC05"
-                />
-                <path
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  fill="#EA4335"
-                />
-              </svg>
-              Iniciar sesión con Google
+              <span className="text-sm font-semibold text-gray-700">Iniciar sesión con Google</span>
             </Button>
 
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-gray-500">O método manual</span>
-              </div>
+            <div className="w-full flex items-center my-8">
+              <div className="flex-grow h-px bg-gray-200"></div>
+              <span className="px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">O usuario registrado</span>
+              <div className="flex-grow h-px bg-gray-200"></div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowHelp(!showHelp)}
-              className="flex items-center justify-center w-full text-sm font-medium text-[#691C32] hover:underline py-2 rounded-lg transition-colors"
-            >
-              <HelpCircle size={16} className="mr-2" />
-              {showHelp ? 'Ocultar Instrucciones' : '¿Cómo obtener un token?'}
-            </button>
-
-            {showHelp && (
-              <div className="mt-3 bg-gray-50 p-4 rounded text-sm text-gray-600 border border-gray-200">
-                <p className="mb-2 font-semibold">Pasos rápidos:</p>
-                <ol className="list-decimal pl-4 space-y-2">
-                  <li>Ir a <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noreferrer" className="text-[#691C32] underline">Google OAuth Playground</a>.</li>
-                  <li>Seleccionar API: <code>Google Sheets API v4</code> &gt; <code>.../auth/spreadsheets</code>.</li>
-                  <li>Clic en "Authorize APIs".</li>
-                  <li>Clic en "Exchange authorization code for tokens".</li>
-                  <li>Copiar <strong>Access Token</strong> (comienza con <code>ya29...</code>).</li>
-                </ol>
-                <p className="mt-2 text-xs text-gray-400 italic">Nota: La sesión se guardará en este navegador.</p>
+            <form onSubmit={handleEmailPasswordLogin} className="w-full space-y-4">
+              <div className="space-y-3">
+                <div className="relative group">
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 ml-1">Correo Electrónico</label>
+                  <input
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-700 placeholder:text-gray-400 focus:ring-2 focus:ring-[#6A1B31]/20 focus:border-[#6A1B31] outline-none transition-all"
+                    placeholder="ejemplo@correo.gob.mx"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="relative group">
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 ml-1">Contraseña</label>
+                  <input
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-700 placeholder:text-gray-400 focus:ring-2 focus:ring-[#6A1B31]/20 focus:border-[#6A1B31] outline-none transition-all"
+                    placeholder="••••••••"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
               </div>
-            )}
-          </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div>
-              <textarea
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="Pegar token aquí (ya29...) o el JSON completo"
-                className="w-full h-24 p-3 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#691C32] outline-none resize-none font-mono"
-              />
-            </div>
+              {error && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm flex items-start gap-2 animate-in fade-in slide-in-from-top-2">
+                  <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
 
-            {error && (
-              <div className="p-3 bg-red-50 text-red-700 rounded text-sm flex items-start gap-2 animate-in fade-in slide-in-from-top-2">
-                <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />
-                <span>{error}</span>
+              <div className="flex justify-end">
+                <a className="text-xs font-medium text-[#6A1B31] hover:underline decoration-[#6A1B31]/30" href="#">
+                  ¿Olvidé mi contraseña?
+                </a>
               </div>
-            )}
-
-            <div className="space-y-3">
-              <Button type="submit" className="w-full" size="lg" variant="burgundy">
+              <Button
+                type="submit"
+                className="w-full bg-[#6A1B31] text-white py-3.5 rounded-xl font-semibold shadow-lg shadow-[#6A1B31]/20 active:scale-[0.98] transition-all hover:opacity-95"
+              >
                 Iniciar Sesión
               </Button>
-              <Button type="button" variant="outline" className="w-full" onClick={handleDemoLogin}>
-                <PlayCircle size={16} className="mr-2" /> Probar Demo
+            </form>
+
+            <div className="w-full mt-6">
+              <Button
+                onClick={handleDemoLogin}
+                className="w-full bg-[#6A1B31] text-white py-3.5 rounded-xl font-semibold shadow-lg shadow-[#6A1B31]/20 active:scale-[0.98] transition-all hover:opacity-95"
+              >
+                <PlayCircle size={16} />
+                Probar Demo
               </Button>
             </div>
-          </form>
-        </div>
+          </div>
+        </main>
+        <footer className="mt-8 text-center px-6">
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Este es un sistema institucional.<br />
+            Subsecretaría de Planeación y Transición Energética<br />
+            © 2024 Gobierno de México · Dirección General de Tecnologías
+          </p>
+        </footer>
       </div>
     );
   }
@@ -462,78 +537,81 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-white font-sans text-gray-900">
 
       {/* HEADER GOBIERNO */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          {/* Logos Area */}
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col">
-              <span className="text-xs text-gray-500 uppercase tracking-widest">Gobierno de</span>
-              <span className="text-xl font-bold text-[#691C32] leading-none">México</span>
-            </div>
-            <div className="h-8 w-px bg-gray-300 mx-2"></div>
-            <div className="flex flex-col">
-              <span className="text-xl font-bold text-[#BC955C] leading-none">Energía</span>
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider">Secretaría de Energía</span>
-            </div>
-          </div>
+      {!(isAuthenticated && !selectedSpreadsheetId && token !== 'DEMO') && (
+        <header className="bg-white shadow-sm border-b border-gray-200">
 
-          {/* App Title */}
-          <div className="hidden md:block">
-            <h1 className="text-2xl font-bold text-[#691C32] tracking-tight">Editor LatexT</h1>
-          </div>
-
-          {/* Help/Actions */}
-          <div className="flex items-center gap-4 relative">
-            {isAuthenticated && currentUser ? (
-              <div className="relative" ref={userMenuRef}>
-                <button
-                  onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 hover:bg-gray-50 p-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#691C32]/20"
-                >
-                  <div className="flex flex-col items-end hidden md:flex">
-                    <span className="text-sm font-bold text-gray-700 leading-tight">{currentUser.name}</span>
-                    <span className="text-[10px] text-gray-500">{currentUser.email}</span>
-                  </div>
-                  <div className="w-8 h-8 bg-[#691C32] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                    {currentUser.name.charAt(0).toUpperCase()}
-                  </div>
-                  <ChevronDown size={14} className="text-gray-400" />
-                </button>
-
-                {/* Dropdown Menu */}
-                {userMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
-                    <div className="px-4 py-3 border-b border-gray-100 md:hidden">
-                      <p className="text-sm font-bold text-gray-900">{currentUser.name}</p>
-                      <p className="text-xs text-gray-500 truncate">{currentUser.email}</p>
-                    </div>
-
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                      <User size={16} /> Perfil
-                    </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                      <Settings size={16} /> Configuración
-                    </button>
-                    <div className="border-t border-gray-100 my-1"></div>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                    >
-                      <LogOut size={16} /> Cerrar Sesión
-                    </button>
-                  </div>
-                )}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+            {/* Logos Area */}
+            <div className="flex items-center gap-4">
+              <div className="flex flex-col">
+                <span className="text-xs text-gray-500 uppercase tracking-widest">Gobierno de</span>
+                <span className="text-xl font-bold text-[#691C32] leading-none">México</span>
               </div>
-            ) : (
-              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-700 hover:bg-red-50">
-                <LogOut size={16} className="mr-2" /> Salir
-              </Button>
-            )}
+              <div className="h-8 w-px bg-gray-300 mx-2"></div>
+              <div className="flex flex-col">
+                <span className="text-xl font-bold text-[#BC955C] leading-none">Energía</span>
+                <span className="text-[10px] text-gray-400 uppercase tracking-wider">Secretaría de Energía</span>
+              </div>
+            </div>
+
+            {/* App Title */}
+            <div className="hidden md:block">
+              <h1 className="text-2xl font-bold text-[#691C32] tracking-tight">Editor LatexT</h1>
+            </div>
+
+            {/* Help/Actions */}
+            <div className="flex items-center gap-4 relative">
+              {isAuthenticated && currentUser ? (
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    className="flex items-center gap-2 hover:bg-gray-50 p-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#691C32]/20"
+                  >
+                    <div className="flex flex-col items-end hidden md:flex">
+                      <span className="text-sm font-bold text-gray-700 leading-tight">{currentUser.name}</span>
+                      <span className="text-[10px] text-gray-500">{currentUser.email}</span>
+                    </div>
+                    <div className="w-8 h-8 bg-[#691C32] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                      {currentUser.name.charAt(0).toUpperCase()}
+                    </div>
+                    <ChevronDown size={14} className="text-gray-400" />
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {userMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
+                      <div className="px-4 py-3 border-b border-gray-100 md:hidden">
+                        <p className="text-sm font-bold text-gray-900">{currentUser.name}</p>
+                        <p className="text-xs text-gray-500 truncate">{currentUser.email}</p>
+                      </div>
+
+                      <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                        <User size={16} /> Perfil
+                      </button>
+                      <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                        <Settings size={16} /> Configuración
+                      </button>
+                      <div className="border-t border-gray-100 my-1"></div>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                      >
+                        <LogOut size={16} /> Cerrar Sesión
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-700 hover:bg-red-50">
+                  <LogOut size={16} className="mr-2" /> Salir
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-        {/* Gold Bar */}
-        <div className="h-1 bg-gob-gold w-full"></div>
-      </header>
+          {/* Gold Bar */}
+          <div className="h-1 bg-gob-gold w-full"></div>
+        </header>
+      )}
 
       {/* Error Banner for Main Layout */}
       {error && (
@@ -557,34 +635,27 @@ const App: React.FC = () => {
       <main>
         {/* Workbook Selection Screen */}
         {isAuthenticated && !selectedSpreadsheetId && token !== 'DEMO' && (
-          <div className="max-w-5xl mx-auto p-8 animate-in fade-in duration-500">
-            <div className="text-center mb-10 mt-8">
-              <h2 className="text-3xl font-bold text-gob-guinda">Seleccionar Libro de Trabajo</h2>
-              <p className="text-gray-600 mt-3 text-lg">Elige el repositorio de documentos donde deseas trabajar</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 px-4">
-              {AVAILABLE_SPREADSHEETS.map(sheet => (
-                <button
-                  key={sheet.id}
-                  onClick={() => setSelectedSpreadsheetId(sheet.id)}
-                  className="bg-white p-8 rounded-xl shadow-sm border border-gray-200 cursor-pointer hover:shadow-xl hover:border-gob-guinda/30 hover:-translate-y-1 transition-all text-left group flex flex-col items-center text-center h-full"
-                >
-                  <div className="w-16 h-16 bg-gob-guinda/5 rounded-full flex items-center justify-center text-gob-guinda mb-6 group-hover:bg-gob-guinda group-hover:text-white transition-colors duration-300">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /></svg>
-                  </div>
-                  <h3 className="font-bold text-xl text-gray-900 group-hover:text-gob-guinda mb-2">
-                    {spreadsheetMetadata[sheet.id] || sheet.name}
-                  </h3>
-                  <p className="text-gray-500 mb-6 flex-1">{sheet.description}</p>
-                  <div className="w-full pt-4 border-t border-gray-100">
-                    <span className="text-xs text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded inline-block max-w-full truncate">
-                      ID: {sheet.id.substring(0, 8)}...
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
+          <WorkbookDashboard
+            user={currentUser}
+            documents={filteredSpreadsheets.map(sheet => ({
+              id: sheet.id,
+              name: spreadsheetMetadata[sheet.id] || sheet.name,
+              description: sheet.description,
+              updatedAt: lastModifiedMap[sheet.id] ? formatRelativeTime(lastModifiedMap[sheet.id]) : 'Cargando...',
+              collaborators: collaboratorsMap[sheet.id] || [],
+              isCustom: customSpreadsheets.some(cs => cs.id === sheet.id),
+              status: 'Activo' // Placeholder, logic handled inside component for now
+            }))}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onOpen={setSelectedSpreadsheetId}
+            onCreate={handleCreateFromTemplate}
+            onDelete={(id, name) => {
+              setItemToDelete({ id, name });
+              setDeleteModalOpen(true);
+            }}
+            onLogout={handleLogout}
+          />
         )}
 
         {/* Dashboard View */}
@@ -627,6 +698,66 @@ const App: React.FC = () => {
           />
         )}
       </main>
+
+      {/* CREATE MODAL */}
+      <Modal
+        isOpen={isCreateModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        title="Crear Nuevo Documento"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCreateModalOpen(false)}>Cancelar</Button>
+            <Button onClick={confirmCreateDocument} className="bg-[#6A1B31] text-white hover:bg-[#521324]">
+              Crear Documento
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Se creará una copia de la <strong>Plantilla Web LaTeX</strong> en su Google Drive.
+          </p>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Nombre del Documento</label>
+            <input
+              autoFocus
+              type="text"
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#6A1B31]/20 focus:border-[#6A1B31] outline-none"
+              value={newDocName}
+              onChange={(e) => setNewDocName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmCreateDocument();
+              }}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* DELETE MODAL */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        title="Eliminar Documento"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleteModalOpen(false)}>Cancelar</Button>
+            <Button onClick={confirmDeleteDocument} className="bg-red-600 text-white hover:bg-red-700 shadow-md shadow-red-600/20">
+              Sí, Eliminar Permanentemente
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="bg-red-50 p-4 rounded-xl border border-red-100 flex gap-3 text-red-800">
+            <ShieldAlert className="shrink-0" size={20} />
+            <div className="text-sm">
+              <p className="font-bold mb-1">¿Está absolutamente seguro?</p>
+              <p>Esta acción eliminará <strong>{itemToDelete?.name}</strong> de su lista y moverá el archivo a la papelera de Google Drive.</p>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   );
 };

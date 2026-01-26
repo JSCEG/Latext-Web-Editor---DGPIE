@@ -2,11 +2,17 @@
 module.exports = {
     content: [
         './index.html',
-        './**/*.{ts,tsx}',
+        './*.{ts,tsx}',
+        './components/**/*.{ts,tsx}',
+        './services/**/*.{ts,tsx}',
+        './utils/**/*.{ts,tsx}',
     ],
     theme: {
         extend: {
             colors: {
+                primary: "#7C1D36",
+                "background-light": "#F9FAFB",
+                "background-dark": "#111827",
                 gob: {
                     guinda: '#691C32', // Primary
                     'guinda-dark': '#541628',

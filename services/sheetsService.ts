@@ -1,6 +1,15 @@
 import { Spreadsheet, Sheet, CellData } from '../types';
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
+const DRIVE_BASE_URL = 'https://www.googleapis.com/drive/v3/files';
+
+export interface Collaborator {
+  id: string;
+  displayName: string;
+  photoLink?: string;
+  emailAddress?: string;
+  role: string;
+}
 
 // Helper for retrying operations with exponential backoff
 const retryOperation = async <T>(operation: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
@@ -169,6 +178,48 @@ const handleResponse = async (response: Response) => {
   return response.json();
 };
 
+export const fetchCollaborators = async (fileId: string, token: string): Promise<Collaborator[]> => {
+  if (token === 'DEMO') {
+    return [
+      { id: '1', displayName: 'Juan Silva', role: 'owner' },
+      { id: '2', displayName: 'Ana Lopez', role: 'writer' },
+      { id: '3', displayName: 'Carlos Ruiz', role: 'writer' },
+      { id: '4', displayName: 'Maria Diaz', role: 'reader' }
+    ];
+  }
+
+  try {
+    const response = await retryOperation(() => fetch(`${DRIVE_BASE_URL}/${fileId}/permissions?fields=permissions(id,displayName,photoLink,emailAddress,role)`, {
+      headers: getHeaders(token),
+    }));
+    const data = await handleResponse(response);
+    return data.permissions || [];
+  } catch (error) {
+    console.error('Error fetching collaborators:', error);
+    return [];
+  }
+};
+
+export const fetchLastModifiedTime = async (fileId: string, token: string): Promise<string> => {
+  if (token === 'DEMO') {
+    // Return a date 2 hours ago
+    const date = new Date();
+    date.setHours(date.getHours() - 2);
+    return date.toISOString();
+  }
+
+  try {
+    const response = await retryOperation(() => fetch(`${DRIVE_BASE_URL}/${fileId}?fields=modifiedTime`, {
+      headers: getHeaders(token),
+    }));
+    const data = await handleResponse(response);
+    return data.modifiedTime;
+  } catch (error) {
+    console.error('Error fetching modified time:', error);
+    return new Date().toISOString(); // Fallback
+  }
+};
+
 export const fetchSpreadsheet = async (spreadsheetId: string, token: string): Promise<Spreadsheet> => {
   if (token === 'DEMO') {
     await new Promise(resolve => setTimeout(resolve, 180));
@@ -208,6 +259,58 @@ export const createSpreadsheet = async (title: string, token: string): Promise<S
     }),
   });
   return handleResponse(response);
+};
+
+export const copySpreadsheet = async (fileId: string, title: string, token: string): Promise<Spreadsheet> => {
+  if (token === 'DEMO') {
+    await new Promise(resolve => setTimeout(resolve, 800));
+    const mock = getMockSpreadsheet();
+    mock.properties.title = title;
+    mock.spreadsheetId = `demo-copy-${Date.now()}`;
+    return mock;
+  }
+
+  const response = await retryOperation(() => fetch(`${DRIVE_BASE_URL}/${fileId}/copy`, {
+    method: 'POST',
+    headers: getHeaders(token),
+    body: JSON.stringify({
+      name: title,
+    }),
+  }));
+  const fileData = await handleResponse(response);
+
+  // After copying, we return a basic Spreadsheet object structure
+  // The full data would require a fetchSpreadsheet call, but for the index we just need ID and properties
+  return {
+    spreadsheetId: fileData.id,
+    properties: {
+      title: fileData.name || title,
+      locale: 'es_MX', // Default assumption until fetched
+      autoRecalc: 'ON_CHANGE',
+      timeZone: 'America/Mexico_City'
+    },
+    spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${fileData.id}/edit`,
+    sheets: []
+  };
+};
+
+export const deleteFile = async (fileId: string, token: string) => {
+  if (token === 'DEMO') {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    return {};
+  }
+
+  const response = await retryOperation(() => fetch(`${DRIVE_BASE_URL}/${fileId}`, {
+    method: 'DELETE',
+    headers: getHeaders(token),
+  }));
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    const message = errorBody.error?.message || response.statusText || 'Unknown API Error';
+    throw new Error(message);
+  }
+  return true;
 };
 
 export const updateCellValue = async (
