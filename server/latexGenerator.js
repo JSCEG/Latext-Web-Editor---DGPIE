@@ -196,6 +196,12 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     if (glosario.length > 0) {
         tex += generarGlosario(glosario);
     }
+
+    // --- Acronyms ---
+    if (siglas.length > 0) {
+        tex += generarSiglas(siglas);
+    }
+
     // --- Units ---
     if (unidades && unidades.length > 0) {
         tex += generarUnidades(unidades);
@@ -204,11 +210,6 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     // --- Bibliography ---
     if (bibliografia.length > 0) {
         tex += `\\printbibliography\n\n`;
-    }
-
-    // --- Acronyms ---
-    if (siglas.length > 0) {
-        tex += generarSiglas(siglas);
     }
 
     // --- Credits Page ---
@@ -1181,8 +1182,12 @@ function procesarTextoFuente(texto) {
     // Usar normalización segura de saltos
     const textoNormalizado = normalizarSaltosLatex(texto);
 
+    // Protegemos los saltos de línea ANTES de que el split(/\s+/) los elimine.
+    // Agregamos espacios alrededor para que split los trate como tokens separados.
+    const textoProtegido = textoNormalizado.replace(/\n/g, ' ZNEWLINEZ ');
+
     // Separar en líneas para reconstruir con espacios simples
-    const lineas = textoNormalizado.split(/\s+/).filter(l => l.trim() !== '');
+    const lineas = textoProtegido.split(/\s+/).filter(l => l.trim() !== '');
 
     // Reconstruir texto en una sola línea para facilitar el regex
     const textoCompleto = lineas.join(' ');
@@ -1216,7 +1221,12 @@ function procesarTextoFuente(texto) {
 
     // Agregar fuente principal procesando etiquetas (permite negritas, etc.)
     if (textoFuente.trim()) {
-        resultado += procesarConEtiquetas(textoFuente.trim());
+        // ZNEWLINEZ ya está en el texto si había saltos
+        let fuenteProcesada = procesarConEtiquetas(textoFuente);
+
+        // Restaurar saltos como quiebres de línea LaTeX
+        fuenteProcesada = fuenteProcesada.replace(/ZNEWLINEZ/g, ' \\\\ ');
+        resultado += fuenteProcesada;
     }
 
     // Agregar notas como lista si existen
@@ -1228,7 +1238,10 @@ function procesarTextoFuente(texto) {
             const idNota = generarIdNota(item.nota);
             const notaEscapada = escaparLatex(item.nota);
             // Procesar etiquetas dentro del texto de la nota también
-            const textoProcesado = procesarConEtiquetas(item.texto);
+            let textoProcesado = procesarConEtiquetas(item.texto);
+
+            // También restaurar saltos en las notas
+            textoProcesado = textoProcesado.replace(/ZNEWLINEZ/g, ' \\\\ ');
 
             resultado += `  \\item[\\hypertarget{${idNota}}{${notaEscapada}}] ${textoProcesado}\n`;
         });
