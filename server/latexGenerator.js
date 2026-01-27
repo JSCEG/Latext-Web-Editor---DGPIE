@@ -8,7 +8,7 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 /**
  * Main function to generate the LaTeX string
  */
-function generarLatexString(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario) {
+function generarLatexString(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario, unidades) {
     // 1. Sort sections
     secciones.sort((a, b) => {
         const oa = parseFloat(a.Orden) || 0;
@@ -17,7 +17,7 @@ function generarLatexString(datosDoc, secciones, bibliografia, figuras, tablas, 
     });
 
     // 2. Build Content
-    const tex = construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario);
+    const tex = construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario, unidades);
 
     return tex;
 }
@@ -25,7 +25,7 @@ function generarLatexString(datosDoc, secciones, bibliografia, figuras, tablas, 
 /**
  * Builds the complete LaTeX document
  */
-function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario) {
+function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario, unidades) {
     let tex = '';
 
     // Helpers to match Frontend ID generation
@@ -195,6 +195,10 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     // --- Glossary ---
     if (glosario.length > 0) {
         tex += generarGlosario(glosario);
+    }
+    // --- Units ---
+    if (unidades && unidades.length > 0) {
+        tex += generarUnidades(unidades);
     }
 
     // --- Bibliography ---
@@ -1021,6 +1025,18 @@ function generarGlosario(glosario) {
     return tex;
 }
 
+function generarUnidades(unidades) {
+    let tex = `\\clearpage\n\\section*{Unidades}\n\\phantomsection\n\\addcontentsline{toc}{section}{Unidades}\n\n`;
+    unidades.sort((a, b) => (a['Unidad'] || '').toString().toLowerCase().localeCompare((b['Unidad'] || '').toString().toLowerCase()));
+    unidades.forEach(entrada => {
+        const unidad = entrada['Unidad'] || '';
+        const descripcion = entrada['Descripción'] || entrada['Descripcion'] || '';
+        if (unidad && descripcion) tex += `\\entradaGlosario{${escaparLatex(unidad)}}{${escaparLatex(descripcion)}}\n`;
+    });
+    tex += `\n`;
+    return tex;
+}
+
 function generarSiglas(siglas) {
     let tex = `\\clearpage\n\\section*{Siglas y Acrónimos}\n\\phantomsection\n\\addcontentsline{toc}{section}{Siglas y Acrónimos}\n\n`;
     siglas.sort((a, b) => (a['Sigla'] || '').toString().toLowerCase().localeCompare((b['Sigla'] || '').toString().toLowerCase()));
@@ -1348,14 +1364,15 @@ async function fetchTableContent(spreadsheetId, rangeRef, token) {
 
 async function generateLatex(spreadsheetId, docId, token) {
     // 1. Fetch all necessary sheets
-    const [docs, secciones, figuras, tablas, bibliografia, siglas, glosario] = await Promise.all([
+    const [docs, secciones, figuras, tablas, bibliografia, siglas, glosario, unidades] = await Promise.all([
         fetchAndParseSheet(spreadsheetId, 'Documentos', token),
         fetchAndParseSheet(spreadsheetId, 'Secciones', token),
         fetchAndParseSheet(spreadsheetId, 'Figuras', token),
         fetchAndParseSheet(spreadsheetId, 'Tablas', token),
         fetchAndParseSheet(spreadsheetId, 'Bibliografia', token),
         fetchAndParseSheet(spreadsheetId, 'Siglas', token),
-        fetchAndParseSheet(spreadsheetId, 'Glosario', token)
+        fetchAndParseSheet(spreadsheetId, 'Glosario', token),
+        fetchAndParseSheet(spreadsheetId, 'Unidades', token)
     ]);
 
     // 2. Filter for docId
@@ -1370,6 +1387,7 @@ async function generateLatex(spreadsheetId, docId, token) {
     const docBibliografia = filterByDoc(bibliografia);
     const docSiglas = filterByDoc(siglas);
     const docGlosario = filterByDoc(glosario);
+    const docUnidades = filterByDoc(unidades);
 
     // 3. Fetch inner data for tables (Data CSV ranges)
     // This is the heavy part: we need to fetch the content for each table
@@ -1392,7 +1410,7 @@ async function generateLatex(spreadsheetId, docId, token) {
     }));
 
     // 4. Generate LaTeX
-    const tex = generarLatexString(datosDoc, docSecciones, docBibliografia, docFiguras, docTablas, docSiglas, docGlosario);
+    const tex = generarLatexString(datosDoc, docSecciones, docBibliografia, docFiguras, docTablas, docSiglas, docGlosario, docUnidades);
 
     // 5. Generate References (BibTeX) content if needed
     let bib = '';

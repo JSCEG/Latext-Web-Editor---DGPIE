@@ -156,6 +156,16 @@ const getMockSpreadsheet = (): Spreadsheet => ({
           { values: [{ userEnteredValue: { stringValue: 'D01' } }, { userEnteredValue: { stringValue: 'Energías Limpias' } }, { userEnteredValue: { stringValue: 'Fuentes de energía y procesos de generación de electricidad cuyas emisiones...' } }] }
         ]
       }]
+    },
+    {
+      properties: { sheetId: 8, title: 'Unidades', index: 7, gridProperties: { rowCount: 5, columnCount: 3 } },
+      data: [{
+        rowData: [
+          { values: [{ userEnteredValue: { stringValue: 'DocumentoID' } }, { userEnteredValue: { stringValue: 'Unidad' } }, { userEnteredValue: { stringValue: 'Descripción' } }] },
+          { values: [{ userEnteredValue: { stringValue: 'D01' } }, { userEnteredValue: { stringValue: 'MW' } }, { userEnteredValue: { stringValue: 'Megawatt' } }] },
+          { values: [{ userEnteredValue: { stringValue: 'D01' } }, { userEnteredValue: { stringValue: 'GWh' } }, { userEnteredValue: { stringValue: 'Gigawatt-hora' } }] }
+        ]
+      }]
     }
   ]
 });

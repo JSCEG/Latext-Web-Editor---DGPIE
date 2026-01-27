@@ -31,7 +31,8 @@ const TAB_TO_SHEET_TITLE: Record<string, string> = {
     'figuras': 'Figuras',
     'bibliografia': 'Bibliografía',
     'siglas': 'Siglas',
-    'glosario': 'Glosario'
+    'glosario': 'Glosario',
+    'unidades': 'Unidades'
 };
 
 const TAB_DESCRIPTIONS: Record<string, string> = {
@@ -40,6 +41,7 @@ const TAB_DESCRIPTIONS: Record<string, string> = {
     'bibliografia': 'Gestión de Referencias Bibliográficas: Claves únicas para citar en LaTeX.',
     'siglas': 'Siglas y Acrónimos: Lista de abreviaturas utilizadas en el texto.',
     'glosario': 'Glosario de Términos: Definiciones de conceptos técnicos.',
+    'unidades': 'Unidades de Medida: Define equivalencias y descripciones (ej. MW=Megawatt).',
     'secciones': 'Estructura del Documento: Capítulos, Secciones y Subsecciones.'
 };
 
@@ -2729,6 +2731,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                             { id: 'bibliografia', icon: Book, label: 'Bibliografía' },
                             { id: 'siglas', icon: Type, label: 'Siglas' },
                             { id: 'glosario', icon: FileText, label: 'Glosario' },
+                            { id: 'unidades', icon: Hash, label: 'Unidades' },
                             { id: 'vista_previa', icon: Maximize2, label: 'Vista Previa' }
                         ].map(item => (
                             <button
@@ -2787,7 +2790,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                 </div>
 
                                 {/* Global Stats Card for Other Tabs */}
-                                {(activeTab === 'bibliografia' || activeTab === 'glosario' || activeTab === 'siglas' || activeTab === 'tablas' || activeTab === 'figuras') && (
+                                {(activeTab === 'bibliografia' || activeTab === 'glosario' || activeTab === 'siglas' || activeTab === 'tablas' || activeTab === 'figuras' || activeTab === 'unidades') && (
                                     <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm mb-4 flex items-center gap-6 animate-in fade-in slide-in-from-top-2">
                                         <div className="flex items-center gap-3">
                                             <div className="p-2 rounded-full bg-gob-guinda/10 text-gob-guinda">
@@ -2803,8 +2806,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                     {activeTab === 'bibliografia' ? 'Referencias Total' :
                                                         activeTab === 'glosario' ? 'Términos Total' :
                                                             activeTab === 'siglas' ? 'Siglas Total' :
-                                                                activeTab === 'tablas' ? 'Tablas Total' :
-                                                                    'Figuras Total'}
+                                                                activeTab === 'unidades' ? 'Unidades Total' :
+                                                                    activeTab === 'tablas' ? 'Tablas Total' :
+                                                                        'Figuras Total'}
                                                 </div>
                                             </div>
                                         </div>
@@ -2812,8 +2816,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                         <div className="text-sm text-gray-500">
                                             {activeTab === 'bibliografia' ? 'Recuerda usar [[cita:CLAVE]] en el texto.' :
                                                 activeTab === 'glosario' ? 'Define términos técnicos aquí.' :
-                                                    activeTab === 'siglas' ? 'Define abreviaturas usadas.' :
-                                                        'Gestiona los elementos visuales del documento.'}
+                                                    activeTab === 'unidades' ? 'Define unidades de medida (ej. MW=Megawatt).' :
+                                                        activeTab === 'siglas' ? 'Define abreviaturas usadas.' :
+                                                            'Gestiona los elementos visuales del documento.'}
                                         </div>
                                     </div>
                                 )}
@@ -2831,92 +2836,98 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                             />
                                         </div>
                                     </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm text-left">
-                                            <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                                                <tr>
-                                                    <th className="px-6 py-3 text-left w-28 font-semibold" style={{ backgroundColor: '#f5f5f5', border: '1px solid #ddd' }}>
-                                                        <span className="inline-flex items-center gap-2"><MoreVertical size={14} aria-hidden="true" /> Acciones</span>
-                                                    </th>
-                                                    {activeTab === 'secciones' && (
-                                                        <th className="px-6 py-3 font-semibold text-center w-40">Estadísticas</th>
-                                                    )}
-                                                    {gridHeaders.map((h, i) => <th key={i} className="px-6 py-3 font-semibold">{h}</th>)}
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {displayedRows.length > 0 ? displayedRows.map(({ row, index }) => {
-                                                    const docIdxLocal = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
-                                                    const rowDocId = docIdxLocal !== -1 ? (row[docIdxLocal] || '') : '';
-                                                    const canDelete = !rowDocId || rowDocId === currentDocId;
+                                    {(activeTab === 'unidades' && gridData.length === 0) ? (
+                                        <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-600">
+                                            Esta sección está vacía. No se renderiza en LaTeX.
+                                        </div>
+                                    ) : (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                                    <tr>
+                                                        <th className="px-6 py-3 text-left w-28 font-semibold" style={{ backgroundColor: '#f5f5f5', border: '1px solid #ddd' }}>
+                                                            <span className="inline-flex items-center gap-2"><MoreVertical size={14} aria-hidden="true" /> Acciones</span>
+                                                        </th>
+                                                        {activeTab === 'secciones' && (
+                                                            <th className="px-6 py-3 font-semibold text-center w-40">Estadísticas</th>
+                                                        )}
+                                                        {gridHeaders.map((h, i) => <th key={i} className="px-6 py-3 font-semibold">{h}</th>)}
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {displayedRows.length > 0 ? displayedRows.map(({ row, index }) => {
+                                                        const docIdxLocal = findColumnIndex(gridHeaders, DOC_ID_VARIANTS);
+                                                        const rowDocId = docIdxLocal !== -1 ? (row[docIdxLocal] || '') : '';
+                                                        const canDelete = !rowDocId || rowDocId === currentDocId;
 
-                                                    // Get Order value for data attribute
-                                                    const ordIdxLocal = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
-                                                    const orderVal = ordIdxLocal !== -1 ? (row[ordIdxLocal] || '') : '';
-                                                    const isDuplicate = activeTab === 'secciones' && duplicateOrders.has(orderVal);
+                                                        // Get Order value for data attribute
+                                                        const ordIdxLocal = findColumnIndex(gridHeaders, ORDEN_COL_VARIANTS);
+                                                        const orderVal = ordIdxLocal !== -1 ? (row[ordIdxLocal] || '') : '';
+                                                        const isDuplicate = activeTab === 'secciones' && duplicateOrders.has(orderVal);
 
-                                                    return (
-                                                        <tr
-                                                            key={index}
-                                                            className={clsx(
-                                                                "hover:bg-gray-50",
-                                                                saving && "opacity-50 pointer-events-none",
-                                                                isDuplicate && "bg-red-50"
-                                                            )}
-                                                            data-order={orderVal}
-                                                        >
-                                                            <td className={clsx("px-6 py-4 text-left", isDuplicate && "border-l-4 border-l-red-500")} style={{ backgroundColor: isDuplicate ? '#FEF2F2' : '#f5f5f5', border: '1px solid #ddd', borderLeft: isDuplicate ? '4px solid #ef4444' : '1px solid #ddd' }}>
-                                                                <div className="flex justify-start gap-2">
-                                                                    <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-800" title="Editar"><Edit size={16} /></button>
-                                                                    <button onClick={() => canDelete ? requestDelete(index) : null} className={clsx("", canDelete ? "text-red-600 hover:text-red-800" : "text-gray-400 cursor-not-allowed")} title={canDelete ? "Eliminar" : "No puedes eliminar registros de otro DocumentoID"}><Trash2 size={16} /></button>
-                                                                </div>
-                                                            </td>
-                                                            {activeTab === 'secciones' && (
-                                                                <td className="px-6 py-4">
-                                                                    {(function () {
-                                                                        const stats = getSectionStats(row);
-                                                                        if (!stats) return null;
-                                                                        return (
-                                                                            <div className="flex flex-col gap-1 min-w-[120px]">
-                                                                                <div className="flex items-center justify-between text-[10px] bg-blue-50 text-blue-800 px-2 py-0.5 rounded-full border border-blue-100" title="Tablas">
-                                                                                    <span className="flex items-center gap-1"><Table size={10} /> Tablas</span>
-                                                                                    <span className="font-bold">{stats.tableCount}</span>
-                                                                                </div>
-                                                                                <div className="flex items-center justify-between text-[10px] bg-purple-50 text-purple-800 px-2 py-0.5 rounded-full border border-purple-100" title="Figuras">
-                                                                                    <span className="flex items-center gap-1"><Image size={10} /> Figuras</span>
-                                                                                    <span className="font-bold">{stats.figureCount}</span>
-                                                                                </div>
-                                                                                <div className="flex items-center justify-between text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full border border-gray-200" title="Ecuaciones">
-                                                                                    <span className="flex items-center gap-1"><Grid size={10} /> Ecua.</span>
-                                                                                    <span className="font-bold">{stats.eqCount}</span>
-                                                                                </div>
-                                                                                {stats.citeCount > 0 && (
-                                                                                    <div className="flex items-center justify-between text-[10px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full border border-amber-100" title="Citas">
-                                                                                        <span className="flex items-center gap-1"><Book size={10} /> Citas</span>
-                                                                                        <span className="font-bold">{stats.citeCount}</span>
+                                                        return (
+                                                            <tr
+                                                                key={index}
+                                                                className={clsx(
+                                                                    "hover:bg-gray-50",
+                                                                    saving && "opacity-50 pointer-events-none",
+                                                                    isDuplicate && "bg-red-50"
+                                                                )}
+                                                                data-order={orderVal}
+                                                            >
+                                                                <td className={clsx("px-6 py-4 text-left", isDuplicate && "border-l-4 border-l-red-500")} style={{ backgroundColor: isDuplicate ? '#FEF2F2' : '#f5f5f5', border: '1px solid #ddd', borderLeft: isDuplicate ? '4px solid #ef4444' : '1px solid #ddd' }}>
+                                                                    <div className="flex justify-start gap-2">
+                                                                        <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-800" title="Editar"><Edit size={16} /></button>
+                                                                        <button onClick={() => canDelete ? requestDelete(index) : null} className={clsx("", canDelete ? "text-red-600 hover:text-red-800" : "text-gray-400 cursor-not-allowed")} title={canDelete ? "Eliminar" : "No puedes eliminar registros de otro DocumentoID"}><Trash2 size={16} /></button>
+                                                                    </div>
+                                                                </td>
+                                                                {activeTab === 'secciones' && (
+                                                                    <td className="px-6 py-4">
+                                                                        {(function () {
+                                                                            const stats = getSectionStats(row);
+                                                                            if (!stats) return null;
+                                                                            return (
+                                                                                <div className="flex flex-col gap-1 min-w-[120px]">
+                                                                                    <div className="flex items-center justify-between text-[10px] bg-blue-50 text-blue-800 px-2 py-0.5 rounded-full border border-blue-100" title="Tablas">
+                                                                                        <span className="flex items-center gap-1"><Table size={10} /> Tablas</span>
+                                                                                        <span className="font-bold">{stats.tableCount}</span>
                                                                                     </div>
-                                                                                )}
-                                                                            </div>
-                                                                        );
-                                                                    })()}
-                                                                </td>
-                                                            )}
-                                                            {row.map((cell, i) => (
-                                                                <td key={i} className="px-6 py-4 min-w-[150px] max-w-[400px]">
-                                                                    <ContentPreview text={cell} limit={120} />
-                                                                </td>
-                                                            ))}
-                                                        </tr>
-                                                    );
-                                                }) : (
-                                                    <tr><td colSpan={gridHeaders.length + 1} className="px-6 py-12 text-center text-gray-500">No hay registros.</td></tr>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                                                                    <div className="flex items-center justify-between text-[10px] bg-purple-50 text-purple-800 px-2 py-0.5 rounded-full border border-purple-100" title="Figuras">
+                                                                                        <span className="flex items-center gap-1"><Image size={10} /> Figuras</span>
+                                                                                        <span className="font-bold">{stats.figureCount}</span>
+                                                                                    </div>
+                                                                                    <div className="flex items-center justify-between text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full border border-gray-200" title="Ecuaciones">
+                                                                                        <span className="flex items-center gap-1"><Grid size={10} /> Ecua.</span>
+                                                                                        <span className="font-bold">{stats.eqCount}</span>
+                                                                                    </div>
+                                                                                    {stats.citeCount > 0 && (
+                                                                                        <div className="flex items-center justify-between text-[10px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full border border-amber-100" title="Citas">
+                                                                                            <span className="flex items-center gap-1"><Book size={10} /> Citas</span>
+                                                                                            <span className="font-bold">{stats.citeCount}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })()}
+                                                                    </td>
+                                                                )}
+                                                                {row.map((cell, i) => (
+                                                                    <td key={i} className="px-6 py-4 min-w-[150px] max-w-[400px]">
+                                                                        <ContentPreview text={cell} limit={120} />
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                        );
+                                                    }) : (
+                                                        <tr><td colSpan={gridHeaders.length + 1} className="px-6 py-12 text-center text-gray-500">No hay registros.</td></tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
 
                                     {/* Pagination Controls */}
-                                    {totalPages > 1 && (
+                                    {(!(activeTab === 'unidades' && gridData.length === 0)) && totalPages > 1 && (
                                         <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
                                             <div className="text-sm text-gray-700">
                                                 Mostrando <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> a <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, sortedData.length)}</span> de <span className="font-medium">{sortedData.length}</span> resultados

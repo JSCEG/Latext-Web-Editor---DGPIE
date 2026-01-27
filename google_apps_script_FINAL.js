@@ -154,6 +154,7 @@ function generarLatex() {
         const tablas = obtenerRegistros(ss, 'Tablas', docId, 'DocumentoID');
         const siglas = obtenerRegistros(ss, 'Siglas', docId, 'DocumentoID');
         const glosario = obtenerRegistros(ss, 'Glosario', docId, 'DocumentoID');
+        const unidades = obtenerRegistros(ss, 'Unidades', docId, 'DocumentoID');
 
         log(`📑 Secciones encontradas: ${secciones.length}`);
         log(`📚 Referencias bibliográficas: ${bibliografia.length}`);
@@ -161,6 +162,7 @@ function generarLatex() {
         log(`📊 Tablas encontradas: ${tablas.length}`);
         log(`🔤 Siglas encontradas: ${siglas.length}`);
         log(`📖 Términos de glosario: ${glosario.length}`);
+        log(`📏 Unidades encontradas: ${unidades.length}`);
 
         if (secciones.length === 0) {
             ui.alert('⚠️ Advertencia: No se encontraron secciones para este documento.');
@@ -174,7 +176,7 @@ function generarLatex() {
         });
 
         // 4. Construir el contenido LaTeX
-        const tex = construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario, ss);
+        const tex = construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario, unidades, ss);
 
         // 5. Guardar archivos en Drive
         const salida = guardarArchivos(datosDoc, tex, bibliografia);
@@ -215,7 +217,7 @@ function generarLatex() {
 /**
  * Construye el documento LaTeX completo
  */
-function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario, ss) {
+function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario, unidades, ss) {
     let tex = '';
 
     // Crear mapas para acceso rápido
@@ -391,6 +393,11 @@ function construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, sigl
     // --- Glosario ---
     if (glosario.length > 0) {
         tex += generarGlosario(glosario);
+    }
+
+    // --- Unidades ---
+    if (unidades && unidades.length > 0) {
+        tex += generarUnidades(unidades);
     }
 
     // --- Directorio ---
@@ -1558,12 +1565,12 @@ function generarTabla(tabla, ss) {
             if (hojaDatos) {
                 const datosTabla = hojaDatos.getRange(rango).getValues();
                 log(`    ✅ Datos leídos: ${datosTabla.length} filas`);
-                
+
                 // Si es horizontal, NO usar longtable (usar tabular dentro de sidewaystable)
                 // forzarLongtable = false
                 const resultado = procesarDatosArray(datosTabla, titulo, false, id);
                 esLarga = resultado.tipo === 'longtable';
-                
+
                 if (esHorizontal) {
                     // CASO HORIZONTAL: Usar tablaespecial
                     texInicio = `\\begin{tablaespecial}\n`;
@@ -1571,7 +1578,7 @@ function generarTabla(tabla, ss) {
                     const capTxt = escaparLatex(titulo);
                     texInicio += `  \\caption{${capTxt}}\n`;
                     texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
-                    
+
                     if (esLarga) {
                         // Si era larga, procesarDatosArray devolvió longtable. 
                         // Pero longtable no funciona bien dentro de sidewaystable (flotante dentro de flotante).
@@ -1582,7 +1589,7 @@ function generarTabla(tabla, ss) {
                     } else {
                         texInicio += resultado.contenido;
                     }
-                    
+
                     texFin = `\\end{tablaespecial}\n`;
 
                 } else if (esLarga) {
@@ -1599,7 +1606,7 @@ function generarTabla(tabla, ss) {
                     texFin = `\\end{tabladoradoCorto}\n`;
                     texInicio += resultado.contenido;
                 }
-                
+
             } else {
                 log(`    ⚠️ No se encontró la hoja: "${nombreHoja}"`);
                 if (!this._hojasDisponiblesCache) {
@@ -1616,14 +1623,14 @@ function generarTabla(tabla, ss) {
     } else {
         // Datos CSV directos
         if (esHorizontal) {
-             texInicio = `\\begin{tablaespecial}\n`;
-             const capTxt = escaparLatex(titulo);
-             texInicio += `  \\caption{${capTxt}}\n`;
-             texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
-             texInicio += procesarDatosCSV(datosRef);
-             texFin = `\\end{tablaespecial}\n`;
+            texInicio = `\\begin{tablaespecial}\n`;
+            const capTxt = escaparLatex(titulo);
+            texInicio += `  \\caption{${capTxt}}\n`;
+            texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
+            texInicio += procesarDatosCSV(datosRef);
+            texFin = `\\end{tablaespecial}\n`;
         } else {
-             texInicio += procesarDatosCSV(datosRef);
+            texInicio += procesarDatosCSV(datosRef);
         }
     }
 
@@ -1638,21 +1645,21 @@ function generarTabla(tabla, ss) {
             texFin = `\\end{tabladoradoCorto}\n`;
         }
     }
-    
+
     if (tex === '') {
         tex = texInicio + texFin;
     }
 
     if (fuente) {
         if (esHorizontal) {
-             // Fuente dentro de tablaespecial (antes del end)
-             // Pero texFin tiene el end. Hay que inyectarlo antes.
-             // Truco: Reemplazar el end por fuente + end
-             tex = tex.replace(/\\end{tablaespecial}/, `  \\vspace{6pt}\n  \\fuente{${procesarTextoFuente(fuente)}}\n\\end{tablaespecial}`);
+            // Fuente dentro de tablaespecial (antes del end)
+            // Pero texFin tiene el end. Hay que inyectarlo antes.
+            // Truco: Reemplazar el end por fuente + end
+            tex = tex.replace(/\\end{tablaespecial}/, `  \\vspace{6pt}\n  \\fuente{${procesarTextoFuente(fuente)}}\n\\end{tablaespecial}`);
         } else {
-             // Normal
-             tex += `\\vspace{-4pt}\n`;
-             tex += `\\fuente{${procesarTextoFuente(fuente)}}\n`;
+            // Normal
+            tex += `\\vspace{-4pt}\n`;
+            tex += `\\fuente{${procesarTextoFuente(fuente)}}\n`;
         }
     }
 
@@ -2068,6 +2075,33 @@ function generarGlosario(glosario) {
 }
 
 /**
+ * Genera la sección de unidades
+ */
+function generarUnidades(unidades) {
+    let tex = `\\section*{Unidades}\n`;
+    tex += `\\phantomsection\n`;
+    tex += `\\addcontentsline{toc}{section}{Unidades}\n\n`;
+
+    // Ordenar alfabéticamente
+    unidades.sort((a, b) => {
+        const termA = (a['Unidad'] || '').toString().toLowerCase();
+        const termB = (b['Unidad'] || '').toString().toLowerCase();
+        return termA.localeCompare(termB);
+    });
+
+    unidades.forEach(entrada => {
+        const unidad = entrada['Unidad'] || '';
+        const descripcion = entrada['Descripción'] || entrada['Descripcion'] || '';
+        if (unidad && descripcion) {
+            tex += `\\entradaGlosario{${escaparLatex(unidad)}}{${escaparLatex(descripcion)}}\n`;
+        }
+    });
+
+    tex += `\n`;
+    return tex;
+}
+
+/**
  * Genera la sección de siglas y acrónimos
  */
 function generarSiglas(siglas) {
@@ -2190,7 +2224,8 @@ function getDocumento(docId) {
         figuras: obtenerRegistros(ss, 'Figuras', docId, 'DocumentoID'),
         bibliografia: obtenerRegistros(ss, 'Bibliografia', docId, 'DocumentoID'),
         siglas: obtenerRegistros(ss, 'Siglas', docId, 'DocumentoID'),
-        glosario: obtenerRegistros(ss, 'Glosario', docId, 'DocumentoID')
+        glosario: obtenerRegistros(ss, 'Glosario', docId, 'DocumentoID'),
+        unidades: obtenerRegistros(ss, 'Unidades', docId, 'DocumentoID')
     };
 }
 
@@ -2268,6 +2303,7 @@ function generarTexDesdeWeb(docId) {
         const tablas = obtenerRegistros(ss, 'Tablas', docId, 'DocumentoID');
         const siglas = obtenerRegistros(ss, 'Siglas', docId, 'DocumentoID');
         const glosario = obtenerRegistros(ss, 'Glosario', docId, 'DocumentoID');
+        const unidades = obtenerRegistros(ss, 'Unidades', docId, 'DocumentoID');
 
         // Ordenar secciones
         secciones.sort((a, b) => {
@@ -2277,7 +2313,7 @@ function generarTexDesdeWeb(docId) {
         });
 
         // Construir el contenido LaTeX
-        const tex = construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario, ss);
+        const tex = construirLatex(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario, unidades, ss);
 
         return {
             success: true,
