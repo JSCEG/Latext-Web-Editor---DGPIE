@@ -625,7 +625,7 @@ function generarFigura(figura, seccionInfo = null) {
 
         // La fuente va al final usando el comando específico
         if (fuente) {
-            tex += `  \\fuenteHorizontal{${procesarTextoFuente(fuente)}}\n`;
+            tex += formatearNotasYFuente(procesarTextoFuente(fuente), true);
         }
 
         tex += `\\end{figuraespecial}\n`;
@@ -665,8 +665,8 @@ function generarFigura(figura, seccionInfo = null) {
 
         if (fuente) {
             // FIX: Reducir espacio antes de fuente para pegarla más a la figura
-            tex += `\\vspace{-4pt}\n`;
-            tex += `\\fuente{${procesarTextoFuente(fuente)}}\n`;
+            // tex += `\\vspace{-4pt}\n`; // Ahora lo maneja formatearNotasYFuente
+            tex += formatearNotasYFuente(procesarTextoFuente(fuente), false);
         }
     }
 
@@ -765,11 +765,11 @@ function generarTabla(tabla, seccionInfo = null) {
             // Fuente dentro de tablaespecial (antes del end)
             // Pero texFin tiene el end. Hay que inyectarlo antes.
             // Truco: Reemplazar el end por fuente + end
-            tex = tex.replace(/\\end{tablaespecial}/, `  \\fuenteHorizontal{${procesarTextoFuente(fuente)}}\n\\end{tablaespecial}`);
+            tex = tex.replace(/\\end{tablaespecial}/, `${formatearNotasYFuente(procesarTextoFuente(fuente), true)}\n\\end{tablaespecial}`);
         } else {
             // Normal
-            tex += `\\vspace{-4pt}\n`;
-            tex += `\\fuente{${procesarTextoFuente(fuente)}}\n`;
+            // tex += `\\vspace{-4pt}\n`; // Ahora lo maneja formatearNotasYFuente
+            tex += formatearNotasYFuente(procesarTextoFuente(fuente), false);
         }
     }
     tex += `\n`;
@@ -1177,13 +1177,12 @@ function procesarConEtiquetas(texto) {
 }
 
 function procesarTextoFuente(texto) {
-    if (!texto) return '';
+    if (!texto) return { fuente: '', notas: [] };
 
     // Usar normalización segura de saltos
     const textoNormalizado = normalizarSaltosLatex(texto);
 
-    // Protegemos los saltos de línea ANTES de que el split(/\s+/) los elimine.
-    // Agregamos espacios alrededor para que split los trate como tokens separados.
+    // Protegemos los saltos de línea ANTES de que el split elimine espacios
     const textoProtegido = textoNormalizado.replace(/\n/g, ' ZNEWLINEZ ');
 
     // Separar en líneas para reconstruir con espacios simples
@@ -1192,21 +1191,26 @@ function procesarTextoFuente(texto) {
     // Reconstruir texto en una sola línea para facilitar el regex
     const textoCompleto = lineas.join(' ');
 
-    // Separar fuente principal de notas usando regex para marcadores "1/", "a/", etc.
-    // El regex busca palabra boundary + digitos/letras + barra
-    const partesTexto = textoCompleto.split(/(\b[0-9]+\/|\b[a-zA-Z]+\/)/);
+    // Separar fuente principal de notas usando regex para marcadores
+    // Soporta: 1/, a/, *, **, *** (seguidos de espacio o fin de cadena)
+    // Usamos regex con capturing group para mantener el delimitador
+    const partesTexto = textoCompleto.split(/(\b[0-9]+\/|\b[a-zA-Z]+\/|(?<=^|\s)\*{1,3}(?=\s|$))/);
 
     let textoFuente = '';
     const lineasNotas = [];
 
     for (let i = 0; i < partesTexto.length; i++) {
         const parte = partesTexto[i];
+        if (!parte) continue; // Skip empty strings
+
+        const parteTrim = parte.trim();
+
         // Verificar si es un marcador de nota
-        if (parte.match(/^([0-9]+\/|[a-zA-Z]+\/)$/)) {
+        if (parteTrim.match(/^([0-9]+\/|[a-zA-Z]+\/|\*{1,3})$/)) {
             // Es una nota, tomar el siguiente elemento como contenido
             const contenidoNota = partesTexto[i + 1] || '';
             lineasNotas.push({
-                nota: parte,
+                nota: parteTrim,
                 texto: contenidoNota.trim()
             });
             i++; // Saltar el contenido ya procesado
@@ -1216,43 +1220,108 @@ function procesarTextoFuente(texto) {
         }
     }
 
-    // Construir resultado LaTeX
+    // Ordenar notas: * primero, luego **, luego ***, luego numéricas/letras
+    lineasNotas.sort((a, b) => {
+        const getRank = (n) => {
+            if (n === '*') return 1;
+            if (n === '**') return 2;
+            if (n === '***') return 3;
+            return 100; // Otros (numéricos, letras) mantienen orden relativo
+        };
+        const rankA = getRank(a.nota);
+        const rankB = getRank(b.nota);
+        return rankA - rankB;
+    });
+
     let resultado = '';
-
-    // Agregar fuente principal procesando etiquetas (permite negritas, etc.)
     if (textoFuente.trim()) {
-        // ZNEWLINEZ ya está en el texto si había saltos
         let fuenteProcesada = procesarConEtiquetas(textoFuente);
-
-        // Restaurar saltos como quiebres de línea LaTeX
         fuenteProcesada = fuenteProcesada.replace(/ZNEWLINEZ/g, ' \\\\ ');
         resultado += fuenteProcesada;
     }
 
-    // Agregar notas como lista si existen
-    if (lineasNotas.length > 0) {
-        resultado += '\n\n{\\fontsize{9pt}{11pt}\\selectfont\n';
-        resultado += '\\begin{itemize}\n';
+    // Adaptación para devolver objeto en lugar de string formateado antiguo
+    const notasProcesadas = lineasNotas.map(item => {
+        let texto = procesarConEtiquetas(item.texto);
+        texto = texto.replace(/ZNEWLINEZ/g, ' \\\\ ');
+        return { nota: item.nota, texto: texto };
+    });
 
-        lineasNotas.forEach(item => {
-            const idNota = generarIdNota(item.nota);
-            const notaEscapada = escaparLatex(item.nota);
-            // Procesar etiquetas dentro del texto de la nota también
-            let textoProcesado = procesarConEtiquetas(item.texto);
+    return {
+        fuente: resultado, // textoFuente procesado
+        notas: notasProcesadas
+    };
+}
 
-            // También restaurar saltos en las notas
-            textoProcesado = textoProcesado.replace(/ZNEWLINEZ/g, ' \\\\ ');
+function formatearNotasYFuente(processed, esHorizontal = false) {
+    let tex = '';
+    const hayNotas = processed.notas && processed.notas.length > 0;
+    const hayFuente = !!processed.fuente;
 
-            resultado += `  \\item[\\hypertarget{${idNota}}{${notaEscapada}}] ${textoProcesado}\n`;
-        });
+    if (!hayNotas && !hayFuente) return '';
 
-        resultado += '\\end{itemize}\n}';
+    if (!hayNotas && hayFuente) {
+        // Solo fuente - Comportamiento legacy/estándar
+        if (esHorizontal) {
+            tex += `  \\fuenteHorizontal{${processed.fuente}}\n`;
+        } else {
+            tex += `\\vspace{-4pt}\n`;
+            tex += `\\fuente{${processed.fuente}}\n`;
+        }
+        return tex;
     }
 
-    return resultado;
+    // Caso: Hay Notas (y opcionalmente Fuente)
+    // Usamos un bloque unificado para controlar el espaciado y mantenerlos "juntitos"
+    if (esHorizontal) {
+        tex += `  \\vspace{-0.2cm}\n`;
+        tex += `  \\begin{center}\n`;
+        tex += `  \\parbox{\\anchoHorizontal}{\n`;
+        tex += `    \\raggedright\\notosanslight\\fontsize{7pt}{9pt}\\selectfont\\setlength{\\parskip}{0pt}\n`;
+
+        if (hayNotas) {
+            processed.notas.forEach(n => {
+                tex += `    ${escaparLatex(n.nota)} ${n.texto} \\par\n`;
+            });
+        }
+
+        if (hayFuente) {
+            // Pequeño espacio antes de la fuente si hay notas
+            if (hayNotas) tex += `    \\vspace{1pt}\n`;
+            tex += `    {\\color{gobmxGris}FUENTE:~${processed.fuente}}\n`;
+        }
+
+        tex += `  }\n`;
+        tex += `  \\end{center}\n`;
+    } else {
+        // Vertical
+        // Usamos -4pt inicial, ajustar si se requiere más pegado a la tabla
+        tex += `\\vspace{-4pt}\n`;
+        tex += `{\\raggedright\\notosanslight\\fontsize{7pt}{9pt}\\selectfont\\setlength{\\parskip}{0pt}\n`;
+
+        if (hayNotas) {
+            processed.notas.forEach(n => {
+                tex += `${escaparLatex(n.nota)} ${n.texto} \\par\n`;
+            });
+        }
+
+        if (hayFuente) {
+            if (hayNotas) tex += `\\vspace{1pt}\n`;
+            tex += `{\\color{gobmxGris} FUENTE:~${processed.fuente}}\\hfill\n`;
+        }
+
+        tex += `\\par}\n`;
+        tex += `\\vspace{6pt}\n`;
+    }
+
+    return tex;
 }
 
 function generarIdNota(nota) {
+    // Si es asterisco, generar ID seguro
+    if (nota.match(/^\*+$/)) {
+        return 'notaast' + nota.length;
+    }
     return 'nota' + nota.replace('/', '');
 }
 

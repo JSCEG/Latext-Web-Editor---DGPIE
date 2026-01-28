@@ -606,7 +606,7 @@
     \vspace{-0.5cm}% Ajuste fino: Subir ligeramente para acercar a la imagen sin empalmar
     \begin{center}%
     \parbox{\anchoHorizontal}{%
-      \raggedright\notosanslight\fontsize{8pt}{10pt}\selectfont\color{gobmxGris}FUENTE:~#1%
+      \raggedright\notosanslight\fontsize{7pt}{9pt}\selectfont\color{gobmxGris}FUENTE:~#1%
     }%
     \end{center}%
   }
@@ -1110,7 +1110,7 @@
 \newcommand{\fuente}[1]{%
   \vspace*{-12pt}
   \par\noindent
-  {\raggedright\notosanslight\fontsize{8pt}{10pt}\selectfont\color{gobmxGris} FUENTE:~#1\hfill}
+  {\raggedright\notosanslight\fontsize{7pt}{9pt}\selectfont\color{gobmxGris} FUENTE:~#1\hfill}
   \par\vspace{6pt}
 }
 
