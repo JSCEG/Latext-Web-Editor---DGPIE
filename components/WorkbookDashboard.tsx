@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { Collaborator } from '../services/sheetsService';
+import { API_URL } from '../config';
 
 interface WorkbookDashboardProps {
     user: {
@@ -75,7 +76,7 @@ export const WorkbookDashboard: React.FC<WorkbookDashboardProps> = ({
                                 <img
                                     alt="Avatar del usuario"
                                     className="w-full h-full object-cover"
-                                    src={user.photo}
+                                    src={user.photo?.includes('googleusercontent.com') ? `${API_URL}/proxy-image?url=${encodeURIComponent(user.photo)}` : user.photo}
                                     onError={() => setImgError(true)}
                                 />
                             ) : (

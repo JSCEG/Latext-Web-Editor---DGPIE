@@ -7,8 +7,10 @@ export interface ValidationResult {
         sectionsCount: number;
         figuresCount: number;
         tablesCount: number;
+        graphicsCount: number;
         orphanedFigures: number;
         orphanedTables: number;
+        orphanedGraphics: number;
     };
 }
 
@@ -16,7 +18,7 @@ export interface ValidationError {
     type: 'ORPHANED_ELEMENT' | 'DUPLICATE_ID' | 'MISSING_FIELD' | 'INVALID_HIERARCHY';
     message: string;
     itemId: string;
-    sheet: 'Secciones' | 'Figuras' | 'Tablas';
+    sheet: 'Secciones' | 'Figuras' | 'Tablas' | 'Gráficos';
     details?: string;
 }
 
@@ -24,7 +26,7 @@ export interface ValidationWarning {
     type: 'FORMAT_ISSUE' | 'EMPTY_SECTION' | 'POSSIBLE_ERROR';
     message: string;
     itemId: string;
-    sheet: 'Secciones' | 'Figuras' | 'Tablas';
+    sheet: 'Secciones' | 'Figuras' | 'Tablas' | 'Gráficos';
 }
 
 const NORMALIZE = (s: string) => s.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/_/g, '');
@@ -50,31 +52,32 @@ export const validateStructure = (
     const errors: ValidationError[] = [];
     const warnings: ValidationWarning[] = [];
     const validSectionIds = new Set<string>();
-    
+
     // 1. Process Sections
     const secIdIdx = FIND_COL(secciones.headers, SECCION_ID_VARIANTS); // usually 'Orden' for sections acting as ID
-    const secOrdenIdx = FIND_COL(secciones.headers, ['Orden']); 
+    const secOrdenIdx = FIND_COL(secciones.headers, ['Orden']);
     const secDocIdx = FIND_COL(secciones.headers, DOC_ID_VARIANTS);
     const secNivelIdx = FIND_COL(secciones.headers, ['Nivel', 'Level']);
     const secContenidoIdx = FIND_COL(secciones.headers, ['Contenido', 'content', 'texto', 'cuerpo']);
-    
+
     // Use 'Orden' as the ID for sections if SeccionOrden not present, or vice versa depending on schema
     // In latexGenerator.js, it uses 'Orden' to sort.
     // Usually SeccionOrden in figures refers to the 'Orden' of the section.
-    
+
     let sectionsCount = 0;
     const referencedFigures = new Set<string>();
     const referencedTables = new Set<string>();
-    
+    const referencedGraphics = new Set<string>();
+
     // Map to track IDs and their types to allow duplicates for 'portada'
     const seenSectionTypes = new Map<string, string[]>();
 
     secciones.data.forEach((row, idx) => {
         if (idx === 0) return; // Skip header
-        
+
         // Filter by Doc ID if present
         if (secDocIdx !== -1 && row[secDocIdx] !== docId) return;
-        
+
         const id = secOrdenIdx !== -1 ? row[secOrdenIdx] : '';
         const content = secContenidoIdx !== -1 ? (row[secContenidoIdx] || '') : '';
         const nivel = secNivelIdx !== -1 ? (row[secNivelIdx] || '').toLowerCase().trim() : '';
@@ -90,13 +93,18 @@ export const validateStructure = (
             referencedTables.add(match[1].trim());
         }
 
+        const grafMatches = content.matchAll(/\[\[grafico:(.+?)\]\]/g);
+        for (const match of grafMatches) {
+            referencedGraphics.add(match[1].trim());
+        }
+
         if (id) {
             if (seenSectionTypes.has(id)) {
                 const prevTypes = seenSectionTypes.get(id) || [];
                 // Allow duplicate if current or any previous is 'portada'
                 // This handles the case: Portada (ID X) -> Section (ID X)
                 const isPortadaContext = nivel.includes('portada') || prevTypes.some(t => t.includes('portada'));
-                
+
                 if (!isPortadaContext) {
                     errors.push({
                         type: 'DUPLICATE_ID',
@@ -109,7 +117,7 @@ export const validateStructure = (
             } else {
                 seenSectionTypes.set(id, [nivel]);
             }
-            
+
             validSectionIds.add(id);
             sectionsCount++;
         } else {
@@ -128,14 +136,14 @@ export const validateStructure = (
     const figIdIdx = FIND_COL(figuras.headers, ['ID', 'Codigo', 'OrdenFigura']);
     const figTitleIdx = FIND_COL(figuras.headers, TITLE_VARIANTS);
     const figOrdenIdx = FIND_COL(figuras.headers, ORDEN_VARIANTS);
-    
+
     let figuresCount = 0;
     let orphanedFigures = 0;
 
     figuras.data.forEach((row, idx) => {
         if (idx === 0) return;
         if (figDocIdx !== -1 && row[figDocIdx] !== docId) return;
-        
+
         figuresCount++;
         // ID construction matches latexGenerator logic: "SEC_ORDEN-FIG_ORDEN" or just "FIG_ORDEN" ?
         // Actually the user references them by what? Usually the 'Orden' column in Figuras tab? 
@@ -145,16 +153,16 @@ export const validateStructure = (
         // In latexGenerator.js: `match = lineaTrim.match(/\[\[figura:(.+?)\]\]/)`. 
         // It seems the user puts whatever ID they want. 
         // Let's assume the ID column in Figuras is the key.
-        
+
         const figOrden = figOrdenIdx !== -1 ? row[figOrdenIdx] : '';
         // If the user uses [[figura:1]] and the figure has Orden '1', that's the link.
-        
+
         const figTitle = figTitleIdx !== -1 ? row[figTitleIdx] : 'Sin título';
         const linkedSecId = figSecIdx !== -1 ? row[figSecIdx] : '';
         const figIdDisplay = `Fig ${figOrden}`;
 
         if (!linkedSecId) {
-             errors.push({
+            errors.push({
                 type: 'ORPHANED_ELEMENT',
                 message: `Figura "${figTitle}" no está asignada a ninguna sección.`,
                 itemId: figIdDisplay,
@@ -170,16 +178,16 @@ export const validateStructure = (
             });
             orphanedFigures++;
         } else {
-             // Check if referenced
-             // We try to match the "Orden" against the reference
-             if (figOrden && !referencedFigures.has(figOrden)) {
-                 warnings.push({
-                     type: 'POSSIBLE_ERROR',
-                     message: `Figura "${figTitle}" (Orden ${figOrden}) está asignada a la sección ${linkedSecId} pero NO está referenciada en su contenido (use [[figura:${figOrden}]]). No aparecerá en el PDF.`,
-                     itemId: figIdDisplay,
-                     sheet: 'Figuras'
-                 });
-             }
+            // Check if referenced
+            // We try to match the "Orden" against the reference
+            if (figOrden && !referencedFigures.has(figOrden)) {
+                warnings.push({
+                    type: 'POSSIBLE_ERROR',
+                    message: `Figura "${figTitle}" (Orden ${figOrden}) está asignada a la sección ${linkedSecId} pero NO está referenciada en su contenido (use [[figura:${figOrden}]]). No aparecerá en el PDF.`,
+                    itemId: figIdDisplay,
+                    sheet: 'Figuras'
+                });
+            }
         }
     });
 
@@ -189,14 +197,14 @@ export const validateStructure = (
     const tabIdIdx = FIND_COL(tablas.headers, ['ID', 'Codigo', 'OrdenTabla']);
     const tabTitleIdx = FIND_COL(tablas.headers, TITLE_VARIANTS);
     const tabOrdenIdx = FIND_COL(tablas.headers, ORDEN_VARIANTS);
-    
+
     let tablesCount = 0;
     let orphanedTables = 0;
 
     tablas.data.forEach((row, idx) => {
         if (idx === 0) return;
         if (tabDocIdx !== -1 && row[tabDocIdx] !== docId) return;
-        
+
         tablesCount++;
         const tabOrden = tabOrdenIdx !== -1 ? row[tabOrdenIdx] : '';
         const tabTitle = tabTitleIdx !== -1 ? row[tabTitleIdx] : 'Sin título';
@@ -204,7 +212,7 @@ export const validateStructure = (
         const tabIdDisplay = `Tab ${tabOrden}`;
 
         if (!linkedSecId) {
-             errors.push({
+            errors.push({
                 type: 'ORPHANED_ELEMENT',
                 message: `Tabla "${tabTitle}" no está asignada a ninguna sección.`,
                 itemId: tabIdDisplay,
@@ -220,14 +228,63 @@ export const validateStructure = (
             });
             orphanedTables++;
         } else {
-             if (tabOrden && !referencedTables.has(tabOrden)) {
-                 warnings.push({
-                     type: 'POSSIBLE_ERROR',
-                     message: `Tabla "${tabTitle}" (Orden ${tabOrden}) está asignada a la sección ${linkedSecId} pero NO está referenciada en su contenido (use [[tabla:${tabOrden}]]). No aparecerá en el PDF.`,
-                     itemId: tabIdDisplay,
-                     sheet: 'Tablas'
-                 });
-             }
+            if (tabOrden && !referencedTables.has(tabOrden)) {
+                warnings.push({
+                    type: 'POSSIBLE_ERROR',
+                    message: `Tabla "${tabTitle}" (Orden ${tabOrden}) está asignada a la sección ${linkedSecId} pero NO está referenciada en su contenido (use [[tabla:${tabOrden}]]). No aparecerá en el PDF.`,
+                    itemId: tabIdDisplay,
+                    sheet: 'Tablas'
+                });
+            }
+        }
+    });
+
+    // 4. Validate Graphics
+    const grafSecIdx = FIND_COL(graficos.headers, SECCION_ID_VARIANTS);
+    const grafDocIdx = FIND_COL(graficos.headers, DOC_ID_VARIANTS);
+    const grafIdIdx = FIND_COL(graficos.headers, ['ID', 'Codigo', 'Identificador']);
+    const grafTitleIdx = FIND_COL(graficos.headers, TITLE_VARIANTS);
+    // Usually graphics use ID as the main reference or maybe a custom field. 
+    // Assuming 'ID' column is the main identifier for graphics.
+
+    let graphicsCount = 0;
+    let orphanedGraphics = 0;
+
+    graficos.data.forEach((row, idx) => {
+        if (idx === 0) return;
+        if (grafDocIdx !== -1 && row[grafDocIdx] !== docId) return;
+
+        graphicsCount++;
+        const grafId = grafIdIdx !== -1 ? row[grafIdIdx] : '';
+        const grafTitle = grafTitleIdx !== -1 ? row[grafTitleIdx] : 'Sin título';
+        const linkedSecId = grafSecIdx !== -1 ? row[grafSecIdx] : '';
+        const grafIdDisplay = `Graf ${grafId}`;
+
+        if (!linkedSecId) {
+            errors.push({
+                type: 'ORPHANED_ELEMENT',
+                message: `Gráfico "${grafTitle}" no está asignado a ninguna sección.`,
+                itemId: grafIdDisplay,
+                sheet: 'Gráficos'
+            });
+            orphanedGraphics++;
+        } else if (!validSectionIds.has(linkedSecId)) {
+            errors.push({
+                type: 'ORPHANED_ELEMENT',
+                message: `Gráfico "${grafTitle}" apunta a una sección inexistente: ${linkedSecId}`,
+                itemId: grafIdDisplay,
+                sheet: 'Gráficos'
+            });
+            orphanedGraphics++;
+        } else {
+            if (grafId && !referencedGraphics.has(grafId)) {
+                warnings.push({
+                    type: 'POSSIBLE_ERROR',
+                    message: `Gráfico "${grafTitle}" (ID ${grafId}) está asignado a la sección ${linkedSecId} pero NO está referenciado en su contenido (use [[grafico:${grafId}]]). No aparecerá en el PDF.`,
+                    itemId: grafIdDisplay,
+                    sheet: 'Gráficos'
+                });
+            }
         }
     });
 
@@ -239,8 +296,10 @@ export const validateStructure = (
             sectionsCount,
             figuresCount,
             tablesCount,
+            graphicsCount,
             orphanedFigures,
-            orphanedTables
+            orphanedTables,
+            orphanedGraphics
         }
     };
 };

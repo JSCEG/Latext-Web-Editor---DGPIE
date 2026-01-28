@@ -37,6 +37,26 @@ app.post('/generate-latext', async (req, res) => {
   }
 });
 
+app.get('/proxy-image', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).send('URL required');
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    res.set('Content-Type', response.headers.get('content-type'));
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Proxy error:', error);
+    res.status(500).send('Error fetching image');
+  }
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {

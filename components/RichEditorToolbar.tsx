@@ -2,6 +2,7 @@ import React from 'react';
 import { Button } from './Button';
 import { Info, Image, Book, Type, FileText, Plus, AlertTriangle, Lightbulb, Grid, X, Table } from 'lucide-react';
 import { clsx } from 'clsx';
+import { API_URL } from '../config';
 
 export interface RichEditorToolbarProps {
     availableFigureItems: { id: string; title: string; section: string; route?: string }[];
@@ -36,7 +37,7 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
 }) => {
     return (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-3 shadow-sm">
-             <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex flex-wrap items-center gap-2">
+            <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold text-gray-700">Herramientas de Edición</span>
                 <span className="text-[11px] text-gray-500">(formato, etiquetas, plantillas)</span>
             </div>
@@ -81,7 +82,7 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
                                 <option key={k} value={k}>{k}</option>
                             ))}
                         </select>
-                        {onOpenNewItem && <Button type="button" variant="ghost" size="sm" onClick={() => onOpenNewItem('bibliografia')} title="Nueva Cita"><Plus size={14}/></Button>}
+                        {onOpenNewItem && <Button type="button" variant="ghost" size="sm" onClick={() => onOpenNewItem('bibliografia')} title="Nueva Cita"><Plus size={14} /></Button>}
                     </div>
 
                     {/* Figura */}
@@ -106,15 +107,15 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
                             }}
                         >
                             <option value="">Selecciona...</option>
-                             {(() => {
+                            {(() => {
                                 const list = currentSectionOrder ? availableFigureItems.filter(i => (i.section || '') === currentSectionOrder) : availableFigureItems;
                                 return list.map(i => (
                                     <option key={i.id} value={i.id}>{i.title || i.id}</option>
                                 ));
                             })()}
                         </select>
-                         {onOpenNewItem && <Button type="button" variant="ghost" size="sm" onClick={() => onOpenNewItem('figura')} title="Nueva Figura"><Plus size={14}/></Button>}
-                         {selectorPreview?.type === 'figura' && setSelectorPreview && (
+                        {onOpenNewItem && <Button type="button" variant="ghost" size="sm" onClick={() => onOpenNewItem('figura')} title="Nueva Figura"><Plus size={14} /></Button>}
+                        {selectorPreview?.type === 'figura' && setSelectorPreview && (
                             <Button type="button" variant="ghost" size="sm" onClick={() => setSelectorPreview(selectorPreview)} title="Ver Previsualización">Ver</Button>
                         )}
                     </div>
@@ -124,7 +125,7 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
                         <div className="text-[11px] text-gray-600 inline-flex items-center gap-1">
                             <Table size={12} /> Tabla
                         </div>
-                         <select
+                        <select
                             className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-900 w-32 focus:ring-1 focus:ring-gob-guinda outline-none"
                             value=""
                             onChange={(e) => {
@@ -141,15 +142,15 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
                             }}
                         >
                             <option value="">Selecciona...</option>
-                             {(() => {
+                            {(() => {
                                 const list = currentSectionOrder ? availableTableItems.filter(i => (i.section || '') === currentSectionOrder) : availableTableItems;
                                 return list.map(i => (
                                     <option key={i.id} value={i.id}>{i.title || i.id}</option>
                                 ));
                             })()}
                         </select>
-                         {onOpenNewItem && <Button type="button" variant="ghost" size="sm" onClick={() => onOpenNewItem('tabla')} title="Nueva Tabla"><Plus size={14}/></Button>}
-                         {selectorPreview?.type === 'tabla' && setSelectorPreview && (
+                        {onOpenNewItem && <Button type="button" variant="ghost" size="sm" onClick={() => onOpenNewItem('tabla')} title="Nueva Tabla"><Plus size={14} /></Button>}
+                        {selectorPreview?.type === 'tabla' && setSelectorPreview && (
                             <Button type="button" variant="ghost" size="sm" onClick={() => setSelectorPreview(selectorPreview)} title="Ver Previsualización">Ver</Button>
                         )}
                     </div>
@@ -165,7 +166,7 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
                             onChange={(e) => {
                                 const v = e.target.value;
                                 if (!v) return;
-                                
+
                                 const citeKey = availableBibliographyKeys[0] || 'clave_biblio';
                                 const figId = availableFigureItems[0]?.id || '2.1';
                                 const tableId = availableTableItems[0]?.id || '3.2';
@@ -210,8 +211,8 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
 
                 <div className="w-full h-px bg-gray-100" />
 
-                 {/* Blocks Row */}
-                 <div className="flex flex-wrap items-center gap-2">
+                {/* Blocks Row */}
+                <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[11px] text-gray-600 mr-2">Bloques:</span>
                     <Button type="button" variant="ghost" size="sm" onClick={() => onInsertBlock('caja', 'Título opcional')}>
                         <Grid size={14} className="mr-2" /> Caja
@@ -225,23 +226,28 @@ export const RichEditorToolbar: React.FC<RichEditorToolbarProps> = ({
                     <Button type="button" variant="ghost" size="sm" onClick={() => onInsertBlock('destacado')}>
                         <Lightbulb size={14} className="mr-2" /> Destacado
                     </Button>
-                     <Button type="button" variant="ghost" size="sm" onClick={onOpenNote}>
+                    <Button type="button" variant="ghost" size="sm" onClick={onOpenNote}>
                         <FileText size={14} className="mr-2" /> Nota Pie
                     </Button>
-                     <Button type="button" variant="ghost" size="sm" onClick={() => onOpenEquation('ecuacion')}>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => onOpenEquation('ecuacion')}>
                         <Grid size={14} className="mr-2" /> Ecuación Display
                     </Button>
-                 </div>
+                </div>
 
-                 {/* Preview Area */}
-                 {selectorPreview && (
+                {/* Preview Area */}
+                {selectorPreview && (
                     <div className="mt-2 border border-gray-200 rounded p-3 bg-gray-50 relative animate-in fade-in slide-in-from-top-2">
-                        <button onClick={() => setSelectorPreview && setSelectorPreview(null)} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"><X size={14}/></button>
+                        <button onClick={() => setSelectorPreview && setSelectorPreview(null)} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"><X size={14} /></button>
                         <div className="text-xs text-gray-600 mb-2">Previsualización: {selectorPreview.type === 'figura' ? 'Figura' : 'Tabla'} — {selectorPreview.title}</div>
                         {selectorPreview.type === 'figura' ? (
                             <div className="flex items-center justify-start">
                                 {selectorPreview.image ? (
-                                    <img src={`${selectorPreview.image}?t=${dataTimestamp}`} alt={selectorPreview.title} className="max-h-40 object-contain border rounded bg-white" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                                    <img
+                                        src={((url) => url.includes('googleusercontent.com') ? `${API_URL}/proxy-image?url=${encodeURIComponent(url)}` : url)(`${selectorPreview.image}?t=${dataTimestamp}`)}
+                                        alt={selectorPreview.title}
+                                        className="max-h-40 object-contain border rounded bg-white"
+                                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                    />
                                 ) : (
                                     <div className="text-xs text-gray-500">Sin ruta de imagen</div>
                                 )}

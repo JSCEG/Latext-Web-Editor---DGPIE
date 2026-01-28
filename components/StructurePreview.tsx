@@ -9,6 +9,7 @@ interface StructurePreviewProps {
     secciones: { headers: string[], data: string[][] };
     figuras: { headers: string[], data: string[][] };
     tablas: { headers: string[], data: string[][] };
+    graficos?: { headers: string[], data: string[][] };
     onEditSection?: (sectionId: string) => void;
 }
 
@@ -31,11 +32,11 @@ const escapeRegExp = (string: string) => {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
 
-export const StructurePreview: React.FC<StructurePreviewProps> = ({ docId, secciones, figuras, tablas, onEditSection }) => {
+export const StructurePreview: React.FC<StructurePreviewProps> = ({ docId, secciones, figuras, tablas, graficos, onEditSection }) => {
 
-    const validation = useMemo(() => {
-        return validateStructure(docId, secciones, figuras, tablas);
-    }, [docId, secciones, figuras, tablas]);
+    const validation = useMemo<ValidationResult>(() => {
+        return validateStructure(docId, secciones, figuras, tablas, graficos || { headers: [], data: [] });
+    }, [docId, secciones, figuras, tablas, graficos]);
 
     const tree = useMemo(() => {
         // Parse Sections
@@ -288,8 +289,12 @@ export const StructurePreview: React.FC<StructurePreviewProps> = ({ docId, secci
                                 <div className="text-xs text-gray-500">Tablas</div>
                             </div>
                             <div className="bg-gray-50 p-3 rounded">
-                                <div className={`text-2xl font-bold ${validation.stats.orphanedFigures + validation.stats.orphanedTables > 0 ? 'text-red-600' : 'text-gray-600'}`}>
-                                    {validation.stats.orphanedFigures + validation.stats.orphanedTables}
+                                <div className="text-2xl font-bold text-purple-600">{validation.stats.graphicsCount}</div>
+                                <div className="text-xs text-gray-500">Gráficos</div>
+                            </div>
+                            <div className="bg-gray-50 p-3 rounded">
+                                <div className={`text-2xl font-bold ${validation.stats.orphanedFigures + validation.stats.orphanedTables + validation.stats.orphanedGraphics > 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                                    {validation.stats.orphanedFigures + validation.stats.orphanedTables + validation.stats.orphanedGraphics}
                                 </div>
                                 <div className="text-xs text-gray-500">Huérfanos</div>
                             </div>

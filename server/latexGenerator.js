@@ -1515,10 +1515,10 @@ async function generateLatex(spreadsheetId, docId, token) {
         docBibliografia.forEach(ref => {
             const tipo = ref['Tipo'] ? ref['Tipo'].toLowerCase() : 'misc';
             let entry = `@${tipo}{${ref['Clave']},\n`;
-            if (ref['Autor']) entry += `  author = {${ref['Autor']}},\n`;
-            if (ref['Titulo']) entry += `  title = {${ref['Titulo']}},\n`;
+            if (ref['Autor']) entry += `  author = {${escaparLatex(ref['Autor'])}},\n`;
+            if (ref['Titulo']) entry += `  title = {${escaparLatex(ref['Titulo'])}},\n`;
             if (ref['Anio']) entry += `  year = {${ref['Anio']}},\n`;
-            if (ref['Editorial']) entry += `  publisher = {${ref['Editorial']}},\n`;
+            if (ref['Editorial']) entry += `  publisher = {${escaparLatex(ref['Editorial'])}},\n`;
             if (ref['Url']) entry += `  url = {${ref['Url']}},\n`;
             entry += '}\n';
             bib += entry;
