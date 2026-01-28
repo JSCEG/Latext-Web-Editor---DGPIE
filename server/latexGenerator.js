@@ -1242,15 +1242,22 @@ function procesarTextoFuente(texto) {
     });
 
     let resultado = '';
-    if (textoFuente.trim()) {
+    // Limpiar ZNEWLINEZ al inicio y final de la fuente (evitar saltos espurios)
+    textoFuente = textoFuente.replace(/^\s*(?:ZNEWLINEZ\s*)+|(?:ZNEWLINEZ\s*)+$/g, '').trim();
+
+    if (textoFuente) {
         let fuenteProcesada = procesarConEtiquetas(textoFuente);
-        fuenteProcesada = fuenteProcesada.replace(/ZNEWLINEZ/g, ' \\\\ ');
+        // FIX: Reemplazar ZNEWLINEZ con espacio en la fuente para evitar saltos de línea no deseados
+        // (especialmente cuando se usan notas al pie o marcadores manuales en líneas separadas)
+        fuenteProcesada = fuenteProcesada.replace(/ZNEWLINEZ/g, ' ');
         resultado += fuenteProcesada;
     }
 
     // Adaptación para devolver objeto en lugar de string formateado antiguo
     const notasProcesadas = lineasNotas.map(item => {
-        let texto = procesarConEtiquetas(item.texto);
+        // Limpiar ZNEWLINEZ al inicio y final de la nota
+        let rawText = item.texto.replace(/^\s*(?:ZNEWLINEZ\s*)+|(?:ZNEWLINEZ\s*)+$/g, '').trim();
+        let texto = procesarConEtiquetas(rawText);
         texto = texto.replace(/ZNEWLINEZ/g, ' \\\\ ');
         return { nota: item.nota, texto: texto };
     });
@@ -1525,4 +1532,4 @@ async function generateLatex(spreadsheetId, docId, token) {
     };
 }
 
-module.exports = { generateLatex };
+module.exports = { generateLatex, generarTabla, procesarTextoFuente, formatearNotasYFuente };

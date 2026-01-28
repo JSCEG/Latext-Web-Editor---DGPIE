@@ -1,0 +1,85 @@
+\documentclass{sener2025}
+\usepackage{booktabs}
+\usepackage{colortbl}
+\usepackage{tabularx}
+\usepackage{xltabular}
+\usepackage{float}
+\usepackage{ragged2e}
+
+\begin{document}
+
+\section{Pruebas de Formato de Tablas y Notas}
+
+A continuación se presentan los casos de prueba para verificar la corrección de:
+\begin{itemize}
+    \item Alineación de fuentes y notas al pie.
+    \item Eliminación de saltos de línea incorrectos en fuentes.
+    \item Ordenamiento y formato de notas con asteriscos (*, **, ***).
+    \item Uso de notas al pie numeradas dentro de tablas.
+\end{itemize}
+
+\subsection{Caso 1: Notas con Asteriscos (*, **, ***)}
+Esta tabla muestra notas extraídas automáticamente y ordenadas por jerarquía.
+
+\begin{tabladoradoCorto}
+  \caption{Tabla con Notas de Asteriscos}
+  \label{tab:asteriscos}
+  \begin{tabularx}{\textwidth}{Vv}
+    \toprule
+    \rowcolor{gobmxDorado} \encabezadodorado{Concepto} & \encabezadodorado{Valor} \\
+    \midrule
+    Dato A * & 100 \\
+    Dato B ** & 200 \\
+    Dato C *** & 300 \\
+    \bottomrule
+  \end{tabularx}
+\end{tabladoradoCorto}
+\vspace{-4pt}
+{\raggedright\notosanslight\fontsize{7pt}{9pt}\selectfont\setlength{\parskip}{0pt}
+* Nota de primer nivel (un asterisco). \par
+** Nota de segundo nivel (dos asteriscos). \par
+*** Nota de tercer nivel (tres asteriscos). \par
+\vspace{1pt}
+{\color{gobmxGris} FUENTE:~Elaboración propia con datos de prueba.}\hfill
+\par}
+\vspace{6pt}
+
+\subsection{Caso 2: Fuente con Notas al Pie Numeradas (Solución Inline)}
+Este caso verifica que los saltos de línea en el campo "Fuente" (que causaban que los números 10 y 11 aparecieran en nuevas líneas) han sido eliminados.
+Se simula el uso de \texttt{[[nota:...]]} o entrada manual.
+
+\begin{tabladoradoCorto}
+  \caption{Tabla con Fuente y Notas al Pie}
+  \label{tab:footnotes}
+  \begin{tabularx}{\textwidth}{Vv}
+    \toprule
+    \rowcolor{gobmxDorado} \encabezadodorado{Concepto} & \encabezadodorado{Referencia} \\
+    \midrule
+    Infraestructura & Ver nota 10 \\
+    Prontuario & Ver nota 11 \\
+    \bottomrule
+  \end{tabularx}
+\end{tabladoradoCorto}
+\vspace{-4pt}
+% Aquí se muestra el resultado esperado: todo en una línea o con footnotes reales
+\fuente{Elaboración de SENER con información de Infraestructura Nacional... \footnote{Infraestructura Nacional de Almacenamiento...} \footnote{Prontuario Estadístico de la SENER.}}
+
+\subsection{Caso 3: Verificación de Limpieza de Newlines}
+Si el usuario ingresa saltos de línea manuales entre marcadores:
+
+\begin{tabladoradoCorto}
+  \caption{Tabla con Saltos de Línea en Fuente}
+  \label{tab:newlines}
+  \begin{tabularx}{\textwidth}{Vv}
+    \toprule
+    \rowcolor{gobmxDorado} \encabezadodorado{Item} & \encabezadodorado{Detalle} \\
+    \midrule
+    Prueba & Texto \\
+    \bottomrule
+  \end{tabularx}
+\end{tabladoradoCorto}
+\vspace{-4pt}
+% El generador ahora convierte los saltos en espacios:
+\fuente{Elaboración propia.   10   11}
+
+\end{document}
