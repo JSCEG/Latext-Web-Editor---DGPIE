@@ -71,6 +71,12 @@
 \RequirePackage{needspace}   % Para evitar cortes de página indeseados (\Needspace)
 
 % ============================================================================
+% CONFIGURACIÓN DE NUMERACIÓN
+% ============================================================================
+\setcounter{secnumdepth}{4} % Numerar hasta \paragraph (1.1.1.1)
+\setcounter{tocdepth}{4}    % Mostrar hasta \paragraph en TOC
+
+% ============================================================================
 % 2. COLORES INSTITUCIONALES (Identidad Corporativa)
 % ============================================================================
 
@@ -341,7 +347,7 @@
 % A -> \section (Patria 17pt)
 \titleformat{\section}
   {\patriafont\bfseries\fontsize{17pt}{20pt}\selectfont\color{senerGuindaOscuro}}
-  {\thesection}{0.3em}{}
+  {\thesection.}{0.3em}{}
 \titlespacing*{\section}{0pt}{2em}{1em}
 
 % B -> \subsection (Patria 14pt)
@@ -356,9 +362,9 @@
   {\thesubsubsection}{0.3em}{}
 \titlespacing*{\subsubsection}{0pt}{1em}{0.5em}
 
-% D -> \paragraph (Noto Sans 10pt Dorado Bold)
+% D -> \paragraph (Noto Sans 10pt Dorado Bold -> Guinda)
 \titleformat{\paragraph}
-  {\sffamily\bfseries\fontsize{10pt}{12pt}\selectfont\color{gobmxDorado}}
+  {\sffamily\bfseries\fontsize{10pt}{12pt}\selectfont\color{senerRojoClaro}}
   {\theparagraph}{0.3em}{}
 \titlespacing*{\paragraph}{0pt}{0.8em}{0.5em}
 

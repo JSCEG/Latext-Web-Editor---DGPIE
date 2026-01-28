@@ -44,10 +44,10 @@
   <internal package="biblatex" priority="9" active="0">
     <generic>latex</generic>
     <provides type="dynamic">
-      <file>"Balance Nacional de Energía 2024U".bcf</file>
+      <file>Testing.bcf</file>
     </provides>
     <requires type="dynamic">
-      <file>"Balance Nacional de Energía 2024U".bbl</file>
+      <file>Testing.bbl</file>
     </requires>
     <requires type="static">
       <file>blx-dm.def</file>
@@ -66,19 +66,19 @@
     <generic>biber</generic>
     <cmdline>
       <binary>biber</binary>
-      <infile>"Balance Nacional de Energía 2024U"</infile>
+      <infile>Testing</infile>
     </cmdline>
     <input>
-      <file>"Balance Nacional de Energía 2024U".bcf</file>
+      <file>Testing.bcf</file>
     </input>
     <output>
-      <file>"Balance Nacional de Energía 2024U".bbl</file>
+      <file>Testing.bbl</file>
     </output>
     <provides type="dynamic">
-      <file>"Balance Nacional de Energía 2024U".bbl</file>
+      <file>Testing.bbl</file>
     </provides>
     <requires type="dynamic">
-      <file>"Balance Nacional de Energía 2024U".bcf</file>
+      <file>Testing.bcf</file>
     </requires>
     <requires type="editable">
       <file>referencias.bib</file>

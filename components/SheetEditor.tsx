@@ -3396,6 +3396,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 const topOrders = new Set<string>();
                                                 const subOrders = new Map<string, Set<string>>();
                                                 const subSubOrders = new Map<string, Set<string>>();
+                                                const subSubSubOrders = new Map<string, Set<string>>();
                                                 rowsDoc.forEach((row, idx) => {
                                                     if (idx === editingRowIndex) return;
                                                     const ord = (gridOrdIdx !== -1 ? row[gridOrdIdx] : '').toString();
@@ -3407,10 +3408,14 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                         const parent = parts[0];
                                                         if (!subOrders.has(parent)) subOrders.set(parent, new Set<string>());
                                                         subOrders.get(parent)!.add(parts[1]);
-                                                    } else if (parts.length >= 3) {
+                                                    } else if (parts.length === 3) {
                                                         const parent = `${parts[0]}.${parts[1]}`;
                                                         if (!subSubOrders.has(parent)) subSubOrders.set(parent, new Set<string>());
                                                         subSubOrders.get(parent)!.add(parts[2]);
+                                                    } else if (parts.length >= 4) {
+                                                        const parent = `${parts[0]}.${parts[1]}.${parts[2]}`;
+                                                        if (!subSubSubOrders.has(parent)) subSubSubOrders.set(parent, new Set<string>());
+                                                        subSubSubOrders.get(parent)!.add(parts[3]);
                                                     }
                                                 });
                                                 const currentValue = (formData[i] || '').toString();
@@ -3501,6 +3506,58 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                 </select>
                                                                 <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900"
                                                                     value={currentParts[2] || ''}
+                                                                    onChange={(e) => { const nd = [...formData]; const child = e.target.value; const pc = parentChain; nd[i] = pc && child ? `${pc}.${child}` : child; setFormData(nd); }}
+                                                                >
+                                                                    <option value="">Índice…</option>
+                                                                    {childOptions.map(c => (<option key={c} value={c}>{c}</option>))}
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                } else if (nivelVal === 'parrafo') {
+                                                    const parentCandidates = Array.from(topOrders).flatMap(p => {
+                                                        const subs = subOrders.get(p) || new Set<string>();
+                                                        return Array.from(subs).flatMap(s => {
+                                                            const p2 = `${p}.${s}`;
+                                                            const subsubs = subSubOrders.get(p2) || new Set<string>();
+                                                            return Array.from(subsubs).map(ss => `${p}.${s}.${ss}`);
+                                                        });
+                                                    }).sort((a, b) => {
+                                                        const partsA = a.split('.').map(n => parseInt(n));
+                                                        const partsB = b.split('.').map(n => parseInt(n));
+                                                        for (let k = 0; k < Math.max(partsA.length, partsB.length); k++) {
+                                                            const valA = partsA[k] || 0;
+                                                            const valB = partsB[k] || 0;
+                                                            if (valA !== valB) return valA - valB;
+                                                        }
+                                                        return 0;
+                                                    });
+
+                                                    const parentChain = (currentParts[0] && currentParts[1] && currentParts[2]) ? `${currentParts[0]}.${currentParts[1]}.${currentParts[2]}` : (parentCandidates[0] || '');
+                                                    const usedChildren = parentChain ? (subSubSubOrders.get(parentChain) || new Set<string>()) : new Set<string>();
+                                                    const nums = Array.from(usedChildren).map(x => parseInt(x)).filter(x => !isNaN(x)).sort((a, b) => a - b);
+                                                    const max = nums.length ? nums[nums.length - 1] : 0;
+                                                    const childOptions: string[] = [];
+                                                    for (let k = 1; k <= Math.max(max + 10, 10); k++) {
+                                                        const kStr = String(k);
+                                                        if (!usedChildren.has(kStr) || currentParts[3] === kStr) childOptions.push(kStr);
+                                                    }
+                                                    if (currentParts[3] && !childOptions.includes(currentParts[3])) childOptions.push(currentParts[3]);
+                                                    childOptions.sort((a, b) => parseInt(a) - parseInt(b));
+
+                                                    return (
+                                                        <div key={i} className={colSpan + " space-y-1"}>
+                                                            <label className="block text-sm font-medium text-gray-700">{header}</label>
+                                                            <div className="flex gap-2">
+                                                                <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900 w-2/3"
+                                                                    value={parentChain}
+                                                                    onChange={(e) => { const nd = [...formData]; const child = currentParts[3] || ''; nd[i] = e.target.value && child ? `${e.target.value}.${child}` : e.target.value; setFormData(nd); }}
+                                                                >
+                                                                    <option value="">Sub-subsección padre…</option>
+                                                                    {parentCandidates.map(p => (<option key={p} value={p}>{p}</option>))}
+                                                                </select>
+                                                                <select className="px-4 py-2 border rounded-md text-sm bg-white text-gray-900 w-1/3"
+                                                                    value={currentParts[3] || ''}
                                                                     onChange={(e) => { const nd = [...formData]; const child = e.target.value; const pc = parentChain; nd[i] = pc && child ? `${pc}.${child}` : child; setFormData(nd); }}
                                                                 >
                                                                     <option value="">Índice…</option>

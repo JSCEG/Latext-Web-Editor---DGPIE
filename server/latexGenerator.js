@@ -9,11 +9,19 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
  * Main function to generate the LaTeX string
  */
 function generarLatexString(datosDoc, secciones, bibliografia, figuras, tablas, siglas, glosario, unidades) {
-    // 1. Sort sections
+    // 1. Sort sections hierarchically
     secciones.sort((a, b) => {
-        const oa = parseFloat(a.Orden) || 0;
-        const ob = parseFloat(b.Orden) || 0;
-        return oa - ob;
+        const oa = (a.Orden || '').toString().trim();
+        const ob = (b.Orden || '').toString().trim();
+        const partsA = oa.split('.');
+        const partsB = ob.split('.');
+        const len = Math.max(partsA.length, partsB.length);
+        for (let i = 0; i < len; i++) {
+            const numA = parseInt(partsA[i]) || 0;
+            const numB = parseInt(partsB[i]) || 0;
+            if (numA !== numB) return numA - numB;
+        }
+        return 0;
     });
 
     // 2. Build Content

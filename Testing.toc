@@ -1,0 +1,7 @@
+\babel@toc {mexican}{}\relax 
+\contentsline {section}{\numberline {1}Introducción}{7}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Subsección}{7}{subsection.1.1}%
+\contentsline {subsubsection}{\numberline {1.1.1}Sub subsección}{7}{subsubsection.1.1.1}%
+\contentsline {paragraph}{\numberline {1.1.1.1}Parrafo}{7}{paragraph.1.1.1.1}%
+\contentsline {section}{Glosario}{8}{section*.1}%
+\contentsline {section}{Siglas y Acrónimos}{9}{section*.2}%

@@ -1,0 +1,104 @@
+\DocumentMetadata{
+  pdfversion=2.0,
+  lang=es-MX,
+  pdfstandard=ua-2
+}
+
+\documentclass{sener2025}
+
+\addbibresource{referencias.bib}
+
+% --- Metadatos PDF/UA (Accesibilidad Universal) ---
+\hypersetup{
+  pdftitle={Demo Latex y Fucnionalidades},
+  pdfauthor={SENER},
+  pdfsubject={BNE 2025n},
+  pdfkeywords={Energías},
+  pdfcreationdate={D:20260128110439},
+  pdfversion={1}
+}
+
+% --- Metadatos del Documento ---
+\title{Demo Latex y Fucnionalidades}
+\subtitle{BNE 2025n}
+\author{SENER}
+\date{17 de diciembre de 2025}
+\institucion{Secretaría de Energía (SENER)}
+\unidad{Unidad de Planeación y Transición Energética}
+\setDocumentoCorto{Testing}
+\palabrasclave{Energías}
+\version{1}
+
+\begin{document}
+
+\portadafondo[img/portada.jpg]
+
+\tableofcontents
+\newpage
+
+\listafiguras
+\newpage
+
+\listatablas
+\newpage
+
+\clearpage
+\begin{center}
+{\Large\patriafont\bfseries\color{gobmxGuinda}Presentación}\\[1cm]
+\end{center}
+
+La Seguridad Energética es un objetivo estratégico del Plan Nacional de Desarrollo 2025-2030, pero debe hacerse con una visión de sustentabilidad ambiental; para ello es fundamental consolidar la rectoría del Estado en el sector energético mediante el fortalecimiento de PEMEX y de la CFE. Esto permitirá eliminar la dependencia del exterior, asegurar precios accesibles para la población y avanzar hacia la autosuficiencia energética. En la matriz energética del país se impulsarán fuentes de energía renovables y se acelerará la transición energética con el objetivo de reducir las emisiones contaminantes, cumplir con las metas nacionales de energías limpias y honrar los compromisos internacionales en la lucha contra el cambio climático.
+
+Además de garantizar un suministro energético seguro, eficiente y asequible para toda la población, la justicia energética debe convertirse en un pilar del desarrollo nacional. Esto implica ampliar la cobertura y el acceso a la energía, especialmente en comunidades marginadas, asegurando que todas las regiones del país cuenten con fuentes de energía limpias y sostenibles.
+
+En México se ha tomado la decisión de trabajar con una visión de preservar la seguridad y autosuficiencia energética, encaminarse a una transición energética justa y sustentable, así como de brindar certeza jurídica a las actividades que se realizan en el sector. Por estas razones, se han hecho cambios al marco jurídico del sector energético partiendo de las modificaciones a la Constitución Política de los Estados Unidos Mexicanos y a diversos ordenamientos jurídicos que de ella emanan. En este sentido, la SENER tiene el mandato legal de ser el órgano rector de la política y planeación energética nacional, bajo criterios de soberanía y seguridad energética, autosuficiencia, restitución y aumento de reservas, diversificación de fuentes de combustibles, mejoramiento de la productividad, la reducción progresiva de impactos ambientales en la producción y consumo de energía, y la satisfacción de las necesidades energéticas básicas mediante cobertura universal a toda la población a precios accesibles.
+
+
+
+\portadaseccion{1}{Introducción}{}
+
+\section{Introducción}
+
+El sector energético es un área estratégica para el funcionamiento de la economía y el bienestar de la sociedad mexicana, ya que proporciona energía para el desarrollo nacional a través de diversos sectores productivos (agropecuario, industrial, residencial, comercial, transporte, de servicios públicos, entre otros). También, suministra insumos para fines no energéticos en la industria petroquímica, como es la producción de fertilizantes, medicamentos y plásticos ampliamente utilizados en un sin número de artículos de uso cotidiano.
+
+
+\subsection{Subsección}
+
+Esta es la subsección
+
+
+\subsubsection{Sub subsección}
+
+Esta es la subsubsección
+
+
+\paragraph{Parrafo}
+
+Este es un parrarfo para el cuarto nivel de jerarquías
+
+
+\clearpage
+\section*{Glosario}
+\phantomsection
+\addcontentsline{toc}{section}{Glosario}
+
+\entradaGlosario{Centros de Transformación}{Instalaciones industriales de transformación de la energía primaria en productos energéticos secundarios con características que permiten su uso o consumo final.
+}
+\entradaGlosario{Infraestructura energética}{Conjunto integral de instalaciones, sistemas y tecnologías de gran escala que habilitan el desarrollo, operación, control y mantenimiento de los sectores estratégicos de energía. Esta infraestructura abarca los flujos energéticos del país, incluyendo tanto la infraestructura del Sector Eléctrico como la del Sector Hidrocarburos.}
+\entradaGlosario{Sistema Eléctrico Nacional}{Es el conjunto de infraestructura que permite suministrar energía eléctrica a los usuarios finales del país, a través de un sistema integrado por la Red Nacional de Transmisión, la Red Nacional de Distribución, las centrales eléctricas, los equipos e instalaciones del CENACE destinados al control operativo del SEN, así como demás elementos que determine la Secretaría.}
+
+\clearpage
+\section*{Siglas y Acrónimos}
+\phantomsection
+\addcontentsline{toc}{section}{Siglas y Acrónimos}
+
+\entradaSigla{ASA}{Aeropuertos y Servicios Auxiliares}
+\entradaSigla{BNE}{Balance Nacional de Energía}
+\entradaSigla{CFE}{Comisión Federal de Electricidad}
+\entradaSigla{CNE}{Comisión Nacional de Energía}
+\entradaSigla{CPEUM}{Constitución Política de los Estados Unidos Mexicanos}
+
+\printbibliography
+
+
+\end{document}
