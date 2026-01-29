@@ -903,8 +903,9 @@ function generarTablaSimple(datos, tituloTabla, esHorizontal = false) {
 }
 
 function generarTablaCompacta(datos, esHorizontal = false) {
-    const numCols = datos[0].length;
-    const especCols = 'V' + ('v'.repeat(numCols - 1));
+    const numCols = datos[0] ? datos[0].length : 0;
+    if (numCols === 0) return ''; // Tabla vacía
+    const especCols = 'V' + ('v'.repeat(Math.max(0, numCols - 1)));
     const anchoTabla = esHorizontal ? '\\linewidth' : '\\textwidth';
     let tex = `  \\begin{tabularx}{${anchoTabla}}{${especCols}}\n`;
     tex += `    \\toprule\n`;
