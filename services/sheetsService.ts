@@ -186,8 +186,8 @@ const handleResponse = async (response: Response) => {
     // If range parsing fails, it might be because the sheet doesn't exist.
     // Return empty values instead of crashing to allow the app to continue.
     if (message.includes('Unable to parse range') || message.includes('Range not found')) {
-        console.warn(`[SheetsAPI] Range error ignored: ${message}`);
-        return { values: [] };
+      console.warn(`[SheetsAPI] Range error ignored: ${message}`);
+      return { values: [] };
     }
     throw new Error(message);
   }
@@ -352,7 +352,7 @@ export const updateCellValue = async (
 
   const range = `${sheetName}!${getColumnLetter(cell.col)}${cell.row + 1}`;
 
-  const response = await retryOperation(() => fetch(`${BASE_URL}/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+  const response = await retryOperation(() => fetch(`${BASE_URL}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     headers: getHeaders(token),
     body: JSON.stringify({
@@ -376,7 +376,7 @@ export const appendRow = async (
   }
 
   const range = `${sheetName}!A1`;
-  const response = await retryOperation(() => fetch(`${BASE_URL}/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+  const response = await retryOperation(() => fetch(`${BASE_URL}/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
     method: 'POST',
     headers: getHeaders(token),
     body: JSON.stringify({
@@ -575,7 +575,7 @@ export const fetchValues = async (spreadsheetId: string, range: string, token: s
     return [['', '', '', '', ''], ['', '', '', '', '']]; // Generic fallback
   }
 
-  const response = await fetch(`${BASE_URL}/${spreadsheetId}/values/${range}`, {
+  const response = await fetch(`${BASE_URL}/${spreadsheetId}/values/${encodeURIComponent(range)}`, {
     headers: getHeaders(token),
   });
   const json = await handleResponse(response);
@@ -588,7 +588,7 @@ export const updateValues = async (spreadsheetId: string, range: string, values:
     return {};
   }
 
-  const response = await fetch(`${BASE_URL}/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+  const response = await fetch(`${BASE_URL}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     headers: getHeaders(token),
     body: JSON.stringify({

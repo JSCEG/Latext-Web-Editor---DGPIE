@@ -1,0 +1,49 @@
+\documentclass{sener2025}
+\usepackage{lipsum}
+
+\begin{document}
+
+% Optimized Case: 25 Columns
+\begin{tablaespecial}
+  \captionHorizontal{Prueba Optimizada: 25 Columnas (Padding reducido, Ancho C1 reducido, Fuente Femto)}
+  
+  % Optimization settings local to this table (or could be global for high-col tables)
+  \setlength{\tabcolsep}{2pt} % Reduce padding from default (~6pt) to 2pt
+  \setlength{\SENERLongTableFirstColWidth}{0.15\textwidth} % Reduce first col from 0.34 to 0.15
+  
+  \begin{tabladoradoLargo}
+    \notosansfemto % Reduce font to 5pt
+    \begin{xltabular}{\linewidth}{QZZZZZZZZZZZZZZZZZZZZZZZZ}
+      \toprule
+      \rowcolor{gobmxDorado} \encabezadodorado{Concepto} & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 & 13 & 14 & 15 & 16 & 17 & 18 & 19 & 20 & 21 & 22 & 23 & 24 \\
+      \midrule
+      \endfirsthead
+      \bottomrule
+      \endlastfoot
+      Datos & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 & 13 & 14 & 15 & 16 & 17 & 18 & 19 & 20 & 21 & 22 & 23 & 24 \\
+    \end{xltabular}
+  \end{tabladoradoLargo}
+\end{tablaespecial}
+
+% Optimized Case: 20 Columns (Less aggressive)
+\begin{tablaespecial}
+  \captionHorizontal{Prueba Optimizada: 20 Columnas}
+  
+  \setlength{\tabcolsep}{3pt} 
+  \setlength{\SENERLongTableFirstColWidth}{0.20\textwidth} 
+  
+  \begin{tabladoradoLargo}
+    \notosanspico % Keep pico (6.5pt) if possible
+    \begin{xltabular}{\linewidth}{QZZZZZZZZZZZZZZZZZZZ}
+      \toprule
+      \rowcolor{gobmxDorado} \encabezadodorado{Concepto} & C1 & C2 & C3 & C4 & C5 & C6 & C7 & C8 & C9 & C10 & C11 & C12 & C13 & C14 & C15 & C16 & C17 & C18 & C19 \\
+      \midrule
+      \endfirsthead
+      \bottomrule
+      \endlastfoot
+      Fila de Datos & 100 & 200 & 300 & 400 & 500 & 600 & 700 & 800 & 900 & 100 & 200 & 300 & 400 & 500 & 600 & 700 & 800 & 900 & 1000 \\
+    \end{xltabular}
+  \end{tabladoradoLargo}
+\end{tablaespecial}
+
+\end{document}

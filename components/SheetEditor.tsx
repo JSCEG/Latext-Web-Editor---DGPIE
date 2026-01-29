@@ -34,7 +34,7 @@ const TAB_TO_SHEET_TITLE: Record<string, string> = {
     'siglas': 'Siglas',
     'glosario': 'Glosario',
     'unidades': 'Unidades',
-    'graficos': 'Gráficos'
+    'graficos': 'Graficos'
 };
 
 const TAB_DESCRIPTIONS: Record<string, string> = {
@@ -2095,6 +2095,24 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             }
         }
 
+        // Validation for Horizontal Tables Column Limit (Max 17)
+        if (activeTab === 'tablas') {
+            const horizontalIdx = findColumnIndex(formHeaders, HORIZONTAL_COL_VARIANTS);
+            if (horizontalIdx !== -1) {
+                const isHorizontal = (formData[horizontalIdx] || '').toString().toLowerCase().trim();
+                // Common affirmative values
+                if (['si', 'sí', 'yes', 'true', 'x', 'horizontal', 'activado'].includes(isHorizontal)) {
+                    if (nestedGridData && nestedGridData.length > 0) {
+                        const colCount = nestedGridData[0].length;
+                        if (colCount > 20) {
+                            showNotification(`En modo horizontal, la tabla no puede exceder 20 columnas (actual: ${colCount}). Por favor reduzca las columnas antes de guardar.`, "error");
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
         // Validate Section and Order logic for both Tablas AND Figuras
         if (activeTab === 'tablas' || activeTab === 'figuras') {
             const secColIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
@@ -2368,6 +2386,21 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         updateRangeString(newData);
     };
     const addGridCol = () => {
+        // Validation for Horizontal Mode Limit
+        if (activeTab === 'tablas') {
+            const horizontalIdx = findColumnIndex(formHeaders, HORIZONTAL_COL_VARIANTS);
+            if (horizontalIdx !== -1) {
+                const isHorizontal = (formData[horizontalIdx] || '').toString().toLowerCase().trim();
+                if (['si', 'sí', 'yes', 'true', 'x', 'horizontal', 'activado'].includes(isHorizontal)) {
+                    const currentCols = nestedGridData[0]?.length || 0;
+                    if (currentCols >= 17) {
+                        showNotification("En modo horizontal, el límite es de 17 columnas.", "warning");
+                        return;
+                    }
+                }
+            }
+        }
+
         const newData = nestedGridData.map(row => [...row, '']);
         setNestedGridData(newData);
         updateRangeString(newData);
@@ -2511,12 +2544,15 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     };
 
     const handleSaveRowGraphics = async (rowIndex: number, newRow: string[]) => {
-        if (!activeSheet) return;
+        if (!activeSheet) {
+            showNotification('Error: Hoja de gráficos no encontrada', 'error');
+            return;
+        }
         setSaving(true);
         try {
             // Row index in sheet: Header (1) + Index (0-based) + 1 = Index + 2
             const sheetRow = rowIndex + 2;
-            const range = `'${activeSheet.properties.title}'!A${sheetRow}`;
+            const range = `${quoteSheetName(activeSheet.properties.title)}!A${sheetRow}`;
             await updateValues(spreadsheet.spreadsheetId, range, [newRow], token);
             showNotification('Gráfico actualizado correctamente', 'success');
             onRefresh();
@@ -2529,10 +2565,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     };
 
     const handleAddRowGraphics = async (newRow: string[]) => {
-        if (!activeSheet) return;
+        if (!activeSheet) {
+            showNotification('Error: Hoja de gráficos no encontrada', 'error');
+            return;
+        }
         setSaving(true);
         try {
-            await appendRow(spreadsheet.spreadsheetId, activeSheet.properties.title, newRow, token);
+            await appendRow(spreadsheet.spreadsheetId, quoteSheetName(activeSheet.properties.title), newRow, token);
             showNotification('Gráfico creado correctamente', 'success');
             onRefresh();
         } catch (error) {
@@ -2876,10 +2915,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                     onSaveRow={handleSaveRowGraphics}
                                     onAddRow={handleAddRowGraphics}
                                     onDeleteRow={handleDeleteRowGraphics}
-                                    availableSections={fullData?.secciones?.map((s: any) => ({
+                                    availableSections={Array.isArray(fullData?.secciones) ? fullData.secciones.map((s: any) => ({
                                         value: s.id || s.ID_Seccion,
                                         label: `${s.id || s.ID_Seccion} - ${s.Titulo || s.title || ''}`
-                                    })) || []}
+                                    })) : []}
                                 />
                             </div>
                         )}

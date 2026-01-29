@@ -267,7 +267,7 @@ export const validateStructure = (
                     type: 'ORPHANED_ELEMENT',
                     message: `Gráfico "${grafTitle}" no está asignado a ninguna sección.`,
                     itemId: grafIdDisplay,
-                    sheet: 'Gráficos'
+                    sheet: 'Graficos'
                 });
                 orphanedGraphics++;
             } else if (!validSectionIds.has(linkedSecId)) {
@@ -275,7 +275,7 @@ export const validateStructure = (
                     type: 'ORPHANED_ELEMENT',
                     message: `Gráfico "${grafTitle}" apunta a una sección inexistente: ${linkedSecId}`,
                     itemId: grafIdDisplay,
-                    sheet: 'Gráficos'
+                    sheet: 'Graficos'
                 });
                 orphanedGraphics++;
             } else {
@@ -284,7 +284,7 @@ export const validateStructure = (
                         type: 'POSSIBLE_ERROR',
                         message: `Gráfico "${grafTitle}" (ID ${grafId}) está asignado a la sección ${linkedSecId} pero NO está referenciado en su contenido (use [[grafico:${grafId}]]). No aparecerá en el PDF.`,
                         itemId: grafIdDisplay,
-                        sheet: 'Gráficos'
+                        sheet: 'Graficos'
                     });
                 }
             }

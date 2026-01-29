@@ -158,6 +158,11 @@ export const GraphicsEditor: React.FC<GraphicsEditorProps> = ({
 
     // --- Chart Renderer ---
     const renderChart = () => {
+        // Validation before render
+        if (!chartData || !chartData.datasets || !Array.isArray(chartData.datasets)) {
+            return <div className="text-gray-400 text-sm p-4 text-center">Datos inválidos o vacíos</div>;
+        }
+
         const options = {
             responsive: true,
             maintainAspectRatio: false,
@@ -175,7 +180,7 @@ export const GraphicsEditor: React.FC<GraphicsEditorProps> = ({
 
         // Prepare data with some default colors if missing
         const finalData = {
-            ...chartData,
+            labels: chartData.labels || [],
             datasets: chartData.datasets.map((ds, i) => ({
                 backgroundColor: [
                     'rgba(255, 99, 132, 0.5)',
@@ -197,6 +202,7 @@ export const GraphicsEditor: React.FC<GraphicsEditorProps> = ({
                 ...ds
             }))
         };
+
 
         switch (type) {
             case 'line': return <Line options={options} data={finalData as any} />;

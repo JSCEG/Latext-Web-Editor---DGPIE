@@ -791,7 +791,7 @@ function procesarDatosArray(datos, tituloTabla, forzarLongtable = false, esHoriz
     const numCols = datos[0].length;
     // Máximo de columnas por tabla (incluyendo la primera).
     // Requisito: permitir hasta 14 columnas además de la primera (total 15) antes de dividir por columnas.
-    const MAX_COLS_POR_TABLA = 15;
+    const MAX_COLS_POR_TABLA = 20;
     const MAX_FILAS_COMPACTA = 15;
     const MAX_FILAS_POR_PARTE = 35;
 
@@ -830,8 +830,18 @@ function normalizarColumnasDatos(datos, numColsEsperado) {
 // Ajusta el ancho de la primera columna (definido en sener2025.cls)
 const SENER_LONGTABLE_FIRSTCOL_WIDTH = '0.34\\textwidth';
 
-function senerLongtablePreamble() {
-    return `  \\setlength{\\SENERLongTableFirstColWidth}{${SENER_LONGTABLE_FIRSTCOL_WIDTH}}\n`;
+function senerLongtablePreamble(numCols) {
+    let tex = '';
+    // Optimización automática para tablas densas
+    if (numCols > 15) {
+        // Optimización para 16-20 columnas
+        tex += `  \\setlength{\\tabcolsep}{2pt}\n`;
+        tex += `  \\setlength{\\SENERLongTableFirstColWidth}{0.15\\textwidth}\n`;
+        tex += `  \\renewcommand{\\SENERLongTableFont}{\\notosanspico\\sffamily\\color{black}}\n`; // Redefinir fuente base a 6.5pt
+    } else {
+        tex += `  \\setlength{\\SENERLongTableFirstColWidth}{${SENER_LONGTABLE_FIRSTCOL_WIDTH}}\n`;
+    }
+    return tex;
 }
 
 function senerLongtableSpec(numCols) {
@@ -853,7 +863,7 @@ function generarTablaSimple(datos, tituloTabla, esHorizontal = false) {
     const especCols = senerLongtableSpec(numCols);
     const anchoTabla = esHorizontal ? '\\linewidth' : '\\textwidth';
 
-    let tex = senerLongtablePreamble();
+    let tex = senerLongtablePreamble(numCols);
     tex += `  \\begin{xltabular}{${anchoTabla}}{${especCols}}\n`;
 
     // Si NO es horizontal, el caption va dentro. Si es horizontal, ya se puso fuera.
@@ -931,7 +941,7 @@ function dividirTabla(datos, maxCols, tituloTabla, esHorizontal = false) {
         const numColsTabla = colsEnEstaParte.length;
         const especCols = senerLongtableSpec(numColsTabla);
 
-        tex += senerLongtablePreamble();
+        tex += senerLongtablePreamble(numColsTabla);
         tex += `  \\begin{xltabular}{${anchoTabla}}{${especCols}}\n`;
 
         if (tituloTabla && parte === 1 && !esHorizontal) {
@@ -981,7 +991,7 @@ function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla, esHorizontal = 
     while (inicio < datos.length) {
         const fin = Math.min(inicio + maxFilasParte, datos.length);
 
-        tex += senerLongtablePreamble();
+        tex += senerLongtablePreamble(numCols);
         tex += `  \\begin{xltabular}{${anchoTabla}}{${especCols}}\n`;
 
         if (tituloTabla && parte === 1 && !esHorizontal) {
@@ -1140,7 +1150,7 @@ function procesarConEtiquetas(texto) {
     str = str.replace(/\[\[math:([\s\S]*?)\]\]/g, (m, c) => { ecuaciones.push(`$${c.trim()}$`); return `ZEQPLACEHOLDER${ecuaciones.length - 1}Z`; });
 
     const citas = [];
-    str = str.replace(/\[\[cita:([\s\S]*?)\]\]/g, (m, c) => { citas.push(`\\cite{${c.trim()}}`); return `ZCITEPOLDER${citas.length - 1}Z`; });
+    str = str.replace(/\[\[cita:([\s\S]*?)\]\]/g, (m, c) => { citas.push(`\\parencite{${c.trim()}}`); return `ZCITEPOLDER${citas.length - 1}Z`; });
 
     const recuadros = [];
     str = str.replace(/\[\[recuadro:([^\]]*)\]\]([\s\S]*?)\[\[\/recuadro\]\]/g, (m, t, c) => {

@@ -823,9 +823,13 @@
 
 \RequirePackage[
   backend=biber,
-  style=verbose-ibid,
+  style=authoryear,
   sorting=nyt,
-  citestyle=verbose-ibid
+  maxcitenames=2,
+  maxbibnames=99,
+  url=true,
+  doi=true,
+  eprint=false
 ]{biblatex}
 
 % Corrección de idioma para biblatex
