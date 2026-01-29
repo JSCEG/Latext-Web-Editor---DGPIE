@@ -183,6 +183,12 @@ const handleResponse = async (response: Response) => {
     if (response.status === 401) {
       throw new Error(`UNAUTHENTICATED: ${message}`);
     }
+    // If range parsing fails, it might be because the sheet doesn't exist.
+    // Return empty values instead of crashing to allow the app to continue.
+    if (message.includes('Unable to parse range') || message.includes('Range not found')) {
+        console.warn(`[SheetsAPI] Range error ignored: ${message}`);
+        return { values: [] };
+    }
     throw new Error(message);
   }
   return response.json();
