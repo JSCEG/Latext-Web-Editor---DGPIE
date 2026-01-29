@@ -47,8 +47,9 @@ export const validateStructure = (
     docId: string,
     secciones: { headers: string[], data: string[][] },
     figuras: { headers: string[], data: string[][] },
-    tablas: { headers: string[], data: string[][] }
-): ValidationResult => {
+    tablas: { headers: string[], data: string[][] },
+    graficos?: { headers: string[], data: string[][] }
+) => {
     const errors: ValidationError[] = [];
     const warnings: ValidationWarning[] = [];
     const validSectionIds = new Set<string>();
@@ -240,53 +241,55 @@ export const validateStructure = (
     });
 
     // 4. Validate Graphics
-    const grafSecIdx = FIND_COL(graficos.headers, SECCION_ID_VARIANTS);
-    const grafDocIdx = FIND_COL(graficos.headers, DOC_ID_VARIANTS);
-    const grafIdIdx = FIND_COL(graficos.headers, ['ID', 'Codigo', 'Identificador']);
-    const grafTitleIdx = FIND_COL(graficos.headers, TITLE_VARIANTS);
-    // Usually graphics use ID as the main reference or maybe a custom field. 
-    // Assuming 'ID' column is the main identifier for graphics.
-
     let graphicsCount = 0;
     let orphanedGraphics = 0;
 
-    graficos.data.forEach((row, idx) => {
-        if (idx === 0) return;
-        if (grafDocIdx !== -1 && row[grafDocIdx] !== docId) return;
+    if (graficos && graficos.headers && graficos.data) {
+        const grafSecIdx = FIND_COL(graficos.headers, SECCION_ID_VARIANTS);
+        const grafDocIdx = FIND_COL(graficos.headers, DOC_ID_VARIANTS);
+        const grafIdIdx = FIND_COL(graficos.headers, ['ID', 'Codigo', 'Identificador']);
+        const grafTitleIdx = FIND_COL(graficos.headers, TITLE_VARIANTS);
+        // Usually graphics use ID as the main reference or maybe a custom field. 
+        // Assuming 'ID' column is the main identifier for graphics.
 
-        graphicsCount++;
-        const grafId = grafIdIdx !== -1 ? row[grafIdIdx] : '';
-        const grafTitle = grafTitleIdx !== -1 ? row[grafTitleIdx] : 'Sin título';
-        const linkedSecId = grafSecIdx !== -1 ? row[grafSecIdx] : '';
-        const grafIdDisplay = `Graf ${grafId}`;
+        graficos.data.forEach((row, idx) => {
+            if (idx === 0) return;
+            if (grafDocIdx !== -1 && row[grafDocIdx] !== docId) return;
 
-        if (!linkedSecId) {
-            errors.push({
-                type: 'ORPHANED_ELEMENT',
-                message: `Gráfico "${grafTitle}" no está asignado a ninguna sección.`,
-                itemId: grafIdDisplay,
-                sheet: 'Gráficos'
-            });
-            orphanedGraphics++;
-        } else if (!validSectionIds.has(linkedSecId)) {
-            errors.push({
-                type: 'ORPHANED_ELEMENT',
-                message: `Gráfico "${grafTitle}" apunta a una sección inexistente: ${linkedSecId}`,
-                itemId: grafIdDisplay,
-                sheet: 'Gráficos'
-            });
-            orphanedGraphics++;
-        } else {
-            if (grafId && !referencedGraphics.has(grafId)) {
-                warnings.push({
-                    type: 'POSSIBLE_ERROR',
-                    message: `Gráfico "${grafTitle}" (ID ${grafId}) está asignado a la sección ${linkedSecId} pero NO está referenciado en su contenido (use [[grafico:${grafId}]]). No aparecerá en el PDF.`,
+            graphicsCount++;
+            const grafId = grafIdIdx !== -1 ? row[grafIdIdx] : '';
+            const grafTitle = grafTitleIdx !== -1 ? row[grafTitleIdx] : 'Sin título';
+            const linkedSecId = grafSecIdx !== -1 ? row[grafSecIdx] : '';
+            const grafIdDisplay = `Graf ${grafId}`;
+
+            if (!linkedSecId) {
+                errors.push({
+                    type: 'ORPHANED_ELEMENT',
+                    message: `Gráfico "${grafTitle}" no está asignado a ninguna sección.`,
                     itemId: grafIdDisplay,
                     sheet: 'Gráficos'
                 });
+                orphanedGraphics++;
+            } else if (!validSectionIds.has(linkedSecId)) {
+                errors.push({
+                    type: 'ORPHANED_ELEMENT',
+                    message: `Gráfico "${grafTitle}" apunta a una sección inexistente: ${linkedSecId}`,
+                    itemId: grafIdDisplay,
+                    sheet: 'Gráficos'
+                });
+                orphanedGraphics++;
+            } else {
+                if (grafId && !referencedGraphics.has(grafId)) {
+                    warnings.push({
+                        type: 'POSSIBLE_ERROR',
+                        message: `Gráfico "${grafTitle}" (ID ${grafId}) está asignado a la sección ${linkedSecId} pero NO está referenciado en su contenido (use [[grafico:${grafId}]]). No aparecerá en el PDF.`,
+                        itemId: grafIdDisplay,
+                        sheet: 'Gráficos'
+                    });
+                }
             }
-        }
-    });
+        });
+    }
 
     return {
         isValid: errors.length === 0,

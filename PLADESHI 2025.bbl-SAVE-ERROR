@@ -1,0 +1,449 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.3 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{nyt/global//global/global/global}
+    \entry{a}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=65160e822a262f8e80c0549f294ffb09}{%
+           family={CENAGAS},
+           familyi={C\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Boletín CENAGAS.}%
+      }
+      \strng{namehash}{65160e822a262f8e80c0549f294ffb09}
+      \strng{fullhash}{65160e822a262f8e80c0549f294ffb09}
+      \strng{fullhashraw}{65160e822a262f8e80c0549f294ffb09}
+      \strng{bibnamehash}{65160e822a262f8e80c0549f294ffb09}
+      \strng{authorbibnamehash}{65160e822a262f8e80c0549f294ffb09}
+      \strng{authornamehash}{65160e822a262f8e80c0549f294ffb09}
+      \strng{authorfullhash}{65160e822a262f8e80c0549f294ffb09}
+      \strng{authorfullhashraw}{65160e822a262f8e80c0549f294ffb09}
+      \field{sortinit}{C}
+      \field{sortinithash}{4d103a86280481745c9c897c925753c0}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Informe de hechos del Estado de Alerta Crítica en el SISTRANGAS}
+      \field{year}{2021}
+      \verb{urlraw}
+      \verb https://boletin-gestor.cenagas.gob.mx/Docs/avisos/Informe_de_Hechos_Alerta_Critica.pdf
+      \endverb
+      \verb{url}
+      \verb https://boletin-gestor.cenagas.gob.mx/Docs/avisos/Informe_de_Hechos_Alerta_Critica.pdf
+      \endverb
+    \endentry
+    \entry{d}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=ce58cf370bc9ed4abddd64b736554703}{%
+           family={EIA},
+           familyi={E\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Today in Energy}%
+      }
+      \strng{namehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{bibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorbibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authornamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \field{extraname}{1}
+      \field{sortinit}{E}
+      \field{sortinithash}{8da8a182d344d5b9047633dfc0cc9131}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{2011 Brief: Brent crude oil averages over $100 per barrel in 2011}
+      \field{year}{2012}
+      \verb{urlraw}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=4550
+      \endverb
+      \verb{url}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=4550
+      \endverb
+    \endentry
+    \entry{f}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=ce58cf370bc9ed4abddd64b736554703}{%
+           family={EIA},
+           familyi={E\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Today in Energy}%
+      }
+      \strng{namehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{bibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorbibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authornamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \field{extraname}{2}
+      \field{sortinit}{E}
+      \field{sortinithash}{8da8a182d344d5b9047633dfc0cc9131}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Natural gas prices in 2019 were the lowest in the past three years}
+      \field{year}{2020}
+      \verb{urlraw}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=42455
+      \endverb
+      \verb{url}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=42455
+      \endverb
+    \endentry
+    \entry{h}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=ce58cf370bc9ed4abddd64b736554703}{%
+           family={EIA},
+           familyi={E\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Today in Energy}%
+      }
+      \strng{namehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{bibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorbibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authornamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \field{extraname}{3}
+      \field{sortinit}{E}
+      \field{sortinithash}{8da8a182d344d5b9047633dfc0cc9131}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Less U.S. jet fuel consumption on average in 2022 than in 2019}
+      \field{year}{2022}
+      \verb{urlraw}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=54879
+      \endverb
+      \verb{url}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=54879
+      \endverb
+    \endentry
+    \entry{g}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=ce58cf370bc9ed4abddd64b736554703}{%
+           family={EIA},
+           familyi={E\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Today in Energy}%
+      }
+      \strng{namehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{bibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorbibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authornamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \field{extraname}{4}
+      \field{sortinit}{E}
+      \field{sortinithash}{8da8a182d344d5b9047633dfc0cc9131}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{U.S. monthly average Henry Hub spot price nearly doubled in 12 months}
+      \field{year}{2022}
+      \verb{urlraw}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=53039
+      \endverb
+      \verb{url}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=53039
+      \endverb
+    \endentry
+    \entry{i}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=ce58cf370bc9ed4abddd64b736554703}{%
+           family={EIA},
+           familyi={E\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Today in Energy}%
+      }
+      \strng{namehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{bibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorbibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authornamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \field{extraname}{5}
+      \field{sortinit}{E}
+      \field{sortinithash}{8da8a182d344d5b9047633dfc0cc9131}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Brent crude oil prices averaged $19 per barrel less in 2023 than 2022}
+      \field{year}{2024}
+      \verb{urlraw}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=61142
+      \endverb
+      \verb{url}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=61142
+      \endverb
+    \endentry
+    \entry{k}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=ce58cf370bc9ed4abddd64b736554703}{%
+           family={EIA},
+           familyi={E\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Today in Energy}%
+      }
+      \strng{namehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{fullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{bibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorbibnamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authornamehash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhash}{ce58cf370bc9ed4abddd64b736554703}
+      \strng{authorfullhashraw}{ce58cf370bc9ed4abddd64b736554703}
+      \field{extraname}{6}
+      \field{sortinit}{E}
+      \field{sortinithash}{8da8a182d344d5b9047633dfc0cc9131}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Brent crude oil prices traded in a narrow range in 2024}
+      \field{year}{2025}
+      \verb{urlraw}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=64144
+      \endverb
+      \verb{url}
+      \verb https://www.eia.gov/todayinenergy/detail.php?id=64144
+      \endverb
+    \endentry
+    \entry{l}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=a8edac3208b6e5dd7f7beeb65200b205}{%
+           family={PEMEX},
+           familyi={P\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {PEMEX}%
+      }
+      \strng{namehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{fullhash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{fullhashraw}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{bibnamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorbibnamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authornamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorfullhash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorfullhashraw}{a8edac3208b6e5dd7f7beeb65200b205}
+      \field{extraname}{1}
+      \field{sortinit}{P}
+      \field{sortinithash}{ff3bcf24f47321b42cb156c2cc8a8422}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Informe Anual 2016}
+      \field{year}{2017}
+      \verb{urlraw}
+      \verb https://www.pemex.com/acerca/informes_publicaciones/Documents/Informe-Anual/Informe_anual_2016.pdf
+      \endverb
+      \verb{url}
+      \verb https://www.pemex.com/acerca/informes_publicaciones/Documents/Informe-Anual/Informe_anual_2016.pdf
+      \endverb
+    \endentry
+    \entry{m}{book}{}{}
+      \name{author}{1}{}{%
+        {{hash=a8edac3208b6e5dd7f7beeb65200b205}{%
+           family={PEMEX},
+           familyi={P\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {PEMEX}%
+      }
+      \strng{namehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{fullhash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{fullhashraw}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{bibnamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorbibnamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authornamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorfullhash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorfullhashraw}{a8edac3208b6e5dd7f7beeb65200b205}
+      \field{extraname}{2}
+      \field{sortinit}{P}
+      \field{sortinithash}{ff3bcf24f47321b42cb156c2cc8a8422}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Informe Anual 2021}
+      \field{year}{2021}
+    \endentry
+    \entry{p}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=a8edac3208b6e5dd7f7beeb65200b205}{%
+           family={PEMEX},
+           familyi={P\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Sala de prensa de PEMEX. Comunicados nacionales}%
+      }
+      \strng{namehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{fullhash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{fullhashraw}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{bibnamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorbibnamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authornamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorfullhash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorfullhashraw}{a8edac3208b6e5dd7f7beeb65200b205}
+      \field{extraname}{3}
+      \field{sortinit}{P}
+      \field{sortinithash}{ff3bcf24f47321b42cb156c2cc8a8422}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Impulsa Pemex Gasolinera del Bienestar, un modelo de economía social y solidaria}
+      \field{year}{2025}
+      \verb{urlraw}
+      \verb https://www.pemex.com/saladeprensa/boletines_nacionales/Paginas/2025_14-nacional.aspx
+      \endverb
+      \verb{url}
+      \verb https://www.pemex.com/saladeprensa/boletines_nacionales/Paginas/2025_14-nacional.aspx
+      \endverb
+    \endentry
+    \entry{o}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=a8edac3208b6e5dd7f7beeb65200b205}{%
+           family={PEMEX},
+           familyi={P\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {PEMEX}%
+      }
+      \strng{namehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{fullhash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{fullhashraw}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{bibnamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorbibnamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authornamehash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorfullhash}{a8edac3208b6e5dd7f7beeb65200b205}
+      \strng{authorfullhashraw}{a8edac3208b6e5dd7f7beeb65200b205}
+      \field{extraname}{4}
+      \field{sortinit}{P}
+      \field{sortinithash}{ff3bcf24f47321b42cb156c2cc8a8422}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Plan Estratégico 2025-2030}
+      \field{year}{2025}
+      \verb{urlraw}
+      \verb https://www.pemex.com/acerca/planestrategico/Paginas/default.aspx
+      \endverb
+      \verb{url}
+      \verb https://www.pemex.com/acerca/planestrategico/Paginas/default.aspx
+      \endverb
+    \endentry
+    \entry{q}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=ea623368182cfcc3965b1dc5967392e0}{%
+           family={SENER},
+           familyi={S\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Secretaría de Energía}%
+      }
+      \strng{namehash}{ea623368182cfcc3965b1dc5967392e0}
+      \strng{fullhash}{ea623368182cfcc3965b1dc5967392e0}
+      \strng{fullhashraw}{ea623368182cfcc3965b1dc5967392e0}
+      \strng{bibnamehash}{ea623368182cfcc3965b1dc5967392e0}
+      \strng{authorbibnamehash}{ea623368182cfcc3965b1dc5967392e0}
+      \strng{authornamehash}{ea623368182cfcc3965b1dc5967392e0}
+      \strng{authorfullhash}{ea623368182cfcc3965b1dc5967392e0}
+      \strng{authorfullhashraw}{ea623368182cfcc3965b1dc5967392e0}
+      \field{extraname}{1}
+      \field{sortinit}{S}
+      \field{sortinithash}{b164b07b29984b41daf1e85279fbc5ab}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{1er Informe de Labores 2024-2025}
+      \field{year}{2025}
+      \verb{urlraw}
+      \verb https://base.energia.gob.mx/IL/Primer_Informe_de_Labores_2024-2025.pdf
+      \endverb
+      \verb{url}
+      \verb https://base.energia.gob.mx/IL/Primer_Informe_de_Labores_2024-2025.pdf
+      \endverb
+    \endentry
+    \entry{s}{book}{}{}
+      \name{author}{1}{}{%
+        {{hash=5ffa6417203bd7ab9d727df73cfbabe5}{%
+           family={SENER},
+           familyi={S\bibinitperiod},
+           given={&\bibnamedelima CRE},
+           giveni={&\bibinitperiod\bibinitdelim C\bibinitperiod},
+           suffix={CENAGAS},
+           suffixi={C\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {SENER}%
+      }
+      \strng{namehash}{5ffa6417203bd7ab9d727df73cfbabe5}
+      \strng{fullhash}{5ffa6417203bd7ab9d727df73cfbabe5}
+      \strng{fullhashraw}{5ffa6417203bd7ab9d727df73cfbabe5}
+      \strng{bibnamehash}{5ffa6417203bd7ab9d727df73cfbabe5}
+      \strng{authorbibnamehash}{5ffa6417203bd7ab9d727df73cfbabe5}
+      \strng{authornamehash}{5ffa6417203bd7ab9d727df73cfbabe5}
+      \strng{authorfullhash}{5ffa6417203bd7ab9d727df73cfbabe5}
+      \strng{authorfullhashraw}{5ffa6417203bd7ab9d727df73cfbabe5}
+      \field{extraname}{2}
+      \field{sortinit}{S}
+      \field{sortinithash}{b164b07b29984b41daf1e85279fbc5ab}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Cuarta Revisión Plan Quinquenal de Expansión del SISTRANGAS 2020-2024}
+      \field{year}{2024}
+    \endentry
+    \entry{t}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=a3be2541e7f34eb6a2167a2dc73cbe66}{%
+           family={USITC},
+           familyi={U\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {United States International Trade Comission.}%
+      }
+      \strng{namehash}{a3be2541e7f34eb6a2167a2dc73cbe66}
+      \strng{fullhash}{a3be2541e7f34eb6a2167a2dc73cbe66}
+      \strng{fullhashraw}{a3be2541e7f34eb6a2167a2dc73cbe66}
+      \strng{bibnamehash}{a3be2541e7f34eb6a2167a2dc73cbe66}
+      \strng{authorbibnamehash}{a3be2541e7f34eb6a2167a2dc73cbe66}
+      \strng{authornamehash}{a3be2541e7f34eb6a2167a2dc73cbe66}
+      \strng{authorfullhash}{a3be2541e7f34eb6a2167a2dc73cbe66}
+      \strng{authorfullhashraw}{a3be2541e7f34eb6a2167a2dc73cbe66}
+      \field{sortinit}{U}
+      \field{sortinithash}{6901a00e45705986ee5e7ca9fd39adca}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Special Topic: Effects of Declining Crude Petroleum and Natural Gas Prices on U.S. Sectoral Trade}
+      \field{year}{2016}
+      \verb{urlraw}
+      \verb https://www.usitc.gov/research_and_analysis/trade_shifts_2015/specialtopic.htm
+      \endverb
+      \verb{url}
+      \verb https://www.usitc.gov/research_and_analysis/trade_shifts_2015/specialtopic.htm
+      \endverb
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+

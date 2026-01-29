@@ -128,10 +128,11 @@ const indexToColumnLetter = (index: number) => {
     return letter;
 };
 
-// Helper: Ensure sheet name is quoted if it has spaces
+// Helper: Ensure sheet name is quoted if it has spaces or special characters
 const quoteSheetName = (name: string) => {
     const cleanName = name.replace(/^'|'$/g, '');
-    if (cleanName.includes(' ') || cleanName.includes('(') || cleanName.includes(')')) {
+    // Quote if contains spaces or special chars (anything not alphanumeric or underscore)
+    if (/[^a-zA-Z0-9_]/.test(cleanName)) {
         return `'${cleanName}'`;
     }
     return cleanName;
@@ -395,10 +396,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             const grafTitle = TAB_TO_SHEET_TITLE['graficos'];
 
             const [sec, fig, tab, graf] = await Promise.all([
-                fetchValues(spreadsheet.spreadsheetId, secTitle, token),
-                fetchValues(spreadsheet.spreadsheetId, figTitle, token),
-                fetchValues(spreadsheet.spreadsheetId, tabTitle, token),
-                fetchValues(spreadsheet.spreadsheetId, grafTitle, token)
+                fetchValues(spreadsheet.spreadsheetId, quoteSheetName(secTitle), token),
+                fetchValues(spreadsheet.spreadsheetId, quoteSheetName(figTitle), token),
+                fetchValues(spreadsheet.spreadsheetId, quoteSheetName(tabTitle), token),
+                fetchValues(spreadsheet.spreadsheetId, quoteSheetName(grafTitle), token)
             ]);
 
             // STALE DATA PROTECTION FOR PREVIEW

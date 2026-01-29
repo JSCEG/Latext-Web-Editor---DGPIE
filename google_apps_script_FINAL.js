@@ -861,10 +861,10 @@ function guardarArchivos(datosDoc, tex, bibliografia) {
             bibliografia.forEach(ref => {
                 const tipo = ref['Tipo'] ? ref['Tipo'].toLowerCase() : 'misc';
                 const entry = [`@${tipo}{${ref['Clave']},`];
-                if (ref['Autor']) entry.push(`  author = {${ref['Autor']}},`);
-                if (ref['Titulo']) entry.push(`  title = {${ref['Titulo']}},`);
+                if (ref['Autor']) entry.push(`  author = {${escaparLatex(ref['Autor'])}},`);
+                if (ref['Titulo']) entry.push(`  title = {${escaparLatex(ref['Titulo'])}},`);
                 if (ref['Anio']) entry.push(`  year = {${ref['Anio']}},`);
-                if (ref['Editorial']) entry.push(`  publisher = {${ref['Editorial']}},`);
+                if (ref['Editorial']) entry.push(`  publisher = {${escaparLatex(ref['Editorial'])}},`);
                 if (ref['Url']) entry.push(`  url = {${ref['Url']}},`);
                 entry.push('}\n');
                 bibEntries.push(entry.join('\n'));
