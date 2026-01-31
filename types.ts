@@ -8,8 +8,17 @@ export interface SheetProperties {
   };
 }
 
+export interface GridRange {
+  sheetId?: number;
+  startRowIndex?: number;
+  endRowIndex?: number;
+  startColumnIndex?: number;
+  endColumnIndex?: number;
+}
+
 export interface Sheet {
   properties: SheetProperties;
+  merges?: GridRange[];
   data?: {
     rowData?: {
       values?: {
@@ -46,6 +55,46 @@ export interface CellData {
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
   EDITOR = 'EDITOR',
+}
+
+// Table Styling System
+export type HAlignType = 'left' | 'center' | 'right';
+export type VAlignType = 'top' | 'middle' | 'bottom';
+
+export interface CellStyle {
+  backgroundColor?: string; // hex color or named color
+  textColor?: string;
+  isBold?: boolean;
+  isItalic?: boolean;
+  hAlign?: HAlignType;
+  vAlign?: VAlignType;
+  fontSize?: number;
+}
+
+export interface ColumnStyle {
+  width?: string; // e.g., "2cm", "3cm"
+  hAlign?: HAlignType;
+  backgroundColor?: string;
+  textColor?: string;
+}
+
+export interface RowStyle {
+  backgroundColor?: string;
+  textColor?: string;
+  isBold?: boolean;
+  striped?: boolean; // para alternancia de colores
+}
+
+export interface TableStyle {
+  id: string;
+  tableId: string; // Referencia a tabla TBL-X-Y
+  headerStyle?: RowStyle;
+  columnStyles?: ColumnStyle[]; // array por columna
+  rowStyles?: RowStyle[]; // array por fila (override por fila)
+  cellStyles?: { [key: string]: CellStyle }; // key: "row,col" e.g., "0,1"
+  alternateRowColor?: string; // color para striping
+  borderColor?: string;
+  stripingEnabled?: boolean;
 }
 
 // Helper type for Gemini responses
