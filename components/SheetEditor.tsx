@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StructurePreview } from './StructurePreview';
-import { Spreadsheet } from '../types';
-import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValues, updateValues, insertDimension, createNewTab } from '../services/sheetsService';
+import { Spreadsheet, GridRange, TableStyle } from '../types';
+import { updateCellValue, appendRow, deleteRow, deleteDimensionRange, fetchValues, updateValues, insertDimension, createNewTab, fetchSpreadsheetCells, mergeCells, unmergeCells, formatCells } from '../services/sheetsService';
 import { socketService } from '../services/socketService';
 import { UserActivityTracker } from './UserActivityTracker';
 import { Button } from './Button';
@@ -11,9 +11,11 @@ import { LintPanel } from './LintPanel';
 import { RichEditorToolbar } from './RichEditorToolbar';
 import { EditorAutocomplete, AutocompleteItem } from './EditorAutocomplete';
 import { GraphicsEditor } from './GraphicsEditor';
+import { TableStyleEditor } from './TableStyleEditor';
 import { getCaretCoordinates } from '../utils/caret';
 import { applyInlineTag, insertBlockTag, lintTags, normalizeOnSave, TagIssue } from '../tagEngine';
 import { computeFigureId, computeTableId } from '../utils/idUtils';
+import { validateMergeSelection, parseRangeSimple, expandSelection } from '../utils/gridUtils';
 import { API_URL } from '../config';
 
 interface SheetEditorProps {
@@ -56,10 +58,10 @@ type DocumentOption = {
     rowIndex: number; // 0-based index in metaSheet.data[0].rowData (0 is header)
 };
 
-// Helper to find column index with loose matching
+// Helper to find column index with loose matching - ROBUST VERSION
 const findColumnIndex = (headers: string[], candidates: string[]) => {
-    if (!headers) return -1;
-    const norm = (s: string) => s.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/_/g, '');
+    if (!headers || !Array.isArray(headers)) return -1;
+    const norm = (s: string) => (s || '').toString().trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/_/g, '');
     return headers.findIndex(h => {
         const normHeader = norm(h);
         return candidates.some(c => norm(c) === normHeader);
@@ -79,6 +81,7 @@ const CLAVE_VARIANTS = ['Clave', 'Key', 'ID'];
 const OPCIONES_COL_VARIANTS = ['Opciones', 'Estilo', 'Style', 'Options', 'Configuracion'];
 const HORIZONTAL_COL_VARIANTS = ['Horizontal', 'Apaisado', 'Landscape'];
 const HOJA_COMPLETA_COL_VARIANTS = ['HojaCompleta', 'Hoja Completa', 'FullPage', 'PaginaCompleta'];
+const HEADER_ROWS_COL_VARIANTS = ['Filas Encabezado', 'FilasEncabezado', 'HeaderRows', 'Header Rows', 'EncabezadoFilas', 'Encabezado Filas'];
 
 type SectionLevelOption = {
     value: string;
@@ -347,6 +350,18 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         }
     };
 
+    // Calculate Header Rows safely to avoid crashes in render
+    const headerRowsCount = React.useMemo(() => {
+        try {
+            if (!formHeaders || !formData) return '1';
+            const idx = findColumnIndex(formHeaders, HEADER_ROWS_COL_VARIANTS);
+            return (idx !== -1 && formData[idx]) ? formData[idx].toString() : '1';
+        } catch (e) {
+            console.error("Error calculating header rows", e);
+            return '1';
+        }
+    }, [formHeaders, formData]);
+
     // Generic Editor Modal State (For any text field)
     const [editorModal, setEditorModal] = useState<{ open: boolean; title: string; value: string; fieldId: string | null; onSave: (val: string) => void; zenMode?: boolean }>({
         open: false,
@@ -356,6 +371,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         onSave: () => { },
         zenMode: false
     });
+
+    // Table Styling State
+    const [tableStyleMap, setTableStyleMap] = useState<Record<string, TableStyle>>({});
+    const [showTableStyleEditor, setShowTableStyleEditor] = useState(false);
 
     const loadPreviewData = async () => {
         // If we already have fullData and we just updated it optimistically, 
@@ -878,6 +897,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const [nestedGridRange, setNestedGridRange] = useState<string>('');
     const [originalNestedGridRange, setOriginalNestedGridRange] = useState<string>('');
     const [focusedCell, setFocusedCell] = useState<{ r: number, c: number } | null>(null);
+    const [nestedGridMerges, setNestedGridMerges] = useState<any[]>([]); // Store merge metadata
+    const [selectionStart, setSelectionStart] = useState<{ r: number, c: number } | null>(null);
+    const [selectionEnd, setSelectionEnd] = useState<{ r: number, c: number } | null>(null);
+
 
     // UI Overlays State
     const [showTableWizard, setShowTableWizard] = useState(false);
@@ -1120,6 +1143,23 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 el2.setSelectionRange(pos + snippet.length, pos + snippet.length);
             }
         });
+    };
+
+    // --- Table Style Handler ---
+    const handleTableStyleChange = (style: TableStyle) => {
+        // Compute table ID from current form data
+        const secIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
+        const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+        const sec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
+        const ord = ordIdx !== -1 ? (formData[ordIdx] || '').toString().trim() : '';
+        const tableId = (sec && ord) ? `TBL-${sec}-${ord}` : `TBL-${ord}`;
+        
+        // Update table style map
+        const newMap = { ...tableStyleMap };
+        newMap[tableId] = style;
+        setTableStyleMap(newMap);
+        
+        showNotification(`Estilos de tabla guardados (${tableId})`, 'success');
     };
 
     // --- Helpers ---
@@ -1626,6 +1666,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             setNestedGridData(emptyGrid);
             setNestedGridRange(correctedRange);
             setOriginalNestedGridRange(correctedRange);
+            setNestedGridMerges([]);
             return;
         }
 
@@ -1633,13 +1674,30 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         setNestedGridRange(correctedRange);
         setOriginalNestedGridRange(correctedRange);
         setFocusedCell(null);
+        setSelectionStart(null);
+        setSelectionEnd(null);
 
         try {
-            const values = await fetchValues(spreadsheet.spreadsheetId, correctedRange, token);
-            if (values && values.length > 0) {
-                setNestedGridData(values);
+            // New logic: Fetch cells AND merges
+            const { rowData, merges } = await fetchSpreadsheetCells(spreadsheet.spreadsheetId, [correctedRange], token);
+
+            if (rowData && rowData.length > 0) {
+                // Map rowData to string[][]
+                const values = rowData.map(r => r.values?.map((c: any) => c.formattedValue || c.userEnteredValue?.stringValue || (c.userEnteredValue?.numberValue !== undefined ? String(c.userEnteredValue.numberValue) : '') || '') || []);
+
+                // Ensure rectangular grid
+                const maxCols = Math.max(...values.map(r => r.length));
+                const normalizedValues = values.map(r => {
+                    const newRow = [...r];
+                    while (newRow.length < maxCols) newRow.push('');
+                    return newRow;
+                });
+
+                setNestedGridData(normalizedValues);
+                setNestedGridMerges(merges || []);
             } else {
                 setNestedGridData([['', '', '', '', ''], ['', '', '', '', ''], ['', '', '', '', '']]);
+                setNestedGridMerges([]);
             }
         } catch (e) {
             console.error("Error cargando grid:", e);
@@ -2040,7 +2098,12 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         }
     };
 
-    const handleSaveForm = async () => {
+    const handleSave = async (overrideGridDataOrEvent?: any, overrideRangeStr?: string) => {
+        let overrideGridData: string[][] | null = null;
+        if (Array.isArray(overrideGridDataOrEvent)) {
+            overrideGridData = overrideGridDataOrEvent;
+        }
+
         if (!activeSheet) return;
 
         // Secciones: lint + normalize before save, and block save on errors
@@ -2181,8 +2244,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 const finalFormData = [...formData];
                 if (activeTab === 'tablas') {
                     const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
-                    if (csvIndex !== -1 && nestedGridRange) {
-                        finalFormData[csvIndex] = nestedGridRange;
+                    // Use override range if available, otherwise current state
+                    const rToUse = overrideRangeStr || nestedGridRange;
+                    if (csvIndex !== -1 && rToUse) {
+                        finalFormData[csvIndex] = rToUse;
                     }
                 }
 
@@ -2224,7 +2289,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
                 if (activeTab === 'tablas') {
                     const csvIndex = findColumnIndex(formHeaders, CSV_COL_VARIANTS);
-                    let targetRange = finalFormData[csvIndex] || nestedGridRange;
+                    let targetRange = overrideRangeStr || finalFormData[csvIndex] || nestedGridRange;
+                    const dataToSave = overrideGridData || nestedGridData;
 
                     if (targetRange && targetRange.includes('!')) {
                         targetRange = sanitizeRangeString(targetRange);
@@ -2298,7 +2364,10 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                 }
                             }
                         }
-                        await updateValues(spreadsheet.spreadsheetId, targetRange, nestedGridData, token);
+                        await updateValues(spreadsheet.spreadsheetId, targetRange, dataToSave, token);
+
+                        // Critical: Update original range state so subsequent saves don't duplicate insertions
+                        setOriginalNestedGridRange(targetRange);
                     }
                 }
 
@@ -2379,11 +2448,36 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         }
     };
 
+    // Helper to auto-save structure changes
+    const saveStructureChange = (newData: string[][]) => {
+        // Calculate new range string manually to avoid waiting for state update
+        if (!nestedGridRange || !nestedGridRange.includes('!')) return;
+        const parsed = parseRangeSimple(nestedGridRange);
+        if (!parsed) return;
+
+        const newRows = newData.length;
+        const newCols = newData[0].length;
+
+        // sCol and eCol
+        const sColChar = indexToColumnLetter(parsed.startCol);
+        const eColChar = indexToColumnLetter(parsed.startCol + newCols - 1);
+        const sRow = parsed.startRow + 1; // 1-based
+        const eRow = parsed.startRow + newRows;
+
+        const escapedSheet = quoteSheetName(parsed.sheetName);
+        const newRangeStr = `${escapedSheet}!${sColChar}${sRow}:${eColChar}${eRow}`;
+
+        setNestedGridData(newData);
+        updateRangeString(newData); // Still update UI state
+
+        // Explicitly Save
+        handleSave(newData, newRangeStr);
+    };
+
     const addGridRow = () => {
         const cols = nestedGridData[0]?.length || 5;
         const newData = [...nestedGridData, new Array(cols).fill('')];
-        setNestedGridData(newData);
-        updateRangeString(newData);
+        saveStructureChange(newData);
     };
     const addGridCol = () => {
         // Validation for Horizontal Mode Limit
@@ -2402,15 +2496,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         }
 
         const newData = nestedGridData.map(row => [...row, '']);
-        setNestedGridData(newData);
-        updateRangeString(newData);
+        saveStructureChange(newData);
     };
     const deleteGridRow = () => {
         if (nestedGridData.length <= 1) return;
         const newData = [...nestedGridData];
         newData.pop();
-        setNestedGridData(newData);
-        updateRangeString(newData);
+        saveStructureChange(newData);
     };
     const deleteGridCol = () => {
         if (!nestedGridData[0] || nestedGridData[0].length <= 1) return;
@@ -2419,9 +2511,251 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             newRow.pop();
             return newRow;
         });
-        setNestedGridData(newData);
-        updateRangeString(newData);
+        saveStructureChange(newData);
     };
+
+    const [isSelecting, setIsSelecting] = useState(false);
+
+    useEffect(() => {
+        const handleMouseUp = () => setIsSelecting(false);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => window.removeEventListener('mouseup', handleMouseUp);
+    }, []);
+
+    const handleMerge = async () => {
+        if (!selectionStart || !selectionEnd) return;
+        if (!nestedGridRange.includes('!')) return;
+
+        // Auto-expand selection to include any partial merges
+        const expanded = expandSelection(selectionStart, selectionEnd, nestedGridRange, nestedGridMerges || []);
+
+        // If selection changed due to expansion, update visual selection
+        if (expanded.start.r !== selectionStart.r || expanded.start.c !== selectionStart.c ||
+            expanded.end.r !== selectionEnd.r || expanded.end.c !== selectionEnd.c) {
+            setSelectionStart(expanded.start);
+            setSelectionEnd(expanded.end);
+            // We can proceed with the expanded selection immediately
+        }
+
+        const r1 = Math.min(expanded.start.r, expanded.end.r);
+        const r2 = Math.max(expanded.start.r, expanded.end.r);
+        const c1 = Math.min(expanded.start.c, expanded.end.c);
+        const c2 = Math.max(expanded.start.c, expanded.end.c);
+
+        if (r1 === r2 && c1 === c2) {
+            showNotification("Selecciona al menos dos celdas para combinar", "info");
+            return;
+        }
+
+        const parsed = parseRangeSimple(nestedGridRange);
+        if (!parsed) return;
+
+        console.log("Merge Debug:", { parsedStart: parsed.startRow, relative: { r1, c1 }, absStartRow: parsed.startRow + r1 });
+
+        const validation = validateMergeSelection(expanded.start, expanded.end, nestedGridRange, nestedGridMerges || []);
+        if (!validation.isValid) {
+            showNotification(validation.error || "Selección inválida", "error");
+            return;
+        }
+
+
+
+        // Find sheetId
+        const sheet = spreadsheet.sheets.find(s => s.properties.title === parsed.sheetName);
+        if (!sheet) {
+            console.error("Sheet not found for merging:", parsed.sheetName);
+            return;
+        }
+
+        // Calculate absolute coordinates based on the nested grid's start position
+        // This assumes nestedGridRange accurately reflects the top-left of the table in the sheet.
+        const absStartRow = parsed.startRow + r1;
+        const absEndRow = parsed.startRow + r2 + 1;
+        const absStartCol = parsed.startCol + c1;
+        const absEndCol = parsed.startCol + c2 + 1;
+
+        setLoadingGrid(true);
+        try {
+            // Optimistic Update: Update local state immediately
+
+            // 1. Remove ANY existing merges that are fully contained in the new selection
+            // This allows re-merging (A+B) + C -> (A+B+C)
+            let updatedMerges = [...(nestedGridMerges || [])];
+
+            updatedMerges = updatedMerges.filter(m => {
+                const contained =
+                    absStartRow <= m.startRowIndex &&
+                    absEndRow >= m.endRowIndex &&
+                    absStartCol <= m.startColumnIndex &&
+                    absEndCol >= m.endColumnIndex;
+                return !contained;
+            });
+
+            // 2. Add the NEW merge
+            const newMerge: GridRange = {
+                startRowIndex: absStartRow,
+                endRowIndex: absEndRow,
+                startColumnIndex: absStartCol,
+                endColumnIndex: absEndCol
+            };
+            updatedMerges.push(newMerge);
+            setNestedGridMerges(updatedMerges);
+
+            // 3. Update Data (Clear cells except top-left)
+            const newData = nestedGridData.map(row => [...row]);
+            for (let r = r1; r <= r2; r++) {
+                for (let c = c1; c <= c2; c++) {
+                    if (r === r1 && c === c1) continue; // Keep top-left
+                    if (newData[r] && newData[r][c] !== undefined) {
+                        newData[r][c] = '';
+                    }
+                }
+            }
+            setNestedGridData(newData);
+
+            // 4. Clear selection
+            setSelectionStart(null);
+            setSelectionEnd(null);
+
+            // API Calls
+            // A. Merge Cells
+            await mergeCells(spreadsheet.spreadsheetId, sheet.properties.sheetId, {
+                startRowIndex: absStartRow,
+                endRowIndex: absEndRow,
+                startColumnIndex: absStartCol,
+                endColumnIndex: absEndCol
+            }, 'MERGE_ALL', token);
+
+            // Center Align Merged Content
+            try {
+                await formatCells(spreadsheet.spreadsheetId, sheet.properties.sheetId, {
+                    startRowIndex: absStartRow,
+                    endRowIndex: absEndRow,
+                    startColumnIndex: absStartCol,
+                    endColumnIndex: absEndCol
+                }, { horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' }, token);
+            } catch (e) {
+                console.warn("Could not center align merged cells:", e);
+            }
+
+            // B. Clear Content in Backend (to match local state)
+            const startColChar = indexToColumnLetter(parsed.startCol + c1);
+            const endColChar = indexToColumnLetter(parsed.startCol + c2);
+            // The range for updates needs to be 1-based for A1 notation
+            // parsed.startRow is 0-based. r1 is 0-based relative.
+            // A1 notation uses 1-based rows.
+            const escapedSheetName = quoteSheetName(parsed.sheetName);
+            const updateRangeStr = `${escapedSheetName}!${startColChar}${parsed.startRow + r1 + 1}:${endColChar}${parsed.startRow + r2 + 1}`;
+
+            // Extract the subset of data for this range from our *already updated* newData
+            const valuesToSync = [];
+            for (let r = r1; r <= r2; r++) {
+                const rowVals = [];
+                for (let c = c1; c <= c2; c++) {
+                    rowVals.push(newData[r][c]);
+                }
+                valuesToSync.push(rowVals);
+            }
+
+            await updateValues(spreadsheet.spreadsheetId, updateRangeStr, valuesToSync, token);
+
+            // Reload grid to get updated merges
+            await loadNestedGrid(nestedGridRange);
+            showNotification("Celdas combinadas correctamente", "success");
+        } catch (e: any) {
+            console.error(e);
+            showNotification(e.message || "Error al combinar celdas", "error");
+            setLoadingGrid(false);
+            // On error, we SHOULD reload to restore valid state
+            loadNestedGrid(nestedGridRange);
+        }
+    };
+
+    const handleUnmerge = async () => {
+        const targetStart = selectionStart || focusedCell;
+        const targetEnd = selectionEnd || focusedCell;
+
+        if (!targetStart || !targetEnd) return;
+        if (!nestedGridRange.includes('!')) return;
+
+        // Use consistent parser
+        const parsed = parseRangeSimple(nestedGridRange);
+        if (!parsed) return;
+
+        console.log("Unmerge Debug:", { parsedStart: parsed.startRow, selection: { r1: targetStart.r, r2: targetEnd.r } });
+
+        const r1 = Math.min(targetStart.r, targetEnd.r);
+        const r2 = Math.max(targetStart.r, targetEnd.r);
+        const c1 = Math.min(targetStart.c, targetEnd.c);
+        const c2 = Math.max(targetStart.c, targetEnd.c);
+
+        const absStartRow = parsed.startRow + r1;
+        const absEndRow = parsed.startRow + r2 + 1;
+        const absStartCol = parsed.startCol + c1;
+        const absEndCol = parsed.startCol + c2 + 1;
+
+        // Check if there are any merges in the selection
+        let mergesToUnmerge: any[] = [];
+
+        if (nestedGridMerges && nestedGridMerges.length > 0) {
+            mergesToUnmerge = nestedGridMerges.filter(m =>
+                !(absEndRow <= m.startRowIndex || absStartRow >= m.endRowIndex ||
+                    absEndCol <= m.startColumnIndex || absStartCol >= m.endColumnIndex)
+            );
+        }
+
+        if (mergesToUnmerge.length === 0) {
+            showNotification("No hay celdas combinadas en la selección", "info");
+            return;
+        }
+
+        const sheet = spreadsheet.sheets.find(s => s.properties.title === parsed.sheetName);
+        if (!sheet) return;
+
+        setLoadingGrid(true);
+        try {
+            // Optimistic Update: Remove merges from local state
+            if (nestedGridMerges) {
+                const updatedMerges = nestedGridMerges.filter(m =>
+                    !mergesToUnmerge.some(toRemove =>
+                        toRemove.startRowIndex === m.startRowIndex &&
+                        toRemove.endRowIndex === m.endRowIndex &&
+                        toRemove.startColumnIndex === m.startColumnIndex &&
+                        toRemove.endColumnIndex === m.endColumnIndex
+                    )
+                );
+                setNestedGridMerges(updatedMerges);
+            }
+
+            // Determine range to send. 
+            // If single cell, send the specific merge range.
+            // If multiple cells, send the selection range.
+            let rangeToSend;
+            if (r1 === r2 && c1 === c2 && mergesToUnmerge.length === 1) {
+                rangeToSend = mergesToUnmerge[0];
+            } else {
+                rangeToSend = {
+                    startRowIndex: absStartRow,
+                    endRowIndex: absEndRow,
+                    startColumnIndex: absStartCol,
+                    endColumnIndex: absEndCol
+                };
+            }
+
+            await unmergeCells(spreadsheet.spreadsheetId, sheet.properties.sheetId, rangeToSend, token);
+
+            // Reload grid to sync state
+            await loadNestedGrid(nestedGridRange);
+            showNotification("Celdas separadas correctamente", "success");
+        } catch (e: any) {
+            console.error(e);
+            showNotification(e.message || "Error al separar celdas", "error");
+            setLoadingGrid(false);
+            // On error, restore state
+            loadNestedGrid(nestedGridRange);
+        }
+    };
+
 
     const normalizedQuery = (searchTerm || '').toString().trim().toLowerCase();
     const filteredData = gridData.map((row, index) => ({ row, index })).filter(({ row }) => {
@@ -2671,23 +3005,32 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 })
             });
 
-            const result = await response.json();
+            const result = await response.json().catch(() => null);
 
-            if (!result.success) {
-                throw new Error(result.error || "Error desconocido en el servidor");
+            if (!response.ok) {
+                const errorDetail = result?.error || result?.message || response.statusText;
+                if (result?.stack) console.error("Server Stack:", result.stack);
+                throw new Error(`Server Error (${response.status}): ${errorDetail}`);
+            }
+
+            if (!result || !result.success) {
+                const apiError = (result && result.error) ? result.error : "Error desconocido en el servidor";
+                throw new Error(apiError);
             }
 
             // Trigger Download
             // 1. .tex file
-            const blobTex = new Blob([result.tex], { type: 'text/plain' });
-            const urlTex = window.URL.createObjectURL(blobTex);
-            const aTex = document.createElement('a');
-            aTex.href = urlTex;
-            aTex.download = `${result.filename}.tex`;
-            document.body.appendChild(aTex);
-            aTex.click();
-            document.body.removeChild(aTex);
-            window.URL.revokeObjectURL(urlTex);
+            if (result.tex) {
+                const blobTex = new Blob([result.tex], { type: 'text/plain' });
+                const urlTex = window.URL.createObjectURL(blobTex);
+                const aTex = document.createElement('a');
+                aTex.href = urlTex;
+                aTex.download = `${result.filename || 'documento'}.tex`;
+                document.body.appendChild(aTex);
+                aTex.click();
+                document.body.removeChild(aTex);
+                window.URL.revokeObjectURL(urlTex);
+            }
 
             // 2. .bib file (if exists)
             if (result.bib) {
@@ -2705,8 +3048,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             showNotification("Archivos generados y descargados correctamente.", 'success');
 
         } catch (e: any) {
-            console.error(e);
-            showNotification(`Error al generar LaTeX: ${e.message}`, 'error');
+            console.error("LATEX GENERATION ERROR:", e);
+            const errorMsg = (e && e.message) ? e.message : String(e);
+            showNotification(`Error al generar LaTeX: ${errorMsg}`, 'error');
         } finally {
             setSaving(false);
         }
@@ -3163,7 +3507,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                             <Button
                                                 variant="burgundy"
                                                 size="lg" // Larger size
-                                                onClick={handleSaveForm}
+                                                onClick={handleSave}
                                                 isLoading={saving}
                                                 className="shadow-md hover:shadow-lg transform transition-all hover:-translate-y-0.5 active:translate-y-0 font-bold px-8"
                                             >
@@ -3187,8 +3531,33 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                             const isOpciones = (activeTab === 'tablas' || activeTab === 'figuras') && findColumnIndex([header], OPCIONES_COL_VARIANTS) !== -1;
                                             const isHorizontal = (activeTab === 'tablas' || activeTab === 'figuras') && findColumnIndex([header], HORIZONTAL_COL_VARIANTS) !== -1;
                                             const isHojaCompleta = (activeTab === 'tablas' || activeTab === 'figuras') && findColumnIndex([header], HOJA_COMPLETA_COL_VARIANTS) !== -1;
-                                            const colSpan = ((activeTab === 'tablas' || activeTab === 'figuras') && !isSeccion && !isOrden && !isOpciones && !isHorizontal && !isHojaCompleta) ? "col-span-2" : "col-span-1";
+                                            const isHeaderRows = activeTab === 'tablas' && findColumnIndex([header], HEADER_ROWS_COL_VARIANTS) !== -1;
+                                            const colSpan = ((activeTab === 'tablas' || activeTab === 'figuras') && !isSeccion && !isOrden && !isOpciones && !isHorizontal && !isHojaCompleta && !isHeaderRows) ? "col-span-2" : "col-span-1";
                                             const isTipoBiblio = activeTab === 'bibliografia' && header.trim().toLowerCase() === 'tipo';
+
+                                            // --- Editor Filas Encabezado ---
+                                            if (isHeaderRows) {
+                                                return (
+                                                    <div key={i} className={colSpan + " space-y-1"}>
+                                                        <label className="block text-sm font-medium text-gray-700">{header} <span className="text-xs text-gray-500 font-normal">(Default: 1)</span></label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="10"
+                                                            step="1"
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gob-guinda bg-white text-gray-900"
+                                                            value={formData[i] || '1'}
+                                                            onChange={(e) => {
+                                                                const newData = [...formData];
+                                                                const val = parseInt(e.target.value);
+                                                                newData[i] = isNaN(val) ? '1' : val.toString();
+                                                                setFormData(newData);
+                                                            }}
+                                                        />
+                                                        <p className="text-xs text-gray-500">Número de filas que forman el encabezado (útil para combinar celdas).</p>
+                                                    </div>
+                                                );
+                                            }
 
                                             // --- Editor de Opciones (Horizontal / Hoja Completa) ---
                                             if (isOpciones) {
@@ -4100,6 +4469,25 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 <h3 className="text-lg font-bold text-gray-900">Valores de la Tabla</h3>
                                             </div>
                                             <div className="flex gap-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={handleMerge}
+                                                    title="Combinar celdas seleccionadas"
+                                                    disabled={!selectionStart || !selectionEnd || (selectionStart.r === selectionEnd.r && selectionStart.c === selectionEnd.c)}
+                                                >
+                                                    <Grid size={14} className="mr-1" /> Combinar
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={handleUnmerge}
+                                                    title="Descombinar celdas"
+                                                    disabled={!nestedGridMerges || nestedGridMerges.length === 0}
+                                                >
+                                                    <Grid size={14} className="mr-1 opacity-50" /> Separar
+                                                </Button>
+                                                <div className="w-px bg-gray-300 mx-1"></div>
                                                 <Button variant="ghost" size="sm" onClick={deleteGridRow} disabled={nestedGridData.length <= 1} title="Eliminar última fila">
                                                     <Minus size={14} className="mr-1" /> Fila
                                                 </Button>
@@ -4113,6 +4501,58 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 <Button variant="ghost" size="sm" onClick={addGridCol} title="Añadir columna al final">
                                                     <Plus size={14} className="mr-1" /> Col
                                                 </Button>
+                                                <div className="flex items-center gap-1 bg-amber-50 rounded px-1 border border-amber-200">
+                                                    <span className="text-[10px] font-bold text-amber-800 uppercase px-1">Encabezado:</span>
+                                                    <button
+                                                        className="p-1 hover:bg-amber-100 rounded text-amber-700 disabled:opacity-30"
+                                                        onClick={() => {
+                                                            try {
+                                                                if (!formHeaders || !formData) return;
+                                                                const idx = findColumnIndex(formHeaders, HEADER_ROWS_COL_VARIANTS);
+                                                                if (idx !== -1) {
+                                                                    const val = parseInt(formData[idx] || '1', 10);
+                                                                    const newData = [...formData];
+                                                                    newData[idx] = Math.max(0, val - 1).toString();
+                                                                    setFormData(newData);
+                                                                } else {
+                                                                    showNotification('⚠️ Falta columna "Filas Encabezado" en hoja Tablas. Por favor agrégala en Google Sheets.', 'error');
+                                                                }
+                                                            } catch (e) {
+                                                                console.error(e);
+                                                                showNotification('Error al modificar encabezados.', 'error');
+                                                            }
+                                                        }}
+                                                        title="Reducir filas de encabezado"
+                                                    >
+                                                        <Minus size={12} />
+                                                    </button>
+                                                    <span className="text-xs font-mono font-bold w-4 text-center text-amber-900">
+                                                        {headerRowsCount}
+                                                    </span>
+                                                    <button
+                                                        className="p-1 hover:bg-amber-100 rounded text-amber-700"
+                                                        onClick={() => {
+                                                            try {
+                                                                if (!formHeaders || !formData) return;
+                                                                const idx = findColumnIndex(formHeaders, HEADER_ROWS_COL_VARIANTS);
+                                                                if (idx !== -1) {
+                                                                    const val = parseInt(formData[idx] || '1', 10);
+                                                                    const newData = [...formData];
+                                                                    newData[idx] = Math.min(10, val + 1).toString();
+                                                                    setFormData(newData);
+                                                                } else {
+                                                                    showNotification('⚠️ Falta columna "Filas Encabezado" en hoja Tablas. Por favor agrégala en Google Sheets.', 'error');
+                                                                }
+                                                            } catch (e) {
+                                                                console.error(e);
+                                                                showNotification('Error al modificar encabezados.', 'error');
+                                                            }
+                                                        }}
+                                                        title="Aumentar filas de encabezado"
+                                                    >
+                                                        <Plus size={12} />
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
 
@@ -4123,28 +4563,123 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                 {nestedGridData && nestedGridData.length > 0 ? (
                                                     <table className="min-w-full divide-y divide-gray-200">
                                                         <tbody className="bg-white divide-y divide-gray-200">
-                                                            {nestedGridData.map((row, rIndex) => (
-                                                                <tr key={rIndex}>
-                                                                    <td className={clsx("px-2 py-2 text-[10px] font-mono select-none w-8 text-center border-r border-gray-200 transition-colors duration-200", focusedCell?.r === rIndex ? "bg-gob-guinda text-white font-bold" : "bg-gray-50 text-gray-400")}>
-                                                                        {rIndex + 1}
-                                                                    </td>
-                                                                    {row.map((cell, cIndex) => (
-                                                                        <td key={cIndex} className="p-0 border-r border-gray-200 last:border-0 min-w-[120px]">
-                                                                            <input
-                                                                                onFocus={() => setFocusedCell({ r: rIndex, c: cIndex })}
-                                                                                className={clsx("w-full h-full px-3 py-2 text-sm focus:outline-none border-none bg-transparent transition-colors duration-200 text-gray-900", rIndex === 0 ? (focusedCell?.c === cIndex ? "font-bold text-gob-guinda bg-red-50" : "font-bold text-gray-800 bg-gray-50") : "text-gray-900 focus:bg-blue-50", cIndex === 0 && rIndex !== 0 && "font-bold text-gray-900")}
-                                                                                value={cell}
-                                                                                placeholder={rIndex === 0 ? "Encabezado" : ""}
-                                                                                onChange={(e) => {
-                                                                                    const newData = [...nestedGridData];
-                                                                                    newData[rIndex][cIndex] = e.target.value;
-                                                                                    setNestedGridData(newData);
-                                                                                }}
-                                                                            />
+                                                            {nestedGridData.map((row, rIndex) => {
+                                                                const parsed = parseRangeSimple(nestedGridRange);
+                                                                const headersIdx = findColumnIndex(formHeaders, HEADER_ROWS_COL_VARIANTS);
+                                                                const tableHeaderRowCount = (headersIdx !== -1 && formData[headersIdx]) ? parseInt(formData[headersIdx].toString(), 10) : 1;
+
+                                                                const startRowAbs = parsed ? parsed.startRow : 0;
+                                                                const startColAbs = parsed ? parsed.startCol : 0;
+                                                                const absRow = startRowAbs + rIndex;
+
+                                                                return (
+                                                                    <tr key={rIndex}>
+                                                                        <td className={clsx("px-2 py-2 text-[10px] font-mono select-none w-8 text-center border-r border-gray-200 transition-colors duration-200", focusedCell?.r === rIndex ? "bg-gob-guinda text-white font-bold" : "bg-gray-50 text-gray-400")}>
+                                                                            {rIndex + 1}
                                                                         </td>
-                                                                    ))}
-                                                                </tr>
-                                                            ))}
+                                                                        {row.map((cell, cIndex) => {
+                                                                            const absCol = startColAbs + cIndex;
+
+                                                                            // Check for merges
+                                                                            let isHidden = false;
+                                                                            let rowSpan = 1;
+                                                                            let colSpan = 1;
+
+                                                                            if (nestedGridMerges && nestedGridMerges.length > 0) {
+                                                                                const merge = nestedGridMerges.find(m =>
+                                                                                    absRow >= m.startRowIndex && absRow < m.endRowIndex &&
+                                                                                    absCol >= m.startColumnIndex && absCol < m.endColumnIndex
+                                                                                );
+
+                                                                                if (merge) {
+                                                                                    if (absRow === merge.startRowIndex && absCol === merge.startColumnIndex) {
+                                                                                        rowSpan = merge.endRowIndex - merge.startRowIndex;
+                                                                                        colSpan = merge.endColumnIndex - merge.startColumnIndex;
+                                                                                    } else {
+                                                                                        isHidden = true;
+                                                                                    }
+                                                                                }
+                                                                            }
+
+                                                                            if (isHidden) return null;
+
+                                                                            // Check selection
+                                                                            let isSelected = false;
+                                                                            if (selectionStart && selectionEnd) {
+                                                                                const rMin = Math.min(selectionStart.r, selectionEnd.r);
+                                                                                const rMax = Math.max(selectionStart.r, selectionEnd.r);
+                                                                                const cMin = Math.min(selectionStart.c, selectionEnd.c);
+                                                                                const cMax = Math.max(selectionStart.c, selectionEnd.c);
+
+                                                                                if (rIndex >= rMin && rIndex <= rMax && cIndex >= cMin && cIndex <= cMax) {
+                                                                                    isSelected = true;
+                                                                                }
+                                                                            }
+
+                                                                            const isFocused = focusedCell?.r === rIndex && focusedCell?.c === cIndex;
+                                                                            const isHeader = rIndex < tableHeaderRowCount;
+
+                                                                            return (
+                                                                                <td
+                                                                                    key={cIndex}
+                                                                                    colSpan={colSpan}
+                                                                                    rowSpan={rowSpan}
+                                                                                    className={clsx(
+                                                                                        "p-0 border border-gray-300 min-w-[120px] relative select-none", // Added full border
+                                                                                        isSelected && !isFocused && "bg-blue-50 ring-2 ring-inset ring-blue-300 z-10",
+                                                                                        // Updated Header Style: Dark Gold Background with White Text + darker border
+                                                                                        isHeader && !isSelected && "bg-[#B38E5D] text-white font-semibold border-amber-800/40"
+                                                                                    )}
+                                                                                    onMouseDown={(e) => {
+                                                                                        if (e.button === 0) { // Left click only
+                                                                                            setIsSelecting(true);
+                                                                                            setSelectionStart({ r: rIndex, c: cIndex });
+                                                                                            setSelectionEnd({ r: rIndex, c: cIndex });
+                                                                                            setFocusedCell({ r: rIndex, c: cIndex });
+                                                                                        }
+                                                                                    }}
+                                                                                    onMouseEnter={() => {
+                                                                                        if (isSelecting && selectionStart) {
+                                                                                            setSelectionEnd({ r: rIndex, c: cIndex });
+                                                                                        }
+                                                                                    }}
+                                                                                    onClick={(e) => {
+                                                                                        if (e.shiftKey && selectionStart) {
+                                                                                            setSelectionEnd({ r: rIndex, c: cIndex });
+                                                                                        }
+                                                                                    }}
+                                                                                >
+                                                                                    <textarea
+                                                                                        onFocus={() => {
+                                                                                            if (!isSelecting) {
+                                                                                                setFocusedCell({ r: rIndex, c: cIndex });
+                                                                                                if (!selectionStart) {
+                                                                                                    setSelectionStart({ r: rIndex, c: cIndex });
+                                                                                                    setSelectionEnd({ r: rIndex, c: cIndex });
+                                                                                                }
+                                                                                            }
+                                                                                        }}
+                                                                                        className={clsx(
+                                                                                            "w-full h-full px-2 py-1 text-xs focus:outline-none border-none bg-transparent transition-colors duration-200 text-gray-900 cursor-cell resize-none overflow-hidden",
+                                                                                            rIndex === 0 ? (isFocused ? "font-bold text-gob-guinda bg-red-50" : "font-bold text-gray-800 bg-gray-50") : "text-gray-900 focus:bg-blue-50",
+                                                                                            cIndex === 0 && rIndex !== 0 && "font-bold text-gray-900",
+                                                                                            isSelected && !isFocused && "bg-blue-50"
+                                                                                        )}
+                                                                                        value={cell}
+                                                                                        placeholder={rIndex === 0 ? "Encabezado" : ""}
+                                                                                        onChange={(e) => {
+                                                                                            const newData = [...nestedGridData];
+                                                                                            newData[rIndex][cIndex] = e.target.value;
+                                                                                            setNestedGridData(newData);
+                                                                                        }}
+                                                                                        style={{ minHeight: '40px', whiteSpace: 'normal' }}
+                                                                                    />
+                                                                                </td>
+                                                                            );
+                                                                        })}
+                                                                    </tr>
+                                                                );
+                                                            })}
                                                         </tbody>
                                                     </table>
                                                 ) : (
@@ -4160,6 +4695,31 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                         <p className="text-xs text-gray-400 italic mt-2">
                                             Estos datos se guardarán automáticamente en el rango {nestedGridRange} al guardar el formulario.
                                         </p>
+                                    </div>
+                                )}
+
+                                {/* Table Style Editor (Only for Tablas) */}
+                                {activeTab === 'tablas' && nestedGridData.length > 0 && (
+                                    <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
+                                        <TableStyleEditor
+                                            tableId={(() => {
+                                                const secIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
+                                                const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+                                                const sec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
+                                                const ord = ordIdx !== -1 ? (formData[ordIdx] || '').toString().trim() : '';
+                                                return (sec && ord) ? `TBL-${sec}-${ord}` : `TBL-${ord}`;
+                                            })()}
+                                            numRows={nestedGridData.length}
+                                            numCols={nestedGridData[0]?.length || 1}
+                                            onStylesChange={handleTableStyleChange}
+                                            initialStyle={tableStyleMap[(() => {
+                                                const secIdx = findColumnIndex(formHeaders, SECCION_COL_VARIANTS);
+                                                const ordIdx = findColumnIndex(formHeaders, ORDEN_COL_VARIANTS);
+                                                const sec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
+                                                const ord = ordIdx !== -1 ? (formData[ordIdx] || '').toString().trim() : '';
+                                                return (sec && ord) ? `TBL-${sec}-${ord}` : `TBL-${ord}`;
+                                            })()]}
+                                        />
                                     </div>
                                 )}
 
