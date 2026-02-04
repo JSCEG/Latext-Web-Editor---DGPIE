@@ -871,7 +871,8 @@ function generarFilasConMerges(datos, merges, startRow, endRow, esEncabezadoBase
 
                     // Multicolumn
                     if (colSpan > 1) {
-                        const align = 'c';
+                        // Force borders for headers to prevent missing vertical lines
+                        const align = esEncabezado ? '|c|' : 'c';
                         cellContent = `\\multicolumn{${colSpan}}{${align}}{${cellContent}}`;
                     }
 
@@ -907,6 +908,10 @@ function generarFilasConMerges(datos, merges, startRow, endRow, esEncabezadoBase
 
         if (esEncabezado) {
             tex += `    \\rowcolor{gobmxDorado} ${rowTex.join(' & ')} \\\\\n`;
+            // Add horizontal line between header rows to visualize boundaries
+            if (r < endRow - 1) {
+                tex += `    \\hline\n`;
+            }
         } else {
             tex += `    ${rowTex.join(' & ')} \\\\\n`;
         }
