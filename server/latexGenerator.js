@@ -274,10 +274,6 @@ function procesarSecciones(secciones, figurasMap, tablasMap, figurasById, tablas
         }
 
         // --- LÓGICA DE TÍTULOS HORIZONTALES INTELIGENTES ---
-        // Verificar si el contenido empieza inmediatamente con una figura o tabla horizontal.
-        // Si es así, NO generamos el comando de sección aquí, sino que pasamos el título
-        // para que sea incrustado dentro del entorno horizontal (evitando huecos verticales).
-
         let esInicioHorizontal = false;
         const lineas = contenidoRaw.split('\n').map(l => l.trim()).filter(l => l !== '');
 
@@ -311,10 +307,6 @@ function procesarSecciones(secciones, figurasMap, tablasMap, figurasById, tablas
             contenido += generarComandoSeccion(nivel, titulo, anexosIniciados);
             contenido += procesarContenido(contenidoRaw, figurasById, tablasById);
         }
-
-        // NOTE: We strictly follow WYSIWYG. 
-        // We do NOT append unreferenced figures/tables at the end of the section anymore.
-        // If it's not in the content (via [[figura:ID]]), it won't be in the PDF.
 
         contenido += '\n\n';
     });
@@ -378,23 +370,12 @@ function procesarContenido(contenidoRaw, figurasById = {}, tablasById = {}, secc
         const linea = lineas[i];
         const lineaTrim = linea.trim();
 
-        // Safety check: If we have pending section but encounter text/blocks before fig/table,
-        // we must output the section command first to avoid losing it.
-        // We only try to embed if the FIRST contentful line is the target.
         if (seccionPendiente && !seccionIncrustada && lineaTrim !== '') {
             const esFig = lineaTrim.startsWith('[[figura:');
             const esTab = lineaTrim.startsWith('[[tabla:');
 
-            // If it is NOT a figure or table, we missed the opportunity to embed.
-            // Output standard section command immediately.
             if (!esFig && !esTab) {
-                // However, we can't output it here easily because we are inside the string builder.
-                // But wait, the caller (procesarSecciones) decides whether to call generatingCommand.
-                // If the caller decided NOT to call it because it detected a horizontal figure,
-                // but here we find text first, we are in trouble.
-                // BUT: The caller's check was based on lineas[0] (ignoring empty).
-                // So the first non-empty line MUST be the figure/table.
-                // So this case shouldn't happen unless there's a block start `[[` that is not fig/tab.
+                // If it is NOT a figure or table, we missed the opportunity to embed.
             }
         }
 
@@ -462,7 +443,6 @@ function procesarContenido(contenidoRaw, figurasById = {}, tablasById = {}, secc
                         const id = match[1].trim();
                         const tabla = tablasById[id];
                         if (tabla) {
-                            // Pass pending section only if not yet embedded
                             if (seccionPendiente && !seccionIncrustada) {
                                 resultado += generarTabla(tabla, seccionPendiente);
                                 seccionIncrustada = true;
@@ -479,7 +459,6 @@ function procesarContenido(contenidoRaw, figurasById = {}, tablasById = {}, secc
                         const id = match[1].trim();
                         const figura = figurasById[id];
                         if (figura) {
-                            // Pass pending section only if not yet embedded
                             if (seccionPendiente && !seccionIncrustada) {
                                 resultado += generarFigura(figura, seccionPendiente);
                                 seccionIncrustada = true;
@@ -525,8 +504,6 @@ function procesarDirectorio(contenidoRaw) {
     for (let i = 0; i < lines.length; i += 2) {
         const nombre = lines[i];
         const cargo = lines[i + 1] || '';
-        // FIX: Evitar saltos de línea con \\\\ si no hay contenido después, que causa "There's no line here to end"
-        // y usar \par en su lugar si es necesario o simplemente saltar línea
         dirTex += `{\\patriafont\\fontsize{12}{14}\\selectfont\\color{gobmxGuinda} ${escaparLatex(nombre)}}\\par\n`;
         if (cargo) {
             dirTex += `{\\patriafont\\fontsize{9}{11}\\selectfont ${escaparLatex(cargo)}}\\\\[0.5cm]\n`;
@@ -585,8 +562,6 @@ function generarFigura(figura, seccionInfo = null) {
     const ord = (figura['Fig.'] || figura['OrdenFigura'] || figura['Orden'] || '').toString();
     const id = forcedId || ((sec && ord) ? `FIG-${sec}-${ord}` : (ord ? `FIG-${ord}` : ''));
 
-    // Detectar flags especiales (Horizontal / Hoja Completa)
-    // Buscamos en múltiples variantes de nombres de columna para robustez
     const rawOpciones = figura['Opciones'] || figura['Estilo'] || figura['Style'] || figura['Options'] || figura['Configuracion'] || figura['Configuración'] || '';
     const opciones = rawOpciones.toString().toLowerCase();
 
@@ -604,10 +579,8 @@ function generarFigura(figura, seccionInfo = null) {
     let tex = '';
 
     if (esHorizontal) {
-        // CASO ESPECIAL: Figura Horizontal (Página Landscape) - ACTUALIZADO
         tex += `\\begin{figuraespecial}\n`;
 
-        // INYECCIÓN DE TÍTULO DE SECCIÓN (Si existe)
         if (seccionInfo) {
             const nivel = seccionInfo.nivel.toLowerCase();
             const tituloSafe = escaparLatex(seccionInfo.titulo);
@@ -617,12 +590,10 @@ function generarFigura(figura, seccionInfo = null) {
             } else if (nivel === 'seccion' || nivel === 'anexo') {
                 tex += `  \\seccionHorizontal{${tituloSafe}}\n`;
             } else {
-                // Fallback para otros niveles (titulo simple)
                 tex += `  \\tituloHorizontal{${tituloSafe}}\n`;
             }
         }
 
-        // Usar los nuevos comandos específicos para modo horizontal
         if (caption) {
             tex += `  \\captionHorizontal{${escaparLatex(caption)}}\n`;
         }
@@ -631,7 +602,6 @@ function generarFigura(figura, seccionInfo = null) {
             tex += `  \\imagenHorizontal{${rutaArchivo}}{fig:${id || generarLabel(caption)}}\n`;
         }
 
-        // La fuente va al final usando el comando específico
         if (fuente) {
             tex += formatearNotasYFuente(procesarTextoFuente(fuente), true);
         }
@@ -639,30 +609,22 @@ function generarFigura(figura, seccionInfo = null) {
         tex += `\\end{figuraespecial}\n`;
 
     } else {
-        // CASO NORMAL: Figura Vertical
         tex += `\\Needspace{18\\baselineskip}\n`;
         tex += `\\begin{figure}[H]\n`;
-        // Agrupar \centering e imagen para que no afecte al caption
         tex += `  {\\centering\n`;
 
         if (rutaArchivo) {
             if (textoAlt) {
-                // Con texto alternativo para accesibilidad
                 tex += `  % Texto alternativo para accesibilidad\n`;
                 tex += `  \\pdftooltip{\\includegraphics[width=${ancho}\\textwidth]{${rutaArchivo}}}{${escaparLatex(textoAlt)}}\n`;
             } else {
-                // Sin texto alternativo
                 tex += `  \\includegraphics[width=${ancho}\\textwidth]{${rutaArchivo}}\n`;
             }
         }
 
-        // Cerrar el grupo con \par para finalizar el párrafo centrado
         tex += `  \\par}\n`;
-
-        // Forzar alineación a la izquierda para el caption
         tex += `  \\raggedright\n`;
 
-        // Caption va después de la imagen (abajo, alineado a la izquierda por configuración del cls)
         if (caption) {
             const capTxt = escaparLatex(caption);
             tex += `  \\caption{${capTxt}}\n`;
@@ -672,8 +634,6 @@ function generarFigura(figura, seccionInfo = null) {
         tex += `\\end{figure}\n`;
 
         if (fuente) {
-            // FIX: Reducir espacio antes de fuente para pegarla más a la figura
-            // tex += `\\vspace{-4pt}\n`; // Ahora lo maneja formatearNotasYFuente
             tex += formatearNotasYFuente(procesarTextoFuente(fuente), false);
         }
     }
@@ -685,18 +645,24 @@ function generarFigura(figura, seccionInfo = null) {
 function generarTabla(tabla, seccionInfo = null) {
     const titulo = tabla['Titulo'] || tabla['Título'] || '';
     const fuente = tabla['Fuente'] || '';
-    // Use the parsed data directly passed from backend fetcher
-    const datos = tabla['ParsedData'] || [];
+    // Handle both old array format and new object format
+    const parsedData = tabla['ParsedData'] || {};
+    const datos = Array.isArray(parsedData) ? parsedData : (parsedData.data || []);
+    const merges = Array.isArray(parsedData) ? [] : (parsedData.merges || []);
+    const frozenRows = Array.isArray(parsedData) ? 0 : (parsedData.frozenRows || 0);
+
+    // Determine number of header rows (priority: Manual Metadata > Frozen Rows > Default 1)
+    const filasEncabezadoManual = tabla['Filas Encabezado'] || tabla['FilasEncabezado'] || tabla['HeaderRows'];
+    const numHeaderRows = filasEncabezadoManual ? parseInt(filasEncabezadoManual) : (frozenRows > 0 ? frozenRows : 1);
+
     const forcedId = (tabla['ID'] || '').toString();
     const sec = (tabla['SeccionOrden'] || tabla['ID_Seccion'] || '').toString();
     const ord = (tabla['Orden'] || tabla['OrdenTabla'] || '').toString();
     const id = forcedId || ((sec && ord) ? `TBL-${sec}-${ord}` : (ord ? `TBL-${ord}` : ''));
 
-    // Detectar flags especiales
     const opciones = (tabla['Opciones'] || tabla['Estilo'] || '').toString().toLowerCase();
     const esHorizontal = opciones.includes('horizontal') || (tabla['Horizontal'] || '').toString().toLowerCase().includes('si');
 
-    // Fallback if data not parsed but reference exists
     if (datos.length === 0) {
         const capTxt = escaparLatex(titulo);
         if (esHorizontal) {
@@ -720,15 +686,11 @@ function generarTabla(tabla, seccionInfo = null) {
     let tex = '';
     let esLarga = false;
 
-    // forzarLongtable = false
-    const resultado = procesarDatosArray(datos, titulo, false, esHorizontal);
+    const resultado = procesarDatosArray(datos, titulo, false, esHorizontal, merges, numHeaderRows);
     esLarga = resultado.tipo === 'longtable';
 
     if (esHorizontal) {
-        // CASO HORIZONTAL: Usar tablaespecial
         texInicio = `\\begin{tablaespecial}\n`;
-
-        // INYECCIÓN DE TÍTULO DE SECCIÓN (Si existe)
         if (seccionInfo) {
             const nivel = seccionInfo.nivel.toLowerCase();
             const tituloSafe = escaparLatex(seccionInfo.titulo);
@@ -737,7 +699,6 @@ function generarTabla(tabla, seccionInfo = null) {
             else texInicio += `  \\tituloHorizontal{${tituloSafe}}\n`;
         }
 
-        // Añadir caption dentro del entorno (externo a la tabla en sí)
         const capTxt = escaparLatex(titulo);
         texInicio += `  \\captionHorizontal{${capTxt}}\n`;
         texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
@@ -753,12 +714,10 @@ function generarTabla(tabla, seccionInfo = null) {
         texFin += `\\end{tablaespecial}\n`;
 
     } else if (esLarga) {
-        // Para tablas largas: usar tabladoradoLargo (sin caption, va en longtable)
         texInicio = `\\begin{tabladoradoLargo}\n`;
         texFin = `\\end{tabladoradoLargo}\n`;
         texInicio += resultado.contenido;
     } else {
-        // FIX: Para tablas cortas: usar tabladoradoCorto (mismo estilo que longtable)
         texInicio = `\\begin{tabladoradoCorto}\n`;
         texInicio += `  \\caption{${escaparLatex(titulo)}}\n`;
         texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
@@ -770,13 +729,8 @@ function generarTabla(tabla, seccionInfo = null) {
 
     if (fuente) {
         if (esHorizontal) {
-            // Fuente dentro de tablaespecial (antes del end)
-            // Pero texFin tiene el end. Hay que inyectarlo antes.
-            // Truco: Reemplazar el end por fuente + end
             tex = tex.replace(/\\end{tablaespecial}/, `${formatearNotasYFuente(procesarTextoFuente(fuente), true)}\n\\end{tablaespecial}`);
         } else {
-            // Normal
-            // tex += `\\vspace{-4pt}\n`; // Ahora lo maneja formatearNotasYFuente
             tex += formatearNotasYFuente(procesarTextoFuente(fuente), false);
         }
     }
@@ -784,60 +738,76 @@ function generarTabla(tabla, seccionInfo = null) {
     return tex;
 }
 
-function procesarDatosArray(datos, tituloTabla, forzarLongtable = false, esHorizontal = false) {
+function procesarDatosArray(datos, tituloTabla, forzarLongtable = false, esHorizontal = false, merges = [], frozenRows = 0) {
     if (!datos || datos.length === 0) {
         return { tipo: 'tabular', contenido: `  \\begin{tabular}{lc}\n    % Sin datos\n  \\end{tabular}\n` };
     }
-    const numCols = datos[0].length;
-    // Máximo de columnas por tabla (incluyendo la primera).
-    // Requisito: permitir hasta 14 columnas además de la primera (total 15) antes de dividir por columnas.
+
+    // Calcular número real de columnas considerando todas las filas y merges
+    const numCols = calcularMaxColumnas(datos, merges);
+    const numHeaderRows = frozenRows > 0 ? frozenRows : 1;
+    const rotarEncabezados = calcularRotacionEncabezados(merges, numHeaderRows);
+
     const MAX_COLS_POR_TABLA = 20;
     const MAX_FILAS_COMPACTA = 15;
     const MAX_FILAS_POR_PARTE = 35;
 
-    // FIX: Si hay caracteres extraños en los datos que parecen & o \\, ya deberían estar escapados.
-    // Pero si el número de columnas varía en los datos respecto al header, tabularx explota.
-    // Vamos a normalizar los datos para asegurar que todas las filas tengan el mismo número de columnas.
     const datosNormalizados = normalizarColumnasDatos(datos, numCols);
 
     if (numCols <= MAX_COLS_POR_TABLA) {
-        const numFilas = Math.max(0, datosNormalizados.length - 1);
+        const numFilas = Math.max(0, datosNormalizados.length - numHeaderRows);
         if (numFilas <= MAX_FILAS_COMPACTA && !forzarLongtable) {
-            return { tipo: 'tabular', contenido: generarTablaCompacta(datosNormalizados, esHorizontal) };
+            return { tipo: 'tabular', contenido: generarTablaCompacta(datosNormalizados, esHorizontal, merges, numHeaderRows, rotarEncabezados) };
         }
         if (numFilas > MAX_FILAS_POR_PARTE) {
-            return { tipo: 'longtable', contenido: dividirTablaPorFilas(datosNormalizados, MAX_FILAS_POR_PARTE, tituloTabla, esHorizontal) };
+            return { tipo: 'longtable', contenido: dividirTablaPorFilas(datosNormalizados, MAX_FILAS_POR_PARTE, tituloTabla, esHorizontal, merges, numHeaderRows, rotarEncabezados) };
         }
-        return { tipo: 'longtable', contenido: generarTablaSimple(datosNormalizados, tituloTabla, esHorizontal) };
+        return { tipo: 'longtable', contenido: generarTablaSimple(datosNormalizados, tituloTabla, esHorizontal, merges, numHeaderRows, rotarEncabezados) };
     }
-    return { tipo: 'longtable', contenido: dividirTabla(datosNormalizados, MAX_COLS_POR_TABLA, tituloTabla, esHorizontal) };
+    return { tipo: 'longtable', contenido: dividirTabla(datosNormalizados, MAX_COLS_POR_TABLA, tituloTabla, esHorizontal, merges, numHeaderRows, rotarEncabezados) };
 }
 
-// Helper para asegurar consistencia en columnas
+function calcularRotacionEncabezados(merges, numHeaderRows) {
+    if (!merges || merges.length === 0) return true;
+    for (const m of merges) {
+        if (m.startRowIndex < numHeaderRows && m.startColumnIndex > 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function calcularMaxColumnas(datos, merges) {
+    let maxCols = 0;
+    if (datos && datos.length > 0) {
+        datos.forEach(fila => {
+            if (fila && fila.length > maxCols) maxCols = fila.length;
+        });
+    }
+    if (merges) {
+        merges.forEach(m => {
+            if (m.endColumnIndex > maxCols) maxCols = m.endColumnIndex;
+        });
+    }
+    return maxCols > 0 ? maxCols : 1;
+}
+
 function normalizarColumnasDatos(datos, numColsEsperado) {
     return datos.map(fila => {
         if (fila.length === numColsEsperado) return fila;
         if (fila.length > numColsEsperado) return fila.slice(0, numColsEsperado);
-        // Rellenar con vacíos si faltan
         return [...fila, ...Array(numColsEsperado - fila.length).fill('')];
     });
 }
 
-// ================================
-// SENER: Tablas largas (xltabular)
-// ================================
-
-// Ajusta el ancho de la primera columna (definido en sener2025.cls)
 const SENER_LONGTABLE_FIRSTCOL_WIDTH = '0.34\\textwidth';
 
 function senerLongtablePreamble(numCols) {
     let tex = '';
-    // Optimización automática para tablas densas
     if (numCols > 15) {
-        // Optimización para 16-20 columnas
         tex += `  \\setlength{\\tabcolsep}{2pt}\n`;
         tex += `  \\setlength{\\SENERLongTableFirstColWidth}{0.15\\textwidth}\n`;
-        tex += `  \\renewcommand{\\SENERLongTableFont}{\\notosanspico\\sffamily\\color{black}}\n`; // Redefinir fuente base a 6.5pt
+        tex += `  \\renewcommand{\\SENERLongTableFont}{\\notosanspico\\sffamily\\color{black}}\n`;
     } else {
         tex += `  \\setlength{\\SENERLongTableFirstColWidth}{${SENER_LONGTABLE_FIRSTCOL_WIDTH}}\n`;
     }
@@ -845,20 +815,107 @@ function senerLongtablePreamble(numCols) {
 }
 
 function senerLongtableSpec(numCols) {
-    // Primera columna: Q (ancha + bold), resto: Z (X) para auto-fit
     return 'Q' + 'Z'.repeat(Math.max(0, numCols - 1));
 }
 
-function senerLongtableHeaderRow(celdasEncabezadoProcesadas) {
-    // Primera columna normal; resto con encabezado vertical
-    return celdasEncabezadoProcesadas
-        .map((c, idx) => idx === 0
-            ? `\\encabezadodorado{${c}}`
-            : `\\encabezadodorado{\\SENERVHeader{${c}}}`)
-        .join(' & ');
+function generarFilasConMerges(datos, merges, startRow, endRow, esEncabezadoBase, isFirstColHeader, rotarEncabezados = true) {
+    let tex = '';
+    const numCols = datos[0].length;
+
+    for (let r = startRow; r < endRow; r++) {
+        const rowData = datos[r];
+        let rowTex = [];
+
+        // Determinar si esta fila es parte del encabezado
+        const esEncabezado = (r < startRow + (endRow - startRow)) && esEncabezadoBase;
+        // Logic fix: esEncabezadoBase is true if this BLOCK is header.
+        // And we are iterating ONLY header rows if esEncabezadoBase is true (usually).
+        // Let's check callers. 
+        // generarTablaSimple calls (..., 0, 1, true, true). 
+        // So yes, esEncabezado is just esEncabezadoBase. 
+        // But wait, if I pass (0, numHeaderRows), all of them are header. Correct.
+
+        for (let c = 0; c < numCols; c++) {
+            const merge = merges.find(m =>
+                r >= m.startRowIndex && r < m.endRowIndex &&
+                c >= m.startColumnIndex && c < m.endColumnIndex
+            );
+
+            if (merge) {
+                if (r === merge.startRowIndex && c === merge.startColumnIndex) {
+                    // Celda superior-izquierda del merge
+                    const rowSpan = merge.endRowIndex - merge.startRowIndex;
+                    const colSpan = merge.endColumnIndex - merge.startColumnIndex;
+
+                    // Procesar contenido
+                    let rawContent = procesarCeldaUnica(rowData[c], esEncabezado, true, (c === 0));
+
+                    if (esEncabezado) {
+                        if (c === 0) {
+                            rawContent = `\\encabezadodorado{${rawContent}}`;
+                        } else {
+                            if (rotarEncabezados) {
+                                rawContent = `\\encabezadodorado{\\SENERVHeader{${rawContent}}}`;
+                            } else {
+                                rawContent = `\\encabezadodorado{${rawContent}}`;
+                            }
+                        }
+                    }
+
+                    let cellContent = rawContent;
+
+                    // Multirow
+                    if (rowSpan > 1) {
+                        cellContent = `\\multirow{${rowSpan}}{*}{${cellContent}}`;
+                    }
+
+                    // Multicolumn
+                    if (colSpan > 1) {
+                        const align = 'c';
+                        cellContent = `\\multicolumn{${colSpan}}{${align}}{${cellContent}}`;
+                    }
+
+                    rowTex.push(cellContent);
+                } else {
+                    // Celda oculta/cubierta
+                    if (c === merge.startColumnIndex) {
+                        const colSpan = merge.endColumnIndex - merge.startColumnIndex;
+                        if (colSpan > 1) {
+                            rowTex.push(`\\multicolumn{${colSpan}}{c}{}`);
+                        } else {
+                            rowTex.push(``);
+                        }
+                    }
+                }
+            } else {
+                // Celda normal
+                let content = procesarCeldaUnica(rowData[c], esEncabezado, true, (c === 0));
+                if (esEncabezado) {
+                    if (c === 0) {
+                        content = `\\encabezadodorado{${content}}`;
+                    } else {
+                        if (rotarEncabezados) {
+                            content = `\\encabezadodorado{\\SENERVHeader{${content}}}`;
+                        } else {
+                            content = `\\encabezadodorado{${content}}`;
+                        }
+                    }
+                }
+                rowTex.push(content);
+            }
+        }
+
+        if (esEncabezado) {
+            tex += `    \\rowcolor{gobmxDorado} ${rowTex.join(' & ')} \\\\\n`;
+        } else {
+            tex += `    ${rowTex.join(' & ')} \\\\\n`;
+        }
+    }
+    return tex;
 }
 
-function generarTablaSimple(datos, tituloTabla, esHorizontal = false) {
+
+function generarTablaSimple(datos, tituloTabla, esHorizontal = false, merges = [], numHeaderRows = 1, rotarEncabezados = true) {
     const numCols = datos[0].length;
     const especCols = senerLongtableSpec(numCols);
     const anchoTabla = esHorizontal ? '\\linewidth' : '\\textwidth';
@@ -866,68 +923,71 @@ function generarTablaSimple(datos, tituloTabla, esHorizontal = false) {
     let tex = senerLongtablePreamble(numCols);
     tex += `  \\begin{xltabular}{${anchoTabla}}{${especCols}}\n`;
 
-    // Si NO es horizontal, el caption va dentro. Si es horizontal, ya se puso fuera.
     if (tituloTabla && !esHorizontal) {
         tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
     }
 
-    // Encabezado para la primera página
     tex += `    \\toprule\n`;
-    const encabezados = senerLongtableHeaderRow(procesarCeldasFila(datos[0], true, true));
-    tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
+
+    // Generar encabezado usando la nueva función
+    const encabezados = generarFilasConMerges(datos, merges, 0, numHeaderRows, true, true, rotarEncabezados);
+
+    tex += encabezados;
     tex += `    \\midrule\n`;
     tex += `    \\endfirsthead\n\n`;
 
-    // Encabezado para páginas siguientes
     tex += `    \\multicolumn{${numCols}}{l}{\\small\\textit{Continuación...}} \\\\\n`;
     tex += `    \\toprule\n`;
-    tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
+    tex += encabezados; // Repetir encabezado
     tex += `    \\midrule\n`;
     tex += `    \\endhead\n\n`;
 
-    // Pie de tabla en páginas intermedias
     tex += `    \\midrule\n`;
     tex += `    \\multicolumn{${numCols}}{r}{\\small\\textit{Continúa en la siguiente página...}} \\\\\n`;
     tex += `    \\endfoot\n\n`;
 
-    // Pie de tabla en la última página
     tex += `    \\bottomrule\n`;
     tex += `    \\endlastfoot\n\n`;
 
-    for (let i = 1; i < datos.length; i++) {
-        const celdas = procesarCeldasFila(datos[i], false, true);
-        tex += `    ${celdas.join(' & ')} \\\\\n`;
-    }
+    // Cuerpo de la tabla
+    tex += generarFilasConMerges(datos, merges, numHeaderRows, datos.length, false, true);
+
     tex += `  \\end{xltabular}\n`;
     return tex;
 }
 
-function generarTablaCompacta(datos, esHorizontal = false) {
+function generarTablaCompacta(datos, esHorizontal = false, merges = [], numHeaderRows = 1, rotarEncabezados = true) {
     const numCols = datos[0] ? datos[0].length : 0;
-    if (numCols === 0) return ''; // Tabla vacía
+    if (numCols === 0) return '';
     const especCols = 'V' + ('v'.repeat(Math.max(0, numCols - 1)));
     const anchoTabla = esHorizontal ? '\\linewidth' : '\\textwidth';
     let tex = `  \\begin{tabularx}{${anchoTabla}}{${especCols}}\n`;
     tex += `    \\toprule\n`;
-    const encabezados = procesarCeldasFila(datos[0], true, false).map(c => `\\encabezadodorado{${c}}`).join(' & ');
-    tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
+
+    // Encabezado
+    tex += generarFilasConMerges(datos, merges, 0, numHeaderRows, true, false, rotarEncabezados);
+
     tex += `    \\midrule\n`;
-    for (let i = 1; i < datos.length; i++) {
-        const celdas = procesarCeldasFila(datos[i], false, false);
-        tex += `    ${celdas.join(' & ')} \\\\\n`;
-    }
+
+    // Cuerpo
+    tex += generarFilasConMerges(datos, merges, numHeaderRows, datos.length, false, false);
+
     tex += `    \\bottomrule\n`;
     tex += `  \\end{tabularx}\n`;
     return tex;
 }
 
-function dividirTabla(datos, maxCols, tituloTabla, esHorizontal = false) {
+function dividirTabla(datos, maxCols, tituloTabla, esHorizontal = false, merges = [], numHeaderRows = 1, rotarEncabezados = true) {
     const numCols = datos[0].length;
     let tex = '';
     let parte = 1;
     const colsPorParte = maxCols - 1;
     let colInicio = 1;
     const anchoTabla = esHorizontal ? '\\linewidth' : '\\textwidth';
+
+    // ADVERTENCIA: Esta función rompe merges si cruzan el límite de división.
+    // Para simplificar, asumimos que no se debe usar merges complejos con dividirTabla.
+    // Si se usa, se renderizarán como celdas separadas en los límites.
 
     while (colInicio < numCols) {
         const colFin = Math.min(colInicio + colsPorParte, numCols);
@@ -948,6 +1008,11 @@ function dividirTabla(datos, maxCols, tituloTabla, esHorizontal = false) {
         if (tituloTabla && parte === 1 && !esHorizontal) {
             tex += `    \\caption{${escaparLatex(tituloTabla)}}\\label{tab:${generarLabel(tituloTabla)}}\\\\\n`;
         }
+
+        // Preparamos datos parciales
+        // PERO necesitamos recalcular los merges para estos datos parciales.
+        // Es muy complejo remapear merges dinámicamente.
+        // Fallback: Ignorar merges en tablas divididas por columnas.
 
         const celdasEncabezado = colsEnEstaParte.map(colIdx => datos[0][colIdx]);
         const encabezados = senerLongtableHeaderRow(procesarCeldasFila(celdasEncabezado, true, true));
@@ -970,7 +1035,7 @@ function dividirTabla(datos, maxCols, tituloTabla, esHorizontal = false) {
         tex += `    \\bottomrule\n`;
         tex += `    \\endlastfoot\n\n`;
 
-        for (let i = 1; i < datos.length; i++) {
+        for (let i = numHeaderRows; i < datos.length; i++) {
             const celdasParte = colsEnEstaParte.map(colIdx => datos[i][colIdx]);
             const celdas = procesarCeldasFila(celdasParte, false, true);
             tex += `    ${celdas.join(' & ')} \\\\\n`;
@@ -982,12 +1047,22 @@ function dividirTabla(datos, maxCols, tituloTabla, esHorizontal = false) {
     return tex;
 }
 
-function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla, esHorizontal = false) {
+function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla, esHorizontal = false, merges = [], numHeaderRows = 1, rotarEncabezados = true) {
+    // Dividir por filas es seguro para merges verticales SI no cortamos un merge.
+    // Pero si lo cortamos, se rompe.
+    // Usamos generarFilasConMerges, que maneja merges.
+    // Pero xltabular ya divide por páginas. ¿Por qué dividir manualmente?
+    // Esta función se llama si la tabla es compacta pero larga? No, si es muy larga.
+    // xltabular maneja la longitud.
+    // La función original usa xltabular en bucle.
+
+    // Vamos a usar generarFilasConMerges por trozos.
+
     const numCols = datos[0].length;
     const especCols = senerLongtableSpec(numCols);
     const anchoTabla = esHorizontal ? '\\linewidth' : '\\textwidth';
     let tex = '';
-    let inicio = 1;
+    let inicio = numHeaderRows;
     let parte = 1;
     while (inicio < datos.length) {
         const fin = Math.min(inicio + maxFilasParte, datos.length);
@@ -1000,14 +1075,14 @@ function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla, esHorizontal = 
         }
 
         tex += `    \\toprule\n`;
-        const encabezados = senerLongtableHeaderRow(procesarCeldasFila(datos[0], true, true));
-        tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
+        const encabezados = generarFilasConMerges(datos, merges, 0, numHeaderRows, true, true, rotarEncabezados);
+        tex += encabezados;
         tex += `    \\midrule\n`;
         tex += `    \\endfirsthead\n\n`;
 
         tex += `    \\multicolumn{${numCols}}{l}{\\small\\textit{Continuación...}} \\\\\n`;
         tex += `    \\toprule\n`;
-        tex += `    \\rowcolor{gobmxDorado} ${encabezados} \\\\\n`;
+        tex += encabezados;
         tex += `    \\midrule\n`;
         tex += `    \\endhead\n\n`;
 
@@ -1018,10 +1093,8 @@ function dividirTablaPorFilas(datos, maxFilasParte, tituloTabla, esHorizontal = 
         tex += `    \\bottomrule\n`;
         tex += `    \\endlastfoot\n\n`;
 
-        for (let i = inicio; i < fin; i++) {
-            const celdas = procesarCeldasFila(datos[i], false, true);
-            tex += `    ${celdas.join(' & ')} \\\\\n`;
-        }
+        tex += generarFilasConMerges(datos, merges, inicio, fin, false, true);
+
         tex += `  \\end{xltabular}\n`;
 
         if (fin < datos.length) {
@@ -1156,8 +1229,6 @@ function procesarConEtiquetas(texto) {
     const recuadros = [];
     str = str.replace(/\[\[recuadro:([^\]]*)\]\]([\s\S]*?)\[\[\/recuadro\]\]/g, (m, t, c) => {
         const tituloArg = t.trim() ? `{${escaparLatex(t.trim())}}` : '';
-        // Procesar contenido interno recursivamente para permitir otras etiquetas (negritas, math, etc.)
-        // pero evitar recuadros anidados (regex no lo captura bien de todos modos)
         const contenidoProcesado = procesarConEtiquetas(c);
         recuadros.push(`\\begin{recuadro}${tituloArg}\n${contenidoProcesado}\n\\end{recuadro}`);
         return `ZRECUADROPLACEHOLDER${recuadros.length - 1}Z`;
@@ -1166,8 +1237,6 @@ function procesarConEtiquetas(texto) {
     const etiquetas = [];
     str = str.replace(/\[\[nota:([\s\S]*?)\]\]/g, (m, c) => { etiquetas.push(`\\footnote{${escaparFootnote(c)}}`); return `ZETIQUETAPLACEHOLDER${etiquetas.length - 1}Z`; });
 
-    // Para destacado, dorado y guinda, ES FUNDAMENTAL escapar el contenido 'c'
-    // ya que se inserta en un contexto LaTeX ya protegido.
     str = str.replace(/\[\[destacado:([\s\S]*?)\]\]/g, (m, c) => {
         etiquetas.push(`\\begin{destacado}\n${procesarConEtiquetas(c)}\n\\end{destacado}`);
         return `ZETIQUETAPLACEHOLDER${etiquetas.length - 1}Z`;
@@ -1198,21 +1267,11 @@ function procesarConEtiquetas(texto) {
 function procesarTextoFuente(texto) {
     if (!texto) return { fuente: '', notas: [] };
 
-    // Usar normalización segura de saltos
     const textoNormalizado = normalizarSaltosLatex(texto);
-
-    // Protegemos los saltos de línea ANTES de que el split elimine espacios
     const textoProtegido = textoNormalizado.replace(/\n/g, ' ZNEWLINEZ ');
-
-    // Separar en líneas para reconstruir con espacios simples
     const lineas = textoProtegido.split(/\s+/).filter(l => l.trim() !== '');
-
-    // Reconstruir texto en una sola línea para facilitar el regex
     const textoCompleto = lineas.join(' ');
 
-    // Separar fuente principal de notas usando regex para marcadores
-    // Soporta: 1/, a/, *, **, *** (seguidos de espacio o fin de cadena)
-    // Usamos regex con capturing group para mantener el delimitador
     const partesTexto = textoCompleto.split(/(\b[0-9]+\/|\b[a-zA-Z]+\/|(?<=^|\s)\*{1,3}(?=\s|$))/);
 
     let textoFuente = '';
@@ -1220,32 +1279,28 @@ function procesarTextoFuente(texto) {
 
     for (let i = 0; i < partesTexto.length; i++) {
         const parte = partesTexto[i];
-        if (!parte) continue; // Skip empty strings
+        if (!parte) continue;
 
         const parteTrim = parte.trim();
 
-        // Verificar si es un marcador de nota
         if (parteTrim.match(/^([0-9]+\/|[a-zA-Z]+\/|\*{1,3})$/)) {
-            // Es una nota, tomar el siguiente elemento como contenido
             const contenidoNota = partesTexto[i + 1] || '';
             lineasNotas.push({
                 nota: parteTrim,
                 texto: contenidoNota.trim()
             });
-            i++; // Saltar el contenido ya procesado
+            i++;
         } else if (parte.trim()) {
-            // Es parte del texto de la fuente principal
             textoFuente += parte + ' ';
         }
     }
 
-    // Ordenar notas: * primero, luego **, luego ***, luego numéricas/letras
     lineasNotas.sort((a, b) => {
         const getRank = (n) => {
             if (n === '*') return 1;
             if (n === '**') return 2;
             if (n === '***') return 3;
-            return 100; // Otros (numéricos, letras) mantienen orden relativo
+            return 100;
         };
         const rankA = getRank(a.nota);
         const rankB = getRank(b.nota);
@@ -1253,20 +1308,15 @@ function procesarTextoFuente(texto) {
     });
 
     let resultado = '';
-    // Limpiar ZNEWLINEZ al inicio y final de la fuente (evitar saltos espurios)
     textoFuente = textoFuente.replace(/^\s*(?:ZNEWLINEZ\s*)+|(?:ZNEWLINEZ\s*)+$/g, '').trim();
 
     if (textoFuente) {
         let fuenteProcesada = procesarConEtiquetas(textoFuente);
-        // FIX: Reemplazar ZNEWLINEZ con espacio en la fuente para evitar saltos de línea no deseados
-        // (especialmente cuando se usan notas al pie o marcadores manuales en líneas separadas)
         fuenteProcesada = fuenteProcesada.replace(/ZNEWLINEZ/g, ' ');
         resultado += fuenteProcesada;
     }
 
-    // Adaptación para devolver objeto en lugar de string formateado antiguo
     const notasProcesadas = lineasNotas.map(item => {
-        // Limpiar ZNEWLINEZ al inicio y final de la nota
         let rawText = item.texto.replace(/^\s*(?:ZNEWLINEZ\s*)+|(?:ZNEWLINEZ\s*)+$/g, '').trim();
         let texto = procesarConEtiquetas(rawText);
         texto = texto.replace(/ZNEWLINEZ/g, ' \\\\ ');
@@ -1274,7 +1324,7 @@ function procesarTextoFuente(texto) {
     });
 
     return {
-        fuente: resultado, // textoFuente procesado
+        fuente: resultado,
         notas: notasProcesadas
     };
 }
@@ -1287,7 +1337,6 @@ function formatearNotasYFuente(processed, esHorizontal = false) {
     if (!hayNotas && !hayFuente) return '';
 
     if (!hayNotas && hayFuente) {
-        // Solo fuente - Comportamiento legacy/estándar
         if (esHorizontal) {
             tex += `  \\fuenteHorizontal{${processed.fuente}}\n`;
         } else {
@@ -1297,8 +1346,6 @@ function formatearNotasYFuente(processed, esHorizontal = false) {
         return tex;
     }
 
-    // Caso: Hay Notas (y opcionalmente Fuente)
-    // Usamos un bloque unificado para controlar el espaciado y mantenerlos "juntitos"
     if (esHorizontal) {
         tex += `  \\vspace{-0.2cm}\n`;
         tex += `  \\begin{center}\n`;
@@ -1312,7 +1359,6 @@ function formatearNotasYFuente(processed, esHorizontal = false) {
         }
 
         if (hayFuente) {
-            // Pequeño espacio antes de la fuente si hay notas
             if (hayNotas) tex += `    \\vspace{1pt}\n`;
             tex += `    {\\color{gobmxGris}FUENTE:~${processed.fuente}}\n`;
         }
@@ -1320,8 +1366,6 @@ function formatearNotasYFuente(processed, esHorizontal = false) {
         tex += `  }\n`;
         tex += `  \\end{center}\n`;
     } else {
-        // Vertical
-        // Usamos -4pt inicial, ajustar si se requiere más pegado a la tabla
         tex += `\\vspace{-4pt}\n`;
         tex += `{\\raggedright\\notosanslight\\fontsize{7pt}{9pt}\\selectfont\\setlength{\\parskip}{0pt}\n`;
 
@@ -1344,7 +1388,6 @@ function formatearNotasYFuente(processed, esHorizontal = false) {
 }
 
 function generarIdNota(nota) {
-    // Si es asterisco, generar ID seguro
     if (nota.match(/^\*+$/)) {
         return 'notaast' + nota.length;
     }
@@ -1361,44 +1404,48 @@ function estilizarNotas(texto) {
 
 function procesarCeldasFila(fila, esEncabezado = false, esTablaLarga = false) {
     return fila.map((c, idx) => {
-        if (c === null || c === undefined || c === '') return '';
-        if (typeof c === 'number') {
-            const nf = Intl.NumberFormat('en-US', { maximumFractionDigits: 4, useGrouping: true });
-            return escaparLatex(nf.format(c));
-        }
-        const num = parseFloat(c);
-        if (!isNaN(num) && c.toString().includes('.')) {
-            const decimales = c.toString().split('.')[1];
-            if (decimales && decimales.length > 4) {
-                const nf = Intl.NumberFormat('en-US', { maximumFractionDigits: 4, useGrouping: true });
-                return escaparLatex(nf.format(num));
-            }
-        }
-
-        const textoOriginal = c.toString();
-        const resultado = estilizarNotas(textoOriginal);
-        let textoFinal;
-        if (resultado.tieneNotas) {
-            const textoBaseEscapado = escaparLatex(resultado.textoBase);
-            const colorNota = esEncabezado ? 'white' : 'black';
-            const notasLatex = resultado.notas.map(nota => {
-                return `\\hyperlink{${generarIdNota(nota)}}{\\textcolor{${colorNota}}{${escaparLatex(nota)}}}`;
-            }).join(',');
-            textoFinal = `${textoBaseEscapado} \\textsuperscript{${notasLatex}}`;
-        } else {
-            textoFinal = escaparLatex(textoOriginal);
-        }
-
-        if (esTablaLarga && idx === 0 && !esEncabezado) {
-            const matchEspacios = textoOriginal.match(/^(\s+)/);
-            if (matchEspacios) {
-                const numEspacios = matchEspacios[1].length;
-                const sangria = (numEspacios === 1) ? '\\quad ' : '\\hspace{' + (numEspacios * 0.45) + 'em} ';
-                textoFinal = sangria + textoFinal.trimStart();
-            }
-        }
-        return textoFinal;
+        return procesarCeldaUnica(c, esEncabezado, esTablaLarga, (idx === 0));
     });
+}
+
+function procesarCeldaUnica(c, esEncabezado, esTablaLarga, isFirstColOfRow) {
+    if (c === null || c === undefined || c === '') return '';
+    if (typeof c === 'number') {
+        const nf = Intl.NumberFormat('en-US', { maximumFractionDigits: 4, useGrouping: true });
+        return escaparLatex(nf.format(c));
+    }
+    const num = parseFloat(c);
+    if (!isNaN(num) && c.toString().includes('.')) {
+        const decimales = c.toString().split('.')[1];
+        if (decimales && decimales.length > 4) {
+            const nf = Intl.NumberFormat('en-US', { maximumFractionDigits: 4, useGrouping: true });
+            return escaparLatex(nf.format(num));
+        }
+    }
+
+    const textoOriginal = c.toString();
+    const resultado = estilizarNotas(textoOriginal);
+    let textoFinal;
+    if (resultado.tieneNotas) {
+        const textoBaseEscapado = escaparLatex(resultado.textoBase);
+        const colorNota = esEncabezado ? 'white' : 'black';
+        const notasLatex = resultado.notas.map(nota => {
+            return `\\hyperlink{${generarIdNota(nota)}}{\\textcolor{${colorNota}}{${escaparLatex(nota)}}}`;
+        }).join(',');
+        textoFinal = `${textoBaseEscapado} \\textsuperscript{${notasLatex}}`;
+    } else {
+        textoFinal = escaparLatex(textoOriginal);
+    }
+
+    if (esTablaLarga && isFirstColOfRow && !esEncabezado) {
+        const matchEspacios = textoOriginal.match(/^(\s+)/);
+        if (matchEspacios) {
+            const numEspacios = matchEspacios[1].length;
+            const sangria = (numEspacios === 1) ? '\\quad ' : '\\hspace{' + (numEspacios * 0.45) + 'em} ';
+            textoFinal = sangria + textoFinal.trimStart();
+        }
+    }
+    return textoFinal;
 }
 
 // ============================================================================
@@ -1435,25 +1482,17 @@ async function fetchAndParseSheet(spreadsheetId, sheetName, token) {
     }
 }
 
-// Special fetcher for table content (ranges)
+// Special fetcher for table content (ranges) with merges
 async function fetchTableContent(spreadsheetId, rangeRef, token) {
-    if (!rangeRef) return [];
+    if (!rangeRef) return { data: [], merges: [], frozenRows: 0 };
     try {
         let cleanRange = rangeRef.trim();
 
-        // Fix for when the range is like "Datos Tablas'!A3:D6" (missing opening quote)
-        // or "Datos Tablas!A3:D6" (no quotes but space in name)
-
-        // 1. If it contains '!', check the sheet part
         if (cleanRange.includes('!')) {
             const parts = cleanRange.split('!');
             let sheet = parts[0];
             const cells = parts.slice(1).join('!');
 
-            // If sheet name has spaces and is NOT quoted, we must quote it.
-            // If it is partially quoted (e.g. Datos Tablas'), fix it.
-
-            // Check for unbalanced quotes or missing start quote
             if (sheet.endsWith("'") && !sheet.startsWith("'")) {
                 sheet = "'" + sheet;
             } else if (!sheet.startsWith("'") && sheet.includes(' ')) {
@@ -1463,10 +1502,44 @@ async function fetchTableContent(spreadsheetId, rangeRef, token) {
             cleanRange = `${sheet}!${cells}`;
         }
 
-        return await fetchSheetData(spreadsheetId, cleanRange, token);
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?ranges=${encodeURIComponent(cleanRange)}&fields=sheets(properties(gridProperties(frozenRowCount)),data(rowData(values(formattedValue,userEnteredValue)),startRow,startColumn),merges)&includeGridData=true`;
+
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Error fetching table content ${cleanRange}: ${response.statusText}`);
+        }
+
+        const json = await response.json();
+        const sheet = json.sheets?.[0];
+
+        if (!sheet) return { data: [], merges: [], frozenRows: 0 };
+
+        const rowData = sheet.data?.[0]?.rowData || [];
+        const merges = sheet.merges || [];
+        const startRow = sheet.data?.[0]?.startRow || 0;
+        const startCol = sheet.data?.[0]?.startColumn || 0;
+        const frozenRows = sheet.properties?.gridProperties?.frozenRowCount || 0;
+
+        const data = rowData.map(r => r.values?.map(c => c.formattedValue || c.userEnteredValue?.stringValue || (c.userEnteredValue?.numberValue !== undefined ? String(c.userEnteredValue.numberValue) : '') || '') || []);
+
+        const normalizedMerges = merges.map(m => ({
+            startRowIndex: m.startRowIndex - startRow,
+            endRowIndex: m.endRowIndex - startRow,
+            startColumnIndex: m.startColumnIndex - startCol,
+            endColumnIndex: m.endColumnIndex - startCol
+        })).filter(m =>
+            m.startRowIndex >= 0 &&
+            m.startColumnIndex >= 0
+        );
+
+        return { data, merges: normalizedMerges, frozenRows };
+
     } catch (e) {
-        console.warn(`Error fetching table content for range ${rangeRef} (cleaned: ${cleanRange}):`, e.message);
-        throw e; // Rethrow to let caller handle it
+        console.warn(`Error fetching table content for range ${rangeRef} (cleaned: ${cleanRange || rangeRef}):`, e.message);
+        return { data: [], merges: [], frozenRows: 0 }; // Return structure on error
     }
 }
 
@@ -1498,22 +1571,18 @@ async function generateLatex(spreadsheetId, docId, token) {
     const docUnidades = filterByDoc(unidades);
 
     // 3. Fetch inner data for tables (Data CSV ranges)
-    // This is the heavy part: we need to fetch the content for each table
     await Promise.all(docTablas.map(async (tabla) => {
         const range = tabla['Datos CSV'] || tabla['DatosCSV'];
         if (range) {
             try {
                 tabla['ParsedData'] = await fetchTableContent(spreadsheetId, range, token);
-                if (!tabla['ParsedData'] || tabla['ParsedData'].length === 0) {
+                if (!tabla['ParsedData'] || !tabla['ParsedData'].data || tabla['ParsedData'].data.length === 0) {
                     console.warn(`Warning: Table ${tabla['Titulo'] || 'Unknown'} has empty data for range ${range}`);
                 }
             } catch (err) {
                 console.error(`Error fetching table data for ${range}:`, err);
-                tabla['ParsedData'] = [];
+                tabla['ParsedData'] = { data: [], merges: [] };
             }
-        } else {
-            // Try to construct range from legacy fields if needed, or log warning
-            // console.warn('Table without range:', tabla);
         }
     }));
 
@@ -1541,6 +1610,14 @@ async function generateLatex(spreadsheetId, docId, token) {
         bib,
         filename: datosDoc['DocumentoCorto'] || 'documento'
     };
+}
+
+function senerLongtableHeaderRow(celdas) {
+    if (!celdas || celdas.length === 0) return '';
+    return celdas.map((c, i) => {
+        if (i === 0) return `\\encabezadodorado{${c}}`;
+        return `\\encabezadodorado{\\SENERVHeader{${c}}}`;
+    }).join(' & ');
 }
 
 module.exports = { generateLatex, generarTabla, procesarTextoFuente, formatearNotasYFuente };

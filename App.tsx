@@ -13,6 +13,7 @@ import type { NewDocumentData } from './components/Dashboard';
 import { socketService } from './services/socketService';
 import { UserActivityTracker } from './components/UserActivityTracker';
 import { authorizedUsers } from './auth';
+import { setSession, getSession, clearSession, saveUserProfile, getUserProfile } from './utils/authUtils';
 
 const AVAILABLE_SPREADSHEETS = [
   { id: '1HpvaN82xj75IhTg0ZyeGOBWluivCQdQh9OuDL-nnGgI', name: 'Documentos Principales', description: 'Balance Nacional de Energía y documentos centrales' },
@@ -204,26 +205,29 @@ const App: React.FC = () => {
 
   // Load token from local storage on mount
   useEffect(() => {
-    const savedToken = localStorage.getItem('sheet_token');
+    const savedToken = getSession();
     if (savedToken) {
       setToken(savedToken);
       setIsAuthenticated(true);
-      const savedUser = localStorage.getItem('user_profile');
-      let userData = {
+      
+      const savedUser = getUserProfile();
+      const userData = savedUser || {
         name: 'Usuario (Reconectado)',
         email: 'user@gob.mx'
       };
 
-      if (savedUser) {
-        try {
-          userData = JSON.parse(savedUser);
-          setCurrentUser(userData);
-        } catch (e) { console.error(e); }
-      } else {
+      if (!savedUser) {
+        // Fallback if no user profile but valid token (shouldn't happen often)
         setCurrentUser(userData);
+      } else {
+        setCurrentUser(savedUser);
       }
 
       socketService.connect(userData);
+    } else {
+      // If no valid session, ensure clean state
+      setIsAuthenticated(false);
+      setToken('');
     }
   }, []);
 
@@ -233,10 +237,13 @@ const App: React.FC = () => {
       // NOTE: This is a placeholder auth system.
       // In a real scenario, you would call a backend endpoint to verify credentials
       // and get a JWT or session token. For now, we'll grant access like a demo user.
-      setToken('DEMO'); // Use 'DEMO' token for placeholder access
+      const demoToken = 'DEMO';
+      setSession(demoToken, 86400); // 24 hours for demo/test users
+      setToken(demoToken); 
       setIsAuthenticated(true);
       setError(null);
       const registeredUser = { name: email.split('@')[0], email: email };
+      saveUserProfile(registeredUser);
       setCurrentUser(registeredUser);
       socketService.connect(registeredUser);
     } else {
@@ -246,10 +253,13 @@ const App: React.FC = () => {
 
 
   const handleDemoLogin = () => {
-    setToken('DEMO');
+    const demoToken = 'DEMO';
+    setSession(demoToken, 3600);
+    setToken(demoToken);
     setIsAuthenticated(true);
     setError(null);
     const demoUser = { name: 'Usuario Demo', email: 'demo@gob.mx' };
+    saveUserProfile(demoUser);
     setCurrentUser(demoUser);
     socketService.connect(demoUser);
   }
@@ -258,7 +268,7 @@ const App: React.FC = () => {
     onSuccess: async (tokenResponse) => {
       const accessToken = tokenResponse.access_token;
       if (accessToken) {
-        localStorage.setItem('sheet_token', accessToken);
+        setSession(accessToken, tokenResponse.expires_in);
         setToken(accessToken);
         setIsAuthenticated(true);
         setError(null);
@@ -274,7 +284,7 @@ const App: React.FC = () => {
             photo: profile.picture
           };
 
-          localStorage.setItem('user_profile', JSON.stringify(userData));
+          saveUserProfile(userData);
           setCurrentUser(userData);
           socketService.connect(userData);
         } catch (e) {
@@ -293,8 +303,7 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     socketService.disconnect();
-    localStorage.removeItem('sheet_token');
-    localStorage.removeItem('user_profile');
+    clearSession();
     setIsAuthenticated(false);
     setToken('');
     setEmail('');

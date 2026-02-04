@@ -900,6 +900,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     const [nestedGridMerges, setNestedGridMerges] = useState<any[]>([]); // Store merge metadata
     const [selectionStart, setSelectionStart] = useState<{ r: number, c: number } | null>(null);
     const [selectionEnd, setSelectionEnd] = useState<{ r: number, c: number } | null>(null);
+    const [hasUnsavedGridChanges, setHasUnsavedGridChanges] = useState(false);
+    const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
 
     // UI Overlays State
@@ -970,6 +972,24 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         setPendingEditSectionId(sectionId);
         setActiveTab('secciones');
         setViewMode('LIST'); // Will switch to FORM automatically by handleEdit, but LIST ensures data load
+    };
+
+    // Safe tab switching with unsaved changes check
+    const switchTab = (newTab: string) => {
+        if (hasUnsavedGridChanges && activeTab === 'tablas') {
+            const confirmSwitch = window.confirm('Tienes cambios sin guardar en la tabla actual. ¿Deseas continuar sin guardar?');
+            if (!confirmSwitch) {
+                return;
+            }
+            // Clear the auto-save timer
+            if (autoSaveTimerRef.current) {
+                clearTimeout(autoSaveTimerRef.current);
+            }
+            setHasUnsavedGridChanges(false);
+        }
+        setActiveTab(newTab);
+        setViewMode('LIST');
+        setMobileMenuOpen(false);
     };
 
     // Reset pagination when search term changes
@@ -1153,12 +1173,12 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         const sec = secIdx !== -1 ? (formData[secIdx] || '').toString().trim() : '';
         const ord = ordIdx !== -1 ? (formData[ordIdx] || '').toString().trim() : '';
         const tableId = (sec && ord) ? `TBL-${sec}-${ord}` : `TBL-${ord}`;
-        
+
         // Update table style map
         const newMap = { ...tableStyleMap };
         newMap[tableId] = style;
         setTableStyleMap(newMap);
-        
+
         showNotification(`Estilos de tabla guardados (${tableId})`, 'success');
     };
 
@@ -1385,9 +1405,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     setGridData(body);
                 }
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            showNotification("Error actualizando datos.", "error");
+            if (e.message && e.message.includes('UNAUTHENTICATED')) {
+                showNotification("Sesión expirada. Por favor, recarga la página o inicia sesión nuevamente.", "error");
+            } else {
+                showNotification("Error actualizando datos.", "error");
+            }
         } finally {
             setLoadingGrid(false);
         }
@@ -1681,6 +1705,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             // New logic: Fetch cells AND merges
             const { rowData, merges } = await fetchSpreadsheetCells(spreadsheet.spreadsheetId, [correctedRange], token);
 
+            console.log('[SheetEditor] Loaded grid data:', {
+                range: correctedRange,
+                rowCount: rowData?.length || 0,
+                mergeCount: merges?.length || 0,
+                merges: merges
+            });
+
             if (rowData && rowData.length > 0) {
                 // Map rowData to string[][]
                 const values = rowData.map(r => r.values?.map((c: any) => c.formattedValue || c.userEnteredValue?.stringValue || (c.userEnteredValue?.numberValue !== undefined ? String(c.userEnteredValue.numberValue) : '') || '') || []);
@@ -1956,6 +1987,19 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
     // removed nextOrderFor; behavior simplified to respect existing create flow
 
     const handleEdit = (rowIndex: number) => {
+        // Warn if there are unsaved changes
+        if (hasUnsavedGridChanges) {
+            const confirmSwitch = window.confirm('Tienes cambios sin guardar en la tabla actual. ¿Deseas continuar sin guardar?');
+            if (!confirmSwitch) {
+                return;
+            }
+            // Clear the auto-save timer
+            if (autoSaveTimerRef.current) {
+                clearTimeout(autoSaveTimerRef.current);
+            }
+            setHasUnsavedGridChanges(false);
+        }
+
         setEditingRowIndex(rowIndex);
         const currentRow = [...gridData[rowIndex]];
         setFormData(currentRow);
@@ -2435,6 +2479,12 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     setFullData(nextFullData);
                 }
 
+                // Clear unsaved changes flag on successful save
+                setHasUnsavedGridChanges(false);
+                if (autoSaveTimerRef.current) {
+                    clearTimeout(autoSaveTimerRef.current);
+                }
+
                 // Do not refresh or switch view mode, to keep user context
                 // onRefresh();
                 // setSearchTerm('');
@@ -2447,6 +2497,32 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             setSaving(false);
         }
     };
+
+    // Auto-save debounced function for cell edits
+    const debouncedAutoSave = () => {
+        if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+        }
+
+        setHasUnsavedGridChanges(true);
+
+        autoSaveTimerRef.current = setTimeout(() => {
+            if (activeTab === 'tablas' && nestedGridData.length > 0) {
+                console.log('[SheetEditor] Auto-saving nested grid changes...');
+                handleSave();
+                setHasUnsavedGridChanges(false);
+            }
+        }, 2000); // 2 second debounce
+    };
+
+    // Cleanup auto-save timer on unmount
+    useEffect(() => {
+        return () => {
+            if (autoSaveTimerRef.current) {
+                clearTimeout(autoSaveTimerRef.current);
+            }
+        };
+    }, []);
 
     // Helper to auto-save structure changes
     const saveStructureChange = (newData: string[][]) => {
@@ -2524,41 +2600,75 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
     const handleMerge = async () => {
         if (!selectionStart || !selectionEnd) return;
-        if (!nestedGridRange.includes('!')) return;
+        if (!nestedGridRange || !nestedGridRange.includes('!')) return;
 
-        // Auto-expand selection to include any partial merges
-        const expanded = expandSelection(selectionStart, selectionEnd, nestedGridRange, nestedGridMerges || []);
+        const parsed = parseRangeSimple(nestedGridRange);
+        if (!parsed) return;
+
+        // Convert RELATIVE selection to ABSOLUTE coordinates for expansion
+        const absSelStart = {
+            row: parsed.startRow + selectionStart.r,
+            col: parsed.startCol + selectionStart.c
+        };
+        const absSelEnd = {
+            row: parsed.startRow + selectionEnd.r,
+            col: parsed.startCol + selectionEnd.c
+        };
+
+        // Auto-expand selection to include any partial merges using ABSOLUTE coordinates
+        const expandedAbs = expandSelection(absSelStart, absSelEnd, nestedGridMerges || []);
+
+        // Convert back to RELATIVE coordinates for UI
+        const expandedRelStart = {
+            r: expandedAbs.start.row - parsed.startRow,
+            c: expandedAbs.start.col - parsed.startCol
+        };
+        const expandedRelEnd = {
+            r: expandedAbs.end.row - parsed.startRow,
+            c: expandedAbs.end.col - parsed.startCol
+        };
 
         // If selection changed due to expansion, update visual selection
-        if (expanded.start.r !== selectionStart.r || expanded.start.c !== selectionStart.c ||
-            expanded.end.r !== selectionEnd.r || expanded.end.c !== selectionEnd.c) {
-            setSelectionStart(expanded.start);
-            setSelectionEnd(expanded.end);
-            // We can proceed with the expanded selection immediately
+        if (expandedRelStart.r !== selectionStart.r || expandedRelStart.c !== selectionStart.c ||
+            expandedRelEnd.r !== selectionEnd.r || expandedRelEnd.c !== selectionEnd.c) {
+            setSelectionStart(expandedRelStart);
+            setSelectionEnd(expandedRelEnd);
         }
 
-        const r1 = Math.min(expanded.start.r, expanded.end.r);
-        const r2 = Math.max(expanded.start.r, expanded.end.r);
-        const c1 = Math.min(expanded.start.c, expanded.end.c);
-        const c2 = Math.max(expanded.start.c, expanded.end.c);
+        const r1 = Math.min(expandedRelStart.r, expandedRelEnd.r);
+        const r2 = Math.max(expandedRelStart.r, expandedRelEnd.r);
+        const c1 = Math.min(expandedRelStart.c, expandedRelEnd.c);
+        const c2 = Math.max(expandedRelStart.c, expandedRelEnd.c);
 
         if (r1 === r2 && c1 === c2) {
             showNotification("Selecciona al menos dos celdas para combinar", "info");
             return;
         }
 
-        const parsed = parseRangeSimple(nestedGridRange);
-        if (!parsed) return;
+        // Calculate absolute coordinates based on the nested grid's start position
+        const absStartRow = parsed.startRow + r1;
+        const absEndRow = parsed.startRow + r2 + 1;
+        const absStartCol = parsed.startCol + c1;
+        const absEndCol = parsed.startCol + c2 + 1;
 
-        console.log("Merge Debug:", { parsedStart: parsed.startRow, relative: { r1, c1 }, absStartRow: parsed.startRow + r1 });
+        console.log("Merge Debug:", { parsedStart: parsed.startRow, relative: { r1, c1 }, absStartRow });
 
-        const validation = validateMergeSelection(expanded.start, expanded.end, nestedGridRange, nestedGridMerges || []);
+        const validation = validateMergeSelection(
+            { row: absStartRow, col: absStartCol },
+            { row: absEndRow - 1, col: absEndCol - 1 },
+            {
+                startRowIndex: parsed.startRow,
+                endRowIndex: parsed.endRow + 1,
+                startColumnIndex: parsed.startCol,
+                endColumnIndex: parsed.endCol + 1
+            },
+            nestedGridMerges || []
+        );
+
         if (!validation.isValid) {
             showNotification(validation.error || "Selección inválida", "error");
             return;
         }
-
-
 
         // Find sheetId
         const sheet = spreadsheet.sheets.find(s => s.properties.title === parsed.sheetName);
@@ -2567,14 +2677,11 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             return;
         }
 
-        // Calculate absolute coordinates based on the nested grid's start position
-        // This assumes nestedGridRange accurately reflects the top-left of the table in the sheet.
-        const absStartRow = parsed.startRow + r1;
-        const absEndRow = parsed.startRow + r2 + 1;
-        const absStartCol = parsed.startCol + c1;
-        const absEndCol = parsed.startCol + c2 + 1;
-
         setLoadingGrid(true);
+        // Backup current state for rollback on error
+        const previousGridData = [...nestedGridData.map(row => [...row])];
+        const previousGridMerges = [...(nestedGridMerges || [])];
+
         try {
             // Optimistic Update: Update local state immediately
 
@@ -2602,6 +2709,8 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             setNestedGridMerges(updatedMerges);
 
             // 3. Update Data (Clear cells except top-left)
+            // IMPORTANT: We update local state to reflect what we WANT.
+            // But we must send the update to the server too.
             const newData = nestedGridData.map(row => [...row]);
             for (let r = r1; r <= r2; r++) {
                 for (let c = c1; c <= c2; c++) {
@@ -2619,12 +2728,13 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
 
             // API Calls
             // A. Merge Cells
+            console.log('[SheetEditor] Calling mergeCells API...');
             await mergeCells(spreadsheet.spreadsheetId, sheet.properties.sheetId, {
                 startRowIndex: absStartRow,
                 endRowIndex: absEndRow,
                 startColumnIndex: absStartCol,
                 endColumnIndex: absEndCol
-            }, 'MERGE_ALL', token);
+            }, token);
 
             // Center Align Merged Content
             try {
@@ -2657,17 +2767,34 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                 valuesToSync.push(rowVals);
             }
 
+            console.log('[SheetEditor] Calling updateValues API to clear merged cells...');
             await updateValues(spreadsheet.spreadsheetId, updateRangeStr, valuesToSync, token);
 
             // Reload grid to get updated merges
+            console.log('[SheetEditor] Reloading grid after merge...');
             await loadNestedGrid(nestedGridRange);
             showNotification("Celdas combinadas correctamente", "success");
         } catch (e: any) {
-            console.error(e);
-            showNotification(e.message || "Error al combinar celdas", "error");
+            console.error('[SheetEditor] Merge failed:', e);
+
+            // ROLLBACK LOCAL STATE
+            console.log('[SheetEditor] Rolling back local state due to error...');
+            setNestedGridData(previousGridData);
+            setNestedGridMerges(previousGridMerges);
+
+            if (e.message && e.message.includes('UNAUTHENTICATED')) {
+                showNotification("Sesión expirada. Por favor, recarga la página o inicia sesión nuevamente.", "error");
+            } else {
+                showNotification(e.message || "Error al combinar celdas", "error");
+            }
             setLoadingGrid(false);
-            // On error, we SHOULD reload to restore valid state
-            loadNestedGrid(nestedGridRange);
+
+            // Try to reload grid to ensure consistency, but if it fails, at least we rolled back local state
+            try {
+                await loadNestedGrid(nestedGridRange);
+            } catch (reloadError) {
+                console.error('[SheetEditor] Failed to reload grid after merge error:', reloadError);
+            }
         }
     };
 
@@ -2676,7 +2803,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
         const targetEnd = selectionEnd || focusedCell;
 
         if (!targetStart || !targetEnd) return;
-        if (!nestedGridRange.includes('!')) return;
+        if (!nestedGridRange || !nestedGridRange.includes('!')) return;
 
         // Use consistent parser
         const parsed = parseRangeSimple(nestedGridRange);
@@ -2749,7 +2876,11 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
             showNotification("Celdas separadas correctamente", "success");
         } catch (e: any) {
             console.error(e);
-            showNotification(e.message || "Error al separar celdas", "error");
+            if (e.message && e.message.includes('UNAUTHENTICATED')) {
+                showNotification("Sesión expirada. Por favor, recarga la página o inicia sesión nuevamente.", "error");
+            } else {
+                showNotification(e.message || "Error al separar celdas", "error");
+            }
             setLoadingGrid(false);
             // On error, restore state
             loadNestedGrid(nestedGridRange);
@@ -3197,7 +3328,16 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                     mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
                 )}>
                     <nav className="space-y-1 px-2">
-                        <button onClick={() => { setActiveTab('metadatos'); setMobileMenuOpen(false); }} className={clsx("w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md", activeTab === 'metadatos' ? "bg-red-50 text-gob-guinda" : "text-gray-600 hover:bg-gray-50")}>
+                        <button onClick={() => {
+                            if (hasUnsavedGridChanges && activeTab === 'tablas') {
+                                const confirmSwitch = window.confirm('Tienes cambios sin guardar en la tabla actual. ¿Deseas continuar sin guardar?');
+                                if (!confirmSwitch) return;
+                                if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+                                setHasUnsavedGridChanges(false);
+                            }
+                            setActiveTab('metadatos');
+                            setMobileMenuOpen(false);
+                        }} className={clsx("w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md", activeTab === 'metadatos' ? "bg-red-50 text-gob-guinda" : "text-gray-600 hover:bg-gray-50")}>
                             <Info size={18} /> Metadatos
                         </button>
                         <div className="my-2 border-t border-gray-100"></div>
@@ -3214,7 +3354,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                         ].map(item => (
                             <button
                                 key={item.id}
-                                onClick={() => { setActiveTab(item.id); setViewMode('LIST'); setMobileMenuOpen(false); }}
+                                onClick={() => { switchTab(item.id); }}
                                 className={clsx("w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md", activeTab === item.id ? "bg-red-50 text-gob-guinda" : "text-gray-600 hover:bg-gray-50")}
                             >
                                 <item.icon size={18} /> {item.label}
@@ -3513,6 +3653,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                             >
                                                 <Save size={20} className="mr-2" />
                                                 Guardar Cambios
+                                                {hasUnsavedGridChanges && (
+                                                    <span className="ml-2 inline-flex items-center justify-center w-2 h-2 bg-yellow-400 rounded-full animate-pulse" title="Cambios sin guardar"></span>
+                                                )}
                                             </Button>
                                         </div>
                                     </div>
@@ -4467,6 +4610,16 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                             <div className="flex items-center gap-2">
                                                 <Table className="text-gob-guinda" size={20} />
                                                 <h3 className="text-lg font-bold text-gray-900">Valores de la Tabla</h3>
+                                                {hasUnsavedGridChanges && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-50 text-yellow-700 text-xs rounded border border-yellow-200 animate-pulse">
+                                                        <AlertCircle size={12} /> Guardando...
+                                                    </span>
+                                                )}
+                                                {nestedGridMerges && nestedGridMerges.length > 0 && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded border border-blue-200" title="Celdas combinadas detectadas">
+                                                        <Grid size={12} /> {nestedGridMerges.length} merge{nestedGridMerges.length !== 1 ? 's' : ''}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="flex gap-2">
                                                 <Button
@@ -4595,6 +4748,9 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                                     if (absRow === merge.startRowIndex && absCol === merge.startColumnIndex) {
                                                                                         rowSpan = merge.endRowIndex - merge.startRowIndex;
                                                                                         colSpan = merge.endColumnIndex - merge.startColumnIndex;
+                                                                                        if (rIndex === 0 && cIndex === 0) {
+                                                                                            console.log('[SheetEditor] Merge detected:', { absRow, absCol, rowSpan, colSpan, merge });
+                                                                                        }
                                                                                     } else {
                                                                                         isHidden = true;
                                                                                     }
@@ -4671,6 +4827,7 @@ export const SheetEditor: React.FC<SheetEditorProps> = ({ spreadsheet, token, in
                                                                                             const newData = [...nestedGridData];
                                                                                             newData[rIndex][cIndex] = e.target.value;
                                                                                             setNestedGridData(newData);
+                                                                                            debouncedAutoSave();
                                                                                         }}
                                                                                         style={{ minHeight: '40px', whiteSpace: 'normal' }}
                                                                                     />

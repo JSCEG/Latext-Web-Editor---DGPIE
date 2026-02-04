@@ -1,4 +1,4 @@
-import { Spreadsheet, Sheet, CellData } from '../types';
+import { Spreadsheet, Sheet, CellData, GridRange } from '../types';
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
 const DRIVE_BASE_URL = 'https://www.googleapis.com/drive/v3/files';
@@ -599,3 +599,147 @@ export const updateValues = async (spreadsheetId: string, range: string, values:
   });
   return handleResponse(response);
 }
+
+// --- Fetch Spreadsheet Cells with Merges ---
+export const fetchSpreadsheetCells = async (
+  spreadsheetId: string,
+  ranges: string[],
+  token: string
+): Promise<{ rowData: any[][]; merges: GridRange[] }> => {
+  if (token === 'DEMO') {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    // Return mock data with empty merges
+    return {
+      rowData: [
+        [{ userEnteredValue: { stringValue: 'Header 1' } }, { userEnteredValue: { stringValue: 'Header 2' } }],
+        [{ userEnteredValue: { stringValue: 'Data 1' } }, { userEnteredValue: { stringValue: 'Data 2' } }]
+      ],
+      merges: []
+    };
+  }
+
+  const encodedRanges = ranges.map(r => encodeURIComponent(r)).join('&ranges=');
+  const response = await retryOperation(() => fetch(
+    `${BASE_URL}/${spreadsheetId}?ranges=${encodedRanges}&fields=sheets(data(rowData(values(formattedValue,userEnteredValue)),startRow,startColumn),merges)&includeGridData=true`,
+    {
+      headers: getHeaders(token),
+    }
+  ));
+  
+  const data = await handleResponse(response);
+  
+  console.log('[sheetsService] fetchSpreadsheetCells response:', {
+    sheetsCount: data.sheets?.length || 0,
+    firstSheetMerges: data.sheets?.[0]?.merges?.length || 0,
+    merges: data.sheets?.[0]?.merges
+  });
+  
+  // Extract row data and merges from the first sheet in the response
+  const sheet = data.sheets?.[0];
+  const rowData = sheet?.data?.[0]?.rowData || [];
+  const merges = sheet?.merges || [];
+  
+  return { rowData, merges };
+};
+
+// --- Merge Cells ---
+export const mergeCells = async (
+  spreadsheetId: string,
+  sheetId: number,
+  range: GridRange,
+  token: string
+) => {
+  if (token === 'DEMO') {
+    await new Promise(resolve => setTimeout(resolve, 150));
+    return {};
+  }
+
+  const response = await fetch(`${BASE_URL}/${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    headers: getHeaders(token),
+    body: JSON.stringify({
+      requests: [{
+        mergeCells: {
+          range: {
+            sheetId: sheetId,
+            startRowIndex: range.startRowIndex,
+            endRowIndex: range.endRowIndex,
+            startColumnIndex: range.startColumnIndex,
+            endColumnIndex: range.endColumnIndex
+          },
+          mergeType: 'MERGE_ALL'
+        }
+      }]
+    })
+  });
+  return handleResponse(response);
+};
+
+// --- Unmerge Cells ---
+export const unmergeCells = async (
+  spreadsheetId: string,
+  sheetId: number,
+  range: GridRange,
+  token: string
+) => {
+  if (token === 'DEMO') {
+    await new Promise(resolve => setTimeout(resolve, 150));
+    return {};
+  }
+
+  const response = await fetch(`${BASE_URL}/${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    headers: getHeaders(token),
+    body: JSON.stringify({
+      requests: [{
+        unmergeCells: {
+          range: {
+            sheetId: sheetId,
+            startRowIndex: range.startRowIndex,
+            endRowIndex: range.endRowIndex,
+            startColumnIndex: range.startColumnIndex,
+            endColumnIndex: range.endColumnIndex
+          }
+        }
+      }]
+    })
+  });
+  return handleResponse(response);
+};
+
+// --- Format Cells ---
+export const formatCells = async (
+  spreadsheetId: string,
+  sheetId: number,
+  range: GridRange,
+  format: any,
+  token: string
+) => {
+  if (token === 'DEMO') {
+    await new Promise(resolve => setTimeout(resolve, 150));
+    return {};
+  }
+
+  const response = await fetch(`${BASE_URL}/${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    headers: getHeaders(token),
+    body: JSON.stringify({
+      requests: [{
+        repeatCell: {
+          range: {
+            sheetId: sheetId,
+            startRowIndex: range.startRowIndex,
+            endRowIndex: range.endRowIndex,
+            startColumnIndex: range.startColumnIndex,
+            endColumnIndex: range.endColumnIndex
+          },
+          cell: {
+            userEnteredFormat: format
+          },
+          fields: 'userEnteredFormat'
+        }
+      }]
+    })
+  });
+  return handleResponse(response);
+};
