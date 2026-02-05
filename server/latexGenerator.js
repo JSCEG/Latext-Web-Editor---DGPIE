@@ -822,6 +822,11 @@ function generarFilasConMerges(datos, merges, startRow, endRow, esEncabezadoBase
     let tex = '';
     const numCols = datos[0].length;
 
+    // Change border color for headers to "light gold" (gobmxAmbarClaro)
+    if (esEncabezadoBase) {
+        tex += `\\arrayrulecolor{gobmxAmbarClaro}\n`;
+    }
+
     for (let r = startRow; r < endRow; r++) {
         const rowData = datos[r];
         let rowTex = [];
@@ -916,6 +921,12 @@ function generarFilasConMerges(datos, merges, startRow, endRow, esEncabezadoBase
             tex += `    ${rowTex.join(' & ')} \\\\\n`;
         }
     }
+
+    // Reset border color to black after header
+    if (esEncabezadoBase) {
+        tex += `\\arrayrulecolor{black}\n`;
+    }
+
     return tex;
 }
 
