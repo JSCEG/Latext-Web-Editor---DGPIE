@@ -1,0 +1,43 @@
+\babel@toc {mexican}{}\relax 
+\contentsline {section}{\numberline {1}Introducción}{11}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Fundamento jurídico del Balance Nacional de Energía}{11}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Objetivos del Balance Nacional de Energía}{13}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3} Estructura del Balance Nacional de Energía}{14}{subsection.1.3}%
+\contentsline {section}{\numberline {2}Infraestructura energética}{16}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Infraestructura del Sector Hidrocarburos}{16}{subsection.2.1}%
+\contentsline {subsubsection}{\numberline {2.1.1}Exploración y Extracción}{17}{subsubsection.2.1.1}%
+\contentsline {subsubsection}{\numberline {2.1.2}Transformación industrial}{19}{subsubsection.2.1.2}%
+\contentsline {subsubsection}{\numberline {2.1.3}Transporte, almacenamiento y distribución}{22}{subsubsection.2.1.3}%
+\contentsline {subsection}{\numberline {2.2}Infraestructura del Sector Eléctrico}{24}{subsection.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.1}Capacidad de Generación de Energía Eléctrica}{25}{subsubsection.2.2.1}%
+\contentsline {subsubsection}{\numberline {2.2.2}Transmisión y Disitribución}{26}{subsubsection.2.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.3}Capacidad Instalada de Generación Distribuida}{28}{subsubsection.2.2.3}%
+\contentsline {subsection}{\numberline {2.3}Infraestructura de consumo final y aprovechamiento directo}{29}{subsection.2.3}%
+\contentsline {section}{\numberline {3}Oferta interna bruta}{33}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Producción de energía primaria}{33}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Comercio exterior de energía}{37}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Variación de inventarios}{38}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Oferta total}{39}{subsection.3.4}%
+\contentsline {subsection}{\numberline {3.5}Energía no aprovechada}{40}{subsection.3.5}%
+\contentsline {subsection}{\numberline {3.6}Oferta interna bruta}{41}{subsection.3.6}%
+\contentsline {section}{\numberline {4}Transformaciones, Consumo Propio y Pérdidas}{44}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Refinación}{44}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Procesamiento de gas}{46}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Generación eléctrica}{47}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}Consumo propio del sector}{49}{subsection.4.4}%
+\contentsline {subsection}{\numberline {4.5}Pérdidas}{51}{subsection.4.5}%
+\contentsline {section}{\numberline {5}Consumo final}{55}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Sector agropecuario}{56}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Sector industrial}{59}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Sector comercial y servicios}{62}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Sector residencial}{64}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.5}Sector público}{67}{subsection.5.5}%
+\contentsline {subsection}{\numberline {5.6}Sector transporte}{68}{subsection.5.6}%
+\contentsline {subsection}{\numberline {5.7}Consumo no energético}{71}{subsection.5.7}%
+\contentsline {section}{\numberline {6}Balance Nacional de Energía }{75}{section.6}%
+\contentsline {subsection}{6.1\hspace {1em}Principales cuentas del Balance Nacional de Energía}{77}{subsection.6.1}%
+\contentsline {subsection}{6.2\hspace {1em}Matriz del Balance Nacional de Energía}{81}{subsection.6.2}%
+\contentsline {subsection}{6.3\hspace {1em}Principales flujos del Balance Nacional de Energía}{86}{subsection.6.3}%
+\contentsline {section}{Glosario}{87}{section*.42}%
+\contentsline {section}{Siglas y Acrónimos}{96}{section*.43}%
+\contentsline {section}{Unidades}{97}{section*.44}%

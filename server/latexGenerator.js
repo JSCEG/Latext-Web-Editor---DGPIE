@@ -746,7 +746,7 @@ function procesarDatosArray(datos, tituloTabla, forzarLongtable = false, esHoriz
     // Calcular número real de columnas considerando todas las filas y merges
     const numCols = calcularMaxColumnas(datos, merges);
     const numHeaderRows = frozenRows > 0 ? frozenRows : 1;
-    const rotarEncabezados = calcularRotacionEncabezados(merges, numHeaderRows);
+    const rotarEncabezados = calcularRotacionEncabezados(merges, numHeaderRows, numCols);
 
     const MAX_COLS_POR_TABLA = 20;
     const MAX_FILAS_COMPACTA = 15;
@@ -767,7 +767,12 @@ function procesarDatosArray(datos, tituloTabla, forzarLongtable = false, esHoriz
     return { tipo: 'longtable', contenido: dividirTabla(datosNormalizados, MAX_COLS_POR_TABLA, tituloTabla, esHorizontal, merges, numHeaderRows, rotarEncabezados) };
 }
 
-function calcularRotacionEncabezados(merges, numHeaderRows) {
+function calcularRotacionEncabezados(merges, numHeaderRows, numCols = 0) {
+    const MIN_COLS_PARA_ROTAR = 6;
+
+    // En tablas con pocas columnas, los encabezados deben mantenerse horizontales.
+    if (numCols > 0 && numCols < MIN_COLS_PARA_ROTAR) return false;
+
     if (!merges || merges.length === 0) return true;
     for (const m of merges) {
         if (m.startRowIndex < numHeaderRows && m.startColumnIndex > 0) {
