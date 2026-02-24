@@ -69,6 +69,86 @@ const io = new Server(server, {
 const connectedUsers = new Map(); // socketId -> UserData
 const documentRooms = new Map(); // docId -> Set<socketId>
 
+// --- Persistence Setup ---
+const fs = require('fs');
+const path = require('path');
+const WORKBOOKS_FILE = path.join(__dirname, 'workbooks.json');
+
+// Shared workbooks storage (in-memory, loaded from file)
+let sharedWorkbooks = [];
+
+// Load initial data
+try {
+  if (fs.existsSync(WORKBOOKS_FILE)) {
+    const data = fs.readFileSync(WORKBOOKS_FILE, 'utf8');
+    sharedWorkbooks = JSON.parse(data);
+    console.log(`Loaded ${sharedWorkbooks.length} workbooks from disk.`);
+  } else {
+    // Create empty file if not exists
+    fs.writeFileSync(WORKBOOKS_FILE, '[]', 'utf8');
+    console.log('Created new workbooks storage file.');
+  }
+} catch (err) {
+  console.error('Error loading workbooks:', err);
+  sharedWorkbooks = [];
+}
+
+// Helper to save data
+const saveWorkbooks = () => {
+  try {
+    fs.writeFileSync(WORKBOOKS_FILE, JSON.stringify(sharedWorkbooks, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Error saving workbooks:', err);
+  }
+};
+
+app.get('/api/workbooks', (req, res) => {
+  res.json(sharedWorkbooks);
+});
+
+app.post('/api/workbooks', (req, res) => {
+  const { id, name, description, createdBy } = req.body;
+  
+  if (!id || !name) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  // Avoid duplicates
+  if (sharedWorkbooks.some(wb => wb.id === id)) {
+    return res.status(409).json({ error: 'Workbook already exists' });
+  }
+  
+  const newBook = { 
+    id, 
+    name, 
+    description: description || '', 
+    createdBy: createdBy || 'Anonymous',
+    createdAt: new Date().toISOString()
+  };
+  
+  sharedWorkbooks.push(newBook);
+  saveWorkbooks(); // Persist changes
+  
+  // Notify all clients about the new list
+  io.emit('workbooks_update', sharedWorkbooks);
+  
+  res.status(201).json(newBook);
+});
+
+app.delete('/api/workbooks/:id', (req, res) => {
+  const { id } = req.params;
+  const initialLength = sharedWorkbooks.length;
+  sharedWorkbooks = sharedWorkbooks.filter(b => b.id !== id);
+  
+  if (sharedWorkbooks.length !== initialLength) {
+    saveWorkbooks(); // Persist changes
+    io.emit('workbooks_update', sharedWorkbooks);
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: 'Workbook not found' });
+  }
+});
+
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
 
@@ -86,6 +166,9 @@ io.on('connection', (socket) => {
 
     // Broadcast updated user list
     io.emit('users_update', Array.from(connectedUsers.values()));
+    
+    // Send current shared workbooks to the new user
+    socket.emit('workbooks_update', sharedWorkbooks);
   });
 
   // User enters a specific document

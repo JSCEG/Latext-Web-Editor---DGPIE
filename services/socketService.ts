@@ -17,6 +17,7 @@ export interface ConnectedUser {
 class SocketService {
     private socket: Socket | null = null;
     private subscribers: ((users: ConnectedUser[]) => void)[] = [];
+    private workbookSubscribers: ((workbooks: any[]) => void)[] = [];
     private currentUserEmail: string | null = null; // Store current user email to prevent self-duplication in UI
 
     connect(userData: { name: string; email: string }) {
@@ -32,6 +33,10 @@ class SocketService {
 
         this.socket.on('users_update', (users: ConnectedUser[]) => {
             this.subscribers.forEach(cb => cb(users));
+        });
+
+        this.socket.on('workbooks_update', (workbooks: any[]) => {
+            this.workbookSubscribers.forEach(cb => cb(workbooks));
         });
 
         this.socket.on('disconnect', () => {
@@ -74,6 +79,13 @@ class SocketService {
         this.subscribers.push(callback);
         return () => {
             this.subscribers = this.subscribers.filter(cb => cb !== callback);
+        };
+    }
+
+    subscribeToWorkbooks(callback: (workbooks: any[]) => void) {
+        this.workbookSubscribers.push(callback);
+        return () => {
+            this.workbookSubscribers = this.workbookSubscribers.filter(cb => cb !== callback);
         };
     }
     

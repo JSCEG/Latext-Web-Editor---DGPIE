@@ -8,7 +8,7 @@ import { createSpreadsheet, fetchSpreadsheet, fetchSpreadsheetProperties, append
 import { Button } from './components/Button';
 import { Modal } from './components/Modal';
 import { ShieldAlert, PlayCircle, LogOut, X, User, ChevronDown, Settings, Trash2 } from 'lucide-react';
-import { GOOGLE_SCOPES, TEMPLATE_SPREADSHEET_ID } from './config';
+import { GOOGLE_SCOPES, TEMPLATE_SPREADSHEET_ID, API_URL } from './config';
 import type { NewDocumentData } from './components/Dashboard';
 import { socketService } from './services/socketService';
 import { UserActivityTracker } from './components/UserActivityTracker';
@@ -38,10 +38,7 @@ const App: React.FC = () => {
   const [collaboratorsMap, setCollaboratorsMap] = useState<Record<string, Collaborator[]>>({});
   const [lastModifiedMap, setLastModifiedMap] = useState<Record<string, string>>({});
   const [dashboardDocuments, setDashboardDocuments] = useState<DocumentCard[]>([]);
-  const [customSpreadsheets, setCustomSpreadsheets] = useState<{ id: string, name: string, description: string }[]>(() => {
-    const saved = localStorage.getItem('custom_spreadsheets');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [customSpreadsheets, setCustomSpreadsheets] = useState<{ id: string, name: string, description: string }[]>([]);
   const [initialDocId, setInitialDocId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +54,28 @@ const App: React.FC = () => {
 
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, name: string } | null>(null);
+
+  // Subscribe to shared workbooks updates
+  useEffect(() => {
+    // Suscribe to workbook updates from socket
+    const unsubscribe = socketService.subscribeToWorkbooks((workbooks) => {
+      setCustomSpreadsheets(workbooks);
+    });
+
+    // Also fetch initially via HTTP
+    fetch(`${API_URL}/api/workbooks`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setCustomSpreadsheets(data);
+        }
+      })
+      .catch(err => console.error('Failed to fetch workbooks', err));
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
 
   // Close dropdown when clicking outside
@@ -147,7 +166,10 @@ const App: React.FC = () => {
       const collabs: Record<string, Collaborator[]> = {};
       const modified: Record<string, string> = {};
 
-      for (const sheet of AVAILABLE_SPREADSHEETS) {
+      // Combine both lists for metadata fetching
+      const allSheets = [...AVAILABLE_SPREADSHEETS, ...customSpreadsheets];
+
+      for (const sheet of allSheets) {
         try {
           // Fetch Metadata
           const props = await fetchSpreadsheetProperties(sheet.id, token);
@@ -178,7 +200,7 @@ const App: React.FC = () => {
     };
 
     fetchMetadata();
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, customSpreadsheets]); // Added customSpreadsheets dependency
 
   useEffect(() => {
     const loadDashboardDocs = async () => {
@@ -385,12 +407,20 @@ const App: React.FC = () => {
       const newCustomSheet = {
         id: newSheet.spreadsheetId,
         name: newDocName,
-        description: 'Documento creado desde Plantilla Web LaTeX'
+        description: 'Documento creado desde Plantilla Web LaTeX',
+        createdBy: currentUser?.email || 'Unknown'
       };
 
-      const updatedCustom = [...customSpreadsheets, newCustomSheet];
-      setCustomSpreadsheets(updatedCustom);
-      localStorage.setItem('custom_spreadsheets', JSON.stringify(updatedCustom));
+      // Send to server to share with everyone
+      await fetch(`${API_URL}/api/workbooks`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(newCustomSheet)
+      });
+      
+      // Note: setCustomSpreadsheets will be updated via socket event
 
       // Select it immediately
       setSelectedSpreadsheetId(newSheet.spreadsheetId);
@@ -416,9 +446,10 @@ const App: React.FC = () => {
     try {
       await deleteFile(itemToDelete.id, token);
 
-      const updatedCustom = customSpreadsheets.filter(s => s.id !== itemToDelete.id);
-      setCustomSpreadsheets(updatedCustom);
-      localStorage.setItem('custom_spreadsheets', JSON.stringify(updatedCustom));
+      // Delete from server to unshare
+      await fetch(`${API_URL}/api/workbooks/${itemToDelete.id}`, {
+        method: 'DELETE'
+      });
 
     } catch (err: any) {
       handleError(err);
