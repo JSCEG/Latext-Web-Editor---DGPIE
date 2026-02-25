@@ -26,3 +26,19 @@ dist-ssr
 # Spreadsheets (examples/output)
 *.xlsx
 *.xls
+
+# LaTeX build artifacts (root outputs)
+/*.aux
+/*.bbl
+/*.bcf
+/*.blg
+/*.fdb_latexmk
+/*.fls
+/*.lof
+/*.lot
+/*.out
+/*.run.xml
+/*.synctex.gz
+/*.toc
+/*.xdv
+/*.pdf

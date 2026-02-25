@@ -25,7 +25,8 @@ app.post('/generate-latext', async (req, res) => {
       success: true,
       tex: result.tex,
       bib: result.bib,
-      filename: result.filename
+      filename: result.filename,
+      tableFetchReport: result.tableFetchReport
     });
 
   } catch (error) {
@@ -108,7 +109,7 @@ app.get('/api/workbooks', (req, res) => {
 
 app.post('/api/workbooks', (req, res) => {
   const { id, name, description, createdBy } = req.body;
-  
+
   if (!id || !name) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
@@ -117,21 +118,21 @@ app.post('/api/workbooks', (req, res) => {
   if (sharedWorkbooks.some(wb => wb.id === id)) {
     return res.status(409).json({ error: 'Workbook already exists' });
   }
-  
-  const newBook = { 
-    id, 
-    name, 
-    description: description || '', 
+
+  const newBook = {
+    id,
+    name,
+    description: description || '',
     createdBy: createdBy || 'Anonymous',
     createdAt: new Date().toISOString()
   };
-  
+
   sharedWorkbooks.push(newBook);
   saveWorkbooks(); // Persist changes
-  
+
   // Notify all clients about the new list
   io.emit('workbooks_update', sharedWorkbooks);
-  
+
   res.status(201).json(newBook);
 });
 
@@ -139,7 +140,7 @@ app.delete('/api/workbooks/:id', (req, res) => {
   const { id } = req.params;
   const initialLength = sharedWorkbooks.length;
   sharedWorkbooks = sharedWorkbooks.filter(b => b.id !== id);
-  
+
   if (sharedWorkbooks.length !== initialLength) {
     saveWorkbooks(); // Persist changes
     io.emit('workbooks_update', sharedWorkbooks);
@@ -166,7 +167,7 @@ io.on('connection', (socket) => {
 
     // Broadcast updated user list
     io.emit('users_update', Array.from(connectedUsers.values()));
-    
+
     // Send current shared workbooks to the new user
     socket.emit('workbooks_update', sharedWorkbooks);
   });

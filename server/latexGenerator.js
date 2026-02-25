@@ -595,7 +595,7 @@ function generarFigura(figura, seccionInfo = null) {
         }
 
         if (caption) {
-            tex += `  \\captionHorizontal{${escaparLatex(caption)}}\n`;
+            tex += `  \\captionHorizontalFigure{${escaparLatex(caption)}}\n`;
         }
 
         if (rutaArchivo) {
@@ -674,7 +674,7 @@ function generarTabla(tabla, seccionInfo = null) {
                 else if (nivel === 'seccion' || nivel === 'anexo') tex += `  \\seccionHorizontal{${tituloSafe}}\n`;
                 else tex += `  \\tituloHorizontal{${tituloSafe}}\n`;
             }
-            tex += `  \\caption{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n  % Sin datos cargados\n\\end{tablaespecial}\n\n`;
+            tex += `  \\captionHorizontalTable{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n  % Sin datos cargados\n\\end{tablaespecial}\n\n`;
             return tex;
         } else {
             return `\\begin{tabladoradoCorto}\n  \\caption{${capTxt}}\n  \\label{tab:${id || generarLabel(titulo)}}\n  % Sin datos cargados\n\\end{tabladoradoCorto}\n\n`;
@@ -700,7 +700,7 @@ function generarTabla(tabla, seccionInfo = null) {
         }
 
         const capTxt = escaparLatex(titulo);
-        texInicio += `  \\captionHorizontal{${capTxt}}\n`;
+        texInicio += `  \\captionHorizontalTable{${capTxt}}\n`;
         texInicio += `  \\label{tab:${id || generarLabel(titulo)}}\n`;
 
         if (esLarga) {
@@ -1503,11 +1503,64 @@ async function fetchAndParseSheet(spreadsheetId, sheetName, token) {
     }
 }
 
-// Special fetcher for table content (ranges) with merges
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url, token, { maxRetries = 5, baseDelayMs = 750 } = {}) {
+    let attempt = 0;
+    while (true) {
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) return response;
+
+        const status = response.status;
+        const retryable = status === 429 || status === 503;
+
+        if (retryable && attempt < maxRetries) {
+            const retryAfterHeader = response.headers?.get?.('retry-after');
+            const retryAfterSeconds = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : NaN;
+            const backoffMs = Number.isFinite(retryAfterSeconds)
+                ? Math.max(0, retryAfterSeconds) * 1000
+                : Math.min(baseDelayMs * (2 ** attempt), 12000) + Math.floor(Math.random() * 250);
+
+            console.warn(`Google Sheets API rate/availability limit (status ${status}). Reintentando en ${backoffMs}ms...`);
+            await sleep(backoffMs);
+            attempt += 1;
+            continue;
+        }
+
+        const err = new Error(`HTTP ${status} ${response.statusText || ''}`.trim());
+        err.status = status;
+        throw err;
+    }
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+    const safeConcurrency = Math.max(1, Math.min(concurrency || 1, items.length || 1));
+    const results = new Array(items.length);
+    let nextIndex = 0;
+
+    const workers = Array.from({ length: safeConcurrency }, async () => {
+        while (true) {
+            const i = nextIndex;
+            nextIndex += 1;
+            if (i >= items.length) break;
+            results[i] = await mapper(items[i], i);
+        }
+    });
+
+    await Promise.all(workers);
+    return results;
+}
+
 async function fetchTableContent(spreadsheetId, rangeRef, token) {
     if (!rangeRef) return { data: [], merges: [], frozenRows: 0 };
+    let cleanRange = '';
     try {
-        let cleanRange = rangeRef.trim();
+        cleanRange = rangeRef.trim();
 
         if (cleanRange.includes('!')) {
             const parts = cleanRange.split('!');
@@ -1525,12 +1578,12 @@ async function fetchTableContent(spreadsheetId, rangeRef, token) {
 
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?ranges=${encodeURIComponent(cleanRange)}&fields=sheets(properties(gridProperties(frozenRowCount)),data(rowData(values(formattedValue,userEnteredValue)),startRow,startColumn),merges)&includeGridData=true`;
 
-        const response = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const response = await fetchWithRetry(url, token);
 
         if (!response.ok) {
-            throw new Error(`Error fetching table content ${cleanRange}: ${response.statusText}`);
+            const err = new Error(`Error fetching table content ${cleanRange}: ${response.statusText}`);
+            err.status = response.status;
+            throw err;
         }
 
         const json = await response.json();
@@ -1559,12 +1612,23 @@ async function fetchTableContent(spreadsheetId, rangeRef, token) {
         return { data, merges: normalizedMerges, frozenRows };
 
     } catch (e) {
-        console.warn(`Error fetching table content for range ${rangeRef} (cleaned: ${cleanRange || rangeRef}):`, e.message);
-        return { data: [], merges: [], frozenRows: 0 }; // Return structure on error
+        const status = e?.status;
+        const type = status === 429 ? 'rate_limited' : 'fetch_failed';
+        console.warn(`Error fetching table content for range ${rangeRef} (cleaned: ${cleanRange || rangeRef}):`, e?.message || String(e));
+        return {
+            data: [],
+            merges: [],
+            frozenRows: 0,
+            error: {
+                type,
+                status: status || null,
+                message: e?.message || String(e)
+            }
+        };
     }
 }
 
-async function generateLatex(spreadsheetId, docId, token) {
+async function generateLatex(spreadsheetId, docId, token, options = {}) {
     // 1. Fetch all necessary sheets
     const [docs, secciones, figuras, tablas, bibliografia, siglas, glosario, unidades] = await Promise.all([
         fetchAndParseSheet(spreadsheetId, 'Documentos', token),
@@ -1592,20 +1656,52 @@ async function generateLatex(spreadsheetId, docId, token) {
     const docUnidades = filterByDoc(unidades);
 
     // 3. Fetch inner data for tables (Data CSV ranges)
-    await Promise.all(docTablas.map(async (tabla) => {
+    const tableFetchReport = {
+        totalWithRange: 0,
+        ok: 0,
+        empty: 0,
+        rateLimited: 0,
+        errors: []
+    };
+
+    const concurrency = Number.isFinite(options?.tableFetchConcurrency)
+        ? Math.max(1, Math.floor(options.tableFetchConcurrency))
+        : 4;
+
+    await mapWithConcurrency(docTablas, concurrency, async (tabla) => {
         const range = tabla['Datos CSV'] || tabla['DatosCSV'];
-        if (range) {
-            try {
-                tabla['ParsedData'] = await fetchTableContent(spreadsheetId, range, token);
-                if (!tabla['ParsedData'] || !tabla['ParsedData'].data || tabla['ParsedData'].data.length === 0) {
-                    console.warn(`Warning: Table ${tabla['Titulo'] || 'Unknown'} has empty data for range ${range}`);
-                }
-            } catch (err) {
-                console.error(`Error fetching table data for ${range}:`, err);
-                tabla['ParsedData'] = { data: [], merges: [] };
-            }
+        if (!range) return;
+
+        tableFetchReport.totalWithRange += 1;
+        const titulo = tabla['Titulo'] || 'Unknown';
+
+        const parsed = await fetchTableContent(spreadsheetId, range, token);
+        tabla['ParsedData'] = parsed;
+
+        const hasError = !!parsed?.error;
+        const hasData = Array.isArray(parsed?.data) && parsed.data.length > 0;
+
+        if (hasError) {
+            if (parsed.error.type === 'rate_limited') tableFetchReport.rateLimited += 1;
+            tableFetchReport.errors.push({
+                titulo,
+                range,
+                type: parsed.error.type,
+                status: parsed.error.status,
+                message: parsed.error.message
+            });
+            console.warn(`Warning: Table ${titulo} no pudo cargarse (${parsed.error.type}${parsed.error.status ? ` ${parsed.error.status}` : ''}) para rango ${range}`);
+            return;
         }
-    }));
+
+        if (!hasData) {
+            tableFetchReport.empty += 1;
+            console.warn(`Warning: Table ${titulo} has empty data for range ${range}`);
+            return;
+        }
+
+        tableFetchReport.ok += 1;
+    });
 
     // 4. Generate LaTeX
     const tex = generarLatexString(datosDoc, docSecciones, docBibliografia, docFiguras, docTablas, docSiglas, docGlosario, docUnidades);
@@ -1629,7 +1725,8 @@ async function generateLatex(spreadsheetId, docId, token) {
     return {
         tex,
         bib,
-        filename: datosDoc['DocumentoCorto'] || 'documento'
+        filename: datosDoc['DocumentoCorto'] || 'documento',
+        tableFetchReport
     };
 }
 

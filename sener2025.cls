@@ -606,6 +606,23 @@
     \end{center}%
     \vspace{0.05cm}% espacio ultra pequeño después del caption
   }
+
+  % Fuente para captions horizontales (Match con \captionHorizontal: 14pt)
+  \DeclareCaptionFont{senerHorizontalCap}{\patriafont\fontsize{14pt}{17pt}\selectfont\color{gobmxGuinda}}
+
+  % Caption Horizontal con registro en Índice de Tablas
+  \newcommand{\captionHorizontalTable}[1]{%
+    \refstepcounter{table}%
+    \addcontentsline{lot}{table}{\protect\numberline{}{\ignorespaces #1}}%
+    \captionHorizontal{#1}%
+  }
+
+  % Caption Horizontal con registro en Índice de Figuras
+  \newcommand{\captionHorizontalFigure}[1]{%
+    \refstepcounter{figure}%
+    \addcontentsline{lof}{figure}{\protect\numberline{}{\ignorespaces #1}}%
+    \captionHorizontal{#1}%
+  }
   
   % Fuente personalizada para modo horizontal - subida más para evitar cinta amarilla
   \newcommand{\fuenteHorizontal}[1]{%
